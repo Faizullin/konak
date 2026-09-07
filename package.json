@@ -1,12 +1,12 @@
 {
-  "name": "nextjs-template",
+  "name": "konak",
   "version": "0.1.0",
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack",
     "build": "next build --turbopack",
     "start": "next start",
-    "tunnel": "npx localtunnel --subdomain nextjs-demo-template-tunnel-web --port 3000",
+    "tunnel": "npx localtunnel --subdomain konak-tunnel-web --port 3000",
     "lint": "eslint",
     "format": "prettier --write .",
     "format:check": "prettier --check .",

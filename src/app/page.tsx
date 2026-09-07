@@ -11,7 +11,7 @@ export default async function Home() {
   return (
     <main className="flex min-h-screen flex-col items-center justify-center gap-8 p-8">
       <div className="max-w-xl space-y-3 text-center">
-        <h1 className="text-4xl font-bold tracking-tight">Next.js Template</h1>
+        <h1 className="text-4xl font-bold tracking-tight">Konak</h1>
         <p className="text-muted-foreground">
           Clerk for authentication, Prisma on SQLite for data, tRPC for the typed API — and the
           feature-per-domain layout to grow into.

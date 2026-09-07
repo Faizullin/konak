@@ -17,8 +17,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Next.js Template",
-  description: "Next.js + Clerk + Prisma + tRPC starter.",
+  title: "Konak",
+  description: "Konak - Next.js + Clerk + Prisma + tRPC",
 };
 
 export default function RootLayout({

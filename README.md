@@ -1,4 +1,4 @@
-# nextjs-template
+# konak
 
 A Next.js starter with **Clerk** for authentication, **Prisma on SQLite** for
 data, and **tRPC** for the typed API — carrying the feature-per-domain layout
@@ -27,7 +27,7 @@ build rather than surfacing as `undefined` at runtime.
    ```
 
 3. Add a webhook endpoint pointing at
-   `https://nextjs-demo-template-tunnel-web.loca.lt/api/webhooks/clerk`,
+   `https://konak-tunnel-web.loca.lt/api/webhooks/clerk`,
    subscribed to `user.created`, `user.updated`, `user.deleted` and
    `session.created`. Copy its signing secret into
    `CLERK_WEBHOOK_SIGNING_SECRET`.

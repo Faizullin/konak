@@ -67,15 +67,15 @@ with a fixed subdomain:
 
 ```bash
 npm run tunnel
-# which is: npx localtunnel --subdomain nextjs-demo-template-tunnel-web --port 3000
+# which is: npx localtunnel --subdomain konak-tunnel-web --port 3000
 # installed globally (npm i -g localtunnel), the same thing is:
-lt --subdomain nextjs-demo-template-tunnel-web --port 3000
+lt --subdomain konak-tunnel-web --port 3000
 ```
 
 Then point the Clerk webhook endpoint at:
 
 ```
-https://nextjs-demo-template-tunnel-web.loca.lt/api/webhooks/clerk
+https://konak-tunnel-web.loca.lt/api/webhooks/clerk
 ```
 
 The fixed `--subdomain` is the point: the URL survives a restart, so the Clerk
