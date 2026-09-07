@@ -2,12 +2,14 @@ import { TRPCError } from "@trpc/server";
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import { nextCookies } from "better-auth/next-js";
+import { haveIBeenPwned } from "better-auth/plugins";
 // Relative imports, and never through a feature barrel: `npm run auth:generate`
 // loads this file with jiti, which does not read tsconfig `paths`. The rule
 // applies to everything this file transitively reaches.
 import { env } from "../env.mjs";
 import { UserRole } from "../features/identity/model/user";
 import { OrgRole, canManageMembers } from "../features/organizations/model/organization";
+import { userNotFound } from "./errors";
 import prisma from "./db";
 
 /**
@@ -60,8 +62,15 @@ export const auth = betterAuth({
     },
   },
 
-  // Must be last: lets Server Actions set the session cookie.
-  plugins: [nextCookies()],
+  plugins: [
+    // Rejects sign-up and password-change when the chosen password appears in
+    // a known breach. The check is k-anonymous — only the first five characters
+    // of the SHA-1 hash leave the server — and adds no columns, so it stays
+    // out of the schema.
+    haveIBeenPwned(),
+    // Must be last: lets Server Actions set the session cookie.
+    nextCookies(),
+  ],
 });
 
 /**
@@ -90,7 +99,7 @@ export async function requireUser(ctx: AuthedContext) {
     where: { id: ctx.session.user.id },
   });
   if (!user) {
-    throw new TRPCError({ code: "NOT_FOUND", message: "User not found" });
+    throw userNotFound();
   }
   return user;
 }

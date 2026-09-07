@@ -1,8 +1,8 @@
 # Guides
 
-How to work in this codebase. **Guides describe how things are**; anything in
-`docs/plans` would describe what is still planned. If the two disagree, the
-guide is wrong — fix it.
+How to work in this codebase. **Guides describe how things are**;
+[plans](../plans/index.md) describe what is still planned. If the two disagree,
+the guide is wrong — fix it.
 
 A plan is deleted once it ships: the code is the record of what was built, and
 a finished plan is one more file to read before finding out it no longer

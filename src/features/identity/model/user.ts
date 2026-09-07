@@ -1,3 +1,4 @@
+import { createAccessControl, type RoleAuthorizeRequest } from "better-auth/plugins/access";
 import { z } from "zod";
 
 /**
@@ -16,6 +17,63 @@ export type UserRole = (typeof UserRole)[keyof typeof UserRole];
 export const USER_ROLE_VALUES = Object.values(UserRole);
 
 export const userRoleSchema = z.enum(USER_ROLE_VALUES);
+
+export const USER_ROLE_LABELS: Record<UserRole, string> = {
+  USER: "User",
+  ADMIN: "Admin",
+  MODERATOR: "Moderator",
+};
+
+/**
+ * Install-wide capabilities, in the same shape `organizations` uses for its
+ * own — see [architecture.md](../../../../docs/guides/architecture.md). Two
+ * verbs, because two procedures are guarded: `user.adminList` and
+ * `user.updateRole`.
+ *
+ * Not to be confused with `OrgRole`, which is scoped to one organization. This
+ * table answers "what may this account do to the install", and it is free to
+ * consult because the role rides on the session.
+ */
+export const userStatements = {
+  user: ["list", "set-role"],
+} as const;
+
+const ac = createAccessControl(userStatements);
+
+/**
+ * MODERATOR is granted nothing, which is the honest encoding of what it means
+ * today: the role exists in the enum and no code has ever consulted it. Giving
+ * it `list` would change who can read the user table — a product decision, not
+ * a refactor. The empty grant makes that a visible gap rather than a silent
+ * one.
+ */
+const USER_ROLE_AC = {
+  [UserRole.ADMIN]: ac.newRole({ user: ["list", "set-role"] }),
+  [UserRole.MODERATOR]: ac.newRole({}),
+  [UserRole.USER]: ac.newRole({}),
+};
+
+/**
+ * Ask whether `role` may do something. The session carries the role as a
+ * plain string, so an unrecognised one is denied rather than throwing — a
+ * column edited by hand cannot escalate.
+ */
+export function userCan(
+  role: string,
+  request: RoleAuthorizeRequest<typeof userStatements>
+): boolean {
+  const granted = USER_ROLE_AC[role as UserRole];
+  return granted ? granted.authorize(request).success : false;
+}
+
+/** The named questions the app asks. Same relationship as `canManageMembers`. */
+export function canListUsers(role: string): boolean {
+  return userCan(role, { user: ["list"] });
+}
+
+export function canSetUserRole(role: string): boolean {
+  return userCan(role, { user: ["set-role"] });
+}
 
 /**
  * The shape the API returns for a user. `id` is a Better Auth string, not a

@@ -91,8 +91,11 @@ Anything both sides need to agree on. In practice that is three things:
 - **Enums.** SQLite has no enum type, so `UserRole` and `OrgRole` are string
   columns and the values live in `model/`. One definition the server validates
   against and the client renders from.
-- **Permission predicates.** `canManageMembers(role)` is called by the router
-  to decide and by the UI to hide a button. Same rule, one function.
+- **Permissions.** A statement table declares which resources exist and what
+  each role may do with them; `canManageMembers(role)` and its siblings are the
+  named questions asked of it. The router calls them to decide and the UI calls
+  them to hide a button — same rule, one place. See
+  [Access control](#access-control).
 
 ## `app/` holds routing and nothing else
 
@@ -145,6 +148,61 @@ the case that actually matters — you are signed in, and this is not yours.
 
 The UI hides controls using the `model/` predicates. That is a courtesy, never
 the enforcement. The server re-checks every one.
+
+### Permissions are a table, not a chain of `||`
+
+Roles are never compared directly. `organizations/model/organization.ts`
+declares the space of permissions once, then grants each role a subset, using
+`createAccessControl` from `better-auth/plugins/access`:
+
+```ts
+export const orgStatements = {
+  organization: ["update", "delete"],
+  member: ["create", "update", "delete", "list"],
+} as const;
+```
+
+We take that dependency for the primitive alone — it ships no tables, no routes
+and no hooks, just two functions. The `organization` plugin, which *does* own
+storage, is deliberately unused: `Organization` and `OrganizationMember` are
+ours, and adopting it would mean moving onto its six tables to gain roles we
+already have.
+
+`as const` is load-bearing. `Statements` wants readonly arrays and
+`createAccessControl` is a `const` generic, so widening these to `string[]`
+collapses every type beneath them.
+
+Three properties make the table safe to extend:
+
+- **Granting a role something outside the table does not compile.** `newRole`
+  intersects `Record<Exclude<keyof TRoleStatements, keyof TStatements>, never>`,
+  so a mistyped resource or verb fails `tsc` instead of quietly permitting.
+- **An unlisted resource reads as "no".** A role with no `organization` entry is
+  denied it. So a resource added to the table is denied to everyone until the
+  grants are written — a new capability cannot arrive switched on.
+- **Verbs are AND-ed.** `orgCan(role, { organization: ["update", "delete"] })`
+  requires both; holding one of the two is not enough.
+
+The last two are pinned by tests; the first is the type system's job.
+
+The `canX` predicates remain the vocabulary the app speaks, each one `orgCan`
+call. Keep them — a statement literal at a call site says the same thing less
+legibly, in more places. A new domain adds a resource and a grant per role, not
+a predicate per verb.
+
+The install-wide scope has its own table of the same shape:
+`identity/model/user.ts` declares `userStatements` and grants them per
+`UserRole`, with `canListUsers` and `canSetUserRole` as its vocabulary.
+`adminProcedure` asks for the whole set at once, so it passes only for a role
+holding all of it. A procedure wanting one capability rather than all of them
+calls `userCan` directly instead of widening that guard.
+
+Two tables, not one merged set, because the two questions are answered by
+different data: `UserRole` rides on the session and is free to consult, while
+`OrgRole` costs a membership lookup. `userCan` also takes a plain `string`
+rather than a `UserRole` — `User.role` is a string column, so an unrecognised
+value has to read as "no" instead of throwing. `MODERATOR` is granted nothing,
+which is the honest encoding of a role no code has ever consulted.
 
 ## Identity is owned, not mirrored
 

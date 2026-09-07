@@ -1,3 +1,4 @@
+import { createAccessControl, type RoleAuthorizeRequest } from "better-auth/plugins/access";
 import { z } from "zod";
 
 /**
@@ -41,17 +42,67 @@ export const ORG_ROLE_LABELS: Record<OrgRole, string> = {
   MEMBER: "Member",
 };
 
-/** What each role is allowed to do. The server enforces it; the UI reads it. */
+/**
+ * Every resource in this feature, and the verbs each one admits.
+ *
+ * This is the space the roles below range over. A new capability is a new
+ * string here plus a grant there — not a new `canX` function, which is how a
+ * rule set ends up spread across N places that have to be read together to
+ * answer "what can an ADMIN actually do".
+ *
+ * `as const` is load-bearing. `Statements` wants readonly arrays and
+ * `createAccessControl` is a `const` generic; widen these to `string[]` and
+ * every type below collapses to `string`.
+ */
+export const orgStatements = {
+  organization: ["update", "delete"],
+  member: ["create", "update", "delete", "list"],
+} as const;
+
+const ac = createAccessControl(orgStatements);
+
+/**
+ * What each role is allowed to do. The server enforces it; the UI reads it.
+ *
+ * Granting a resource or verb absent from `orgStatements` is a compile error,
+ * and a resource granted to nobody is denied to everybody — a new entry above
+ * fails closed until someone writes the grant down.
+ */
+const ORG_ROLE_AC = {
+  [OrgRole.OWNER]: ac.newRole({
+    organization: ["update", "delete"],
+    member: ["create", "update", "delete", "list"],
+  }),
+  [OrgRole.ADMIN]: ac.newRole({
+    organization: ["update"],
+    member: ["create", "update", "delete", "list"],
+  }),
+  [OrgRole.MEMBER]: ac.newRole({ member: ["list"] }),
+};
+
+/** Ask whether `role` may do something. Resources are `AND`-ed by default. */
+export function orgCan(
+  role: OrgRole,
+  request: RoleAuthorizeRequest<typeof orgStatements>
+): boolean {
+  return ORG_ROLE_AC[role].authorize(request).success;
+}
+
+/**
+ * The named questions the app actually asks. A statement literal at a call
+ * site would say the same thing, less legibly, in more places — these keep the
+ * vocabulary in one file while the table above keeps the rules in one place.
+ */
 export function canManageMembers(role: OrgRole): boolean {
-  return role === OrgRole.OWNER || role === OrgRole.ADMIN;
+  return orgCan(role, { member: ["create", "delete"] });
 }
 
 export function canEditOrganization(role: OrgRole): boolean {
-  return role === OrgRole.OWNER || role === OrgRole.ADMIN;
+  return orgCan(role, { organization: ["update"] });
 }
 
 export function canDeleteOrganization(role: OrgRole): boolean {
-  return role === OrgRole.OWNER;
+  return orgCan(role, { organization: ["delete"] });
 }
 
 /** Lowercase letters, digits and hyphens — it appears in URLs. */

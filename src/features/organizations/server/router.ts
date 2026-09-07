@@ -3,6 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import type { Prisma } from "@/generated/prisma/client";
 import { requireOrgManager, requireOrgMember, requireOrgOwner, requireUser } from "@/server/auth";
+import { memberNotFound } from "@/server/errors";
 import { createTRPCRouter, protectedProcedure } from "@/server/trpc";
 import {
   OrgRole,
@@ -249,7 +250,7 @@ export const organizationRouter = createTRPCRouter({
         },
       });
       if (!target) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Member not found" });
+        throw memberNotFound();
       }
       // The owner's role is not editable here — `transferOwnership` is the
       // only way it changes, and it moves both sides at once.
@@ -293,7 +294,7 @@ export const organizationRouter = createTRPCRouter({
         },
       });
       if (!target) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Member not found" });
+        throw memberNotFound();
       }
       if (target.role === OrgRole.OWNER) {
         throw new TRPCError({ code: "FORBIDDEN", message: "The owner cannot be removed" });

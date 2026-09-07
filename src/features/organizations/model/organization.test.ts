@@ -3,9 +3,12 @@ import { test } from "node:test";
 
 import {
   canDeleteOrganization,
+  canEditOrganization,
   canManageMembers,
   createOrganizationSchema,
+  ORG_ROLE_VALUES,
   OrgRole,
+  orgCan,
   organizationSlugSchema,
   slugify,
 } from "./organization";
@@ -29,6 +32,43 @@ test("owners and admins manage members; members do not", () => {
   assert.equal(canManageMembers(OrgRole.OWNER), true);
   assert.equal(canManageMembers(OrgRole.ADMIN), true);
   assert.equal(canManageMembers(OrgRole.MEMBER), false);
+});
+
+test("owners and admins edit the organization; members do not", () => {
+  assert.equal(canEditOrganization(OrgRole.OWNER), true);
+  assert.equal(canEditOrganization(OrgRole.ADMIN), true);
+  assert.equal(canEditOrganization(OrgRole.MEMBER), false);
+});
+
+/**
+ * The predicates above are the vocabulary; `orgStatements` and the grants are
+ * the rule set. These test the rule set directly, because that is the half a
+ * new domain extends, and the properties it leans on are not visible from
+ * reading the grants alone.
+ */
+
+test("a resource a role was never granted is denied, not passed through", () => {
+  // MEMBER has no `organization` entry at all. An unlisted resource has to fail
+  // closed — otherwise adding one to `orgStatements` would silently permit
+  // every role until someone remembered to write the grants down.
+  assert.equal(orgCan(OrgRole.MEMBER, { organization: ["update"] }), false);
+  assert.equal(orgCan(OrgRole.MEMBER, { member: ["list"] }), true);
+});
+
+test("verbs are AND-ed, so holding one of two is not enough", () => {
+  // ADMIN may update the organization but not delete it. Asking for both at
+  // once must fail, or a caller could smuggle the second verb past the check.
+  assert.equal(orgCan(OrgRole.ADMIN, { organization: ["update"] }), true);
+  assert.equal(orgCan(OrgRole.ADMIN, { organization: ["update", "delete"] }), false);
+  assert.equal(orgCan(OrgRole.OWNER, { organization: ["update", "delete"] }), true);
+});
+
+test("every role has an entry in the grant table", () => {
+  // The table is indexed by role, so a role added to `OrgRole` without a grant
+  // would throw at the call site rather than deny. Catch it here instead.
+  for (const role of ORG_ROLE_VALUES) {
+    assert.equal(typeof orgCan(role, { member: ["list"] }), "boolean", `${role} has no grants`);
+  }
 });
 
 test("slugify produces something the slug schema accepts", () => {
