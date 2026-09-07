@@ -1,23 +1,18 @@
 // organizations
 //
-// The container the rest of the domain hangs off. An organization owns
-// things; it is not itself one. Every member row is a person's access to one
-// organization — the pair is unique, so membership is a fact, not a list to
-// keep de-duplicated.
-//
-// `role` here is *organization* role (OWNER / ADMIN / MEMBER), unrelated to
-// `UserAccount.role`, which is the install-wide one. SQLite has no enum type,
-// so both are string columns; the values live in `features/*/model`.
+// `role` here is the organization role (OWNER / ADMIN / MEMBER), unrelated to
+// `User.role`, which is install-wide. SQLite has no enum type, so both are
+// string columns; the allowed values live in `features/*/model`.
 
 model Organization {
   id          Int                  @id @default(autoincrement())
   name        String
   slug        String               @unique
   description String?
-  ownerId     Int
+  ownerId     String
   createdAt   DateTime             @default(now())
   updatedAt   DateTime             @updatedAt
-  owner       UserAccount          @relation("OrganizationOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  owner       User                 @relation("OrganizationOwner", fields: [ownerId], references: [id], onDelete: Cascade)
   members     OrganizationMember[]
 
   @@index([ownerId])
@@ -28,11 +23,11 @@ model Organization {
 model OrganizationMember {
   id             Int          @id @default(autoincrement())
   organizationId Int
-  userId         Int
+  userId         String
   role           String       @default("MEMBER")
   joinedAt       DateTime     @default(now())
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  user           UserAccount  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([organizationId, userId])
   @@index([organizationId])

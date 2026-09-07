@@ -13,7 +13,7 @@ guide.
 |---|---|
 | [architecture.md](architecture.md) | you are new, or unsure where a file goes |
 | [ui-patterns.md](ui-patterns.md) | building a form, list, dialog or combobox |
-| [local-development.md](local-development.md) | setting up, running scripts, webhooks, the database |
+| [local-development.md](local-development.md) | setting up, running scripts, the seed, the database |
 
 `npm test` runs `node:test` through tsx over `src/**/*.test.ts`.
 `features/organizations/model/organization.test.ts` is the worked example, and

@@ -28,7 +28,7 @@ const MEMBER_SELECT = {
   id: true,
   role: true,
   joinedAt: true,
-  user: { select: { id: true, username: true, email: true } },
+  user: { select: { id: true, name: true, email: true } },
 } satisfies Prisma.OrganizationMemberSelect;
 
 export const organizationRouter = createTRPCRouter({
@@ -202,7 +202,7 @@ export const organizationRouter = createTRPCRouter({
   addMember: protectedProcedure.input(addMemberSchema).mutation(async ({ ctx, input }) => {
     await requireOrgManager(ctx, input.organizationId);
 
-    const target = await ctx.db.userAccount.findUnique({ where: { email: input.email } });
+    const target = await ctx.db.user.findUnique({ where: { email: input.email } });
     if (!target) {
       throw new TRPCError({
         code: "NOT_FOUND",
@@ -233,7 +233,7 @@ export const organizationRouter = createTRPCRouter({
     .input(
       z.object({
         organizationId: z.number(),
-        userId: z.number(),
+        userId: z.string(),
         role: assignableOrgRoleSchema,
       })
     )
@@ -273,7 +273,7 @@ export const organizationRouter = createTRPCRouter({
     }),
 
   removeMember: protectedProcedure
-    .input(z.object({ organizationId: z.number(), userId: z.number() }))
+    .input(z.object({ organizationId: z.number(), userId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const { user } = await requireOrgManager(ctx, input.organizationId);
 
@@ -337,7 +337,7 @@ export const organizationRouter = createTRPCRouter({
     }),
 
   transferOwnership: protectedProcedure
-    .input(z.object({ organizationId: z.number(), toUserId: z.number() }))
+    .input(z.object({ organizationId: z.number(), toUserId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const { user } = await requireOrgOwner(ctx, input.organizationId);
 

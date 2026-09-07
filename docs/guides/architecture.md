@@ -14,16 +14,17 @@ Two tests decide where any file goes:
    is a feature.
 
 The second test is what keeps `lib/` nearly empty here. `lib/utils.ts` (the
-`cn` class merger) passes it. A hypothetical `lib/org-invite-mailer.ts` would
-not — it would know our roles and our wording, so it belongs to
-`features/organizations`.
+`cn` class merger) passes it, and so does `lib/auth-client.ts` — it is the
+browser half of an auth vendor and knows none of our rules. A hypothetical
+`lib/org-invite-mailer.ts` would not: it would know our roles and our wording,
+so it belongs to `features/organizations`.
 
 ## The tree
 
 ```
 src/
 ├── app/          ROUTING ONLY — page, layout, loading, error, not-found
-│   └── api/      route handlers (tRPC transport, Clerk webhook)
+│   └── api/      route handlers (tRPC transport, Better Auth catch-all)
 ├── features/     THE DOMAIN — vertical slices, each complete
 │   └── <name>/
 │       ├── server/   router, services, db access        ("server-only")
@@ -63,6 +64,11 @@ build** instead of shipping the database client to the browser. (The same guard
 is what makes standalone scripts awkward — see
 [local-development.md](local-development.md).)
 
+`src/server/*` is the framework layer and deliberately takes **no**
+`server-only`. That is what lets `prisma/seed.ts` import `src/server/auth.ts`
+under plain `tsx`, and it weakens nothing: those modules are only ever reached
+from other server code.
+
 A feature with nothing genuinely shared has no `model/` and no root barrel. That
 is deliberate: an empty barrel asserts a sharing that does not exist.
 
@@ -79,6 +85,9 @@ Anything both sides need to agree on. In practice that is three things:
   *and* drives the create form's resolver. Written twice they drift — the form
   enforces the slug format while the router accepts any non-empty string, and
   a caller reaching tRPC directly creates a slug the UI would never produce.
+  `signInSchema` and `signUpSchema` are the same relationship with Better Auth
+  instead of a router: the server re-validates, and the schema exists so the
+  form cannot accept a password the server will reject.
 - **Enums.** SQLite has no enum type, so `UserRole` and `OrgRole` are string
   columns and the values live in `model/`. One definition the server validates
   against and the client renders from.
@@ -98,19 +107,26 @@ That is why the organization pages are three-line files that render
 `features/organizations/client/components/organization-panels.tsx`. The panels
 hold the queries; the routes hold the params.
 
+`sign-in/page.tsx` and `sign-up/page.tsx` are the same shape. They resolve two
+things routing owns — is there already a session, and which OAuth providers are
+configured — and hand off to `<SignInForm />` / `<SignUpForm />`. Neither page
+has `"use client"`, `useState` or `useForm`; all of that is in the feature.
+
 There are no `_components/` directories. Feature UI lives in the feature.
 
 ## Access control
 
 Access is checked **at the resource**, never by path matching.
 
-- `src/middleware.ts` runs `clerkMiddleware()` and nothing else. It hydrates
-  the session so `auth()` works; it decides nothing. Clerk deprecated
-  `createRouteMatcher` for the reason worth repeating: a matcher's idea of the
-  URL space drifts from Next.js's, and the gap is a reachable protected
-  resource.
-- `app/dashboard/layout.tsx` redirects an anonymous visitor. Every page beneath
-  it inherits that guard by being beneath it.
+There is no `src/middleware.ts`, and its absence is the design. A middleware
+matcher has its own idea of the URL space, that idea drifts from Next.js's, and
+the gap is a reachable protected resource. A layout cannot drift: it runs on
+the server for every route beneath it, because it *is* beneath-ness.
+
+- `app/dashboard/layout.tsx` calls `auth.api.getSession` and redirects an
+  anonymous visitor. Every page beneath it inherits that guard by being beneath
+  it. It is also the app's single session read — the result goes to
+  `<AppSidebar />` as props, so nothing below refetches the current user.
 - `protectedProcedure` and `adminProcedure` in `src/server/trpc.ts` guard the
   API. A procedure picks its guard explicitly; there is no ambient default.
 
@@ -130,17 +146,29 @@ the case that actually matters — you are signed in, and this is not yours.
 The UI hides controls using the `model/` predicates. That is a courtesy, never
 the enforcement. The server re-checks every one.
 
-## Identity is mirrored, not owned
+## Identity is owned, not mirrored
 
-Clerk owns the credential. `UserAccount` mirrors just enough of the user —
-`uid` is the Clerk subject — for our own tables to join against.
+Better Auth writes our own `users` table through the Prisma adapter. There is
+no mirror, no external subject id, and no sync step — `User.id` *is* the
+identity, and every other table foreign-keys straight to it.
 
-The Clerk webhook is the **only** writer of that row, through `syncClerkUser`
-in `features/identity/server/service.ts`. Nothing else creates users, so there
-is one place to look when a row is wrong and one function to reuse from a
-backfill or a test.
+That removes a class of bug rather than solving it: there is no window in which
+a credential exists and its row does not, because sign-up writes `users` and
+`accounts` in one transaction. `user.getCurrent` cannot answer `NOT_FOUND` for
+a freshly signed-up person.
 
-Until the webhook fires there is no row, and `user.getCurrent` answers
-`NOT_FOUND` — which the dashboard card explains rather than showing a blank.
-`session.created` is the safety net for anyone who signed up while the endpoint
-was unreachable.
+`User.id` is a Better Auth string, not an integer and not a uuid. Never
+validate one with `z.uuid()`. Organizations still key on integers; only the
+user side is string-keyed.
+
+Two fields are ours rather than Better Auth's, declared in
+`user.additionalFields` in `src/server/auth.ts`:
+
+- **`role`** carries `input: false`. That is the whole defence against a caller
+  POSTing themselves to `ADMIN` at sign-up — the field is refused on the way
+  in, and only `adminProcedure` (and the seed) write it through Prisma.
+
+Because the schema is generated from that config, `prisma/schema/identity.prisma`
+is **not hand-edited**. Change `src/server/auth.ts`, run `npm run auth:generate`,
+then migrate. Editing the `.prisma` file directly means the next generate
+silently reverts it.

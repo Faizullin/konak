@@ -41,7 +41,7 @@ export function MemberTable({
 }: {
   organizationId: number;
   currentUserRole: OrgRole;
-  currentUserId?: number;
+  currentUserId?: string;
 }) {
   const utils = trpc.useUtils();
   const [email, setEmail] = useState("");
@@ -84,9 +84,9 @@ export function MemberTable({
     onError: (e) => toast.error(e.message),
   });
 
-  const handleRemove = async (userId: number, username: string) => {
+  const handleRemove = async (userId: string, name: string) => {
     const ok = await confirm({
-      title: `Remove ${username}?`,
+      title: `Remove ${name}?`,
       description:
         "They lose access to this organization immediately. You can add them back later.",
       confirmLabel: "Remove",
@@ -158,7 +158,7 @@ export function MemberTable({
                 <TableRow key={member.id}>
                   <TableCell>
                     <div className="font-medium">
-                      {member.user.username}
+                      {member.user.name}
                       {isSelf && <span className="text-muted-foreground"> (you)</span>}
                     </div>
                     <div className="text-muted-foreground text-xs">{member.user.email}</div>
@@ -196,7 +196,7 @@ export function MemberTable({
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => handleRemove(member.user.id, member.user.username)}
+                        onClick={() => handleRemove(member.user.id, member.user.name)}
                       >
                         Remove
                       </Button>

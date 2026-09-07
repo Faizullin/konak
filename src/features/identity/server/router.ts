@@ -1,5 +1,4 @@
 import "server-only";
-import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import type { Prisma } from "@/generated/prisma/client";
 import { requireUser } from "@/server/auth";
@@ -7,8 +6,8 @@ import { adminProcedure, createTRPCRouter, protectedProcedure } from "@/server/t
 import { listUsersInputSchema, updateProfileInputSchema, userRoleSchema } from "../model";
 
 /**
- * Identity feature — who the caller is. Authentication itself is Clerk's;
- * this router owns the `UserAccount` mirror (`identity.prisma`).
+ * Identity feature — who the caller is. Better Auth owns the `User` table and
+ * writes it directly; this router reads it and administers roles.
  */
 export const userRouter = createTRPCRouter({
   /** The signed-in user's own row. The one call a client always needs. */
@@ -21,25 +20,18 @@ export const userRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const user = await requireUser(ctx);
 
-      const taken = await ctx.db.userAccount.findFirst({
-        where: { username: input.username, NOT: { id: user.id } },
-      });
-      if (taken) {
-        throw new TRPCError({ code: "CONFLICT", message: "Username already taken" });
-      }
-
-      return ctx.db.userAccount.update({
+      return ctx.db.user.update({
         where: { id: user.id },
-        data: { username: input.username },
+        data: { name: input.name },
       });
     }),
 
   adminList: adminProcedure.input(listUsersInputSchema).query(async ({ ctx, input }) => {
     const { filter, orderBy, pagination } = input;
 
-    const where: Prisma.UserAccountWhereInput = {};
-    if (filter?.username) {
-      where.username = { contains: filter.username };
+    const where: Prisma.UserWhereInput = {};
+    if (filter?.name) {
+      where.name = { contains: filter.name };
     }
     if (filter?.email) {
       where.email = { contains: filter.email };
@@ -48,18 +40,18 @@ export const userRouter = createTRPCRouter({
       where.role = filter.role;
     }
 
-    const orderByClause: Prisma.UserAccountOrderByWithRelationInput = orderBy
+    const orderByClause: Prisma.UserOrderByWithRelationInput = orderBy
       ? { [orderBy.field]: orderBy.direction }
       : { createdAt: "desc" };
 
     const [items, total] = await Promise.all([
-      ctx.db.userAccount.findMany({
+      ctx.db.user.findMany({
         where,
         orderBy: orderByClause,
         skip: pagination.skip,
         take: pagination.take,
       }),
-      ctx.db.userAccount.count({ where }),
+      ctx.db.user.count({ where }),
     ]);
 
     return {
@@ -70,9 +62,9 @@ export const userRouter = createTRPCRouter({
   }),
 
   updateRole: adminProcedure
-    .input(z.object({ id: z.number(), role: userRoleSchema }))
+    .input(z.object({ id: z.string(), role: userRoleSchema }))
     .mutation(async ({ ctx, input }) => {
-      return ctx.db.userAccount.update({
+      return ctx.db.user.update({
         where: { id: input.id },
         data: { role: input.role },
       });

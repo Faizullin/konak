@@ -1,40 +1,60 @@
 # konak
 
-A Next.js starter with **Clerk** for authentication, **Prisma on SQLite** for
-data, and **tRPC** for the typed API — carrying the feature-per-domain layout
-from `web_backend` without any of its domain code.
+A Next.js starter with **Better Auth** for authentication, **Prisma on SQLite**
+for data, and **tRPC** for the typed API — carrying the feature-per-domain
+layout from `web_backend` without any of its domain code.
 
 ## Getting started
 
 ```bash
 npm install
-cp .env.example .env       # fill in the Clerk keys
-npx prisma migrate dev     # creates dev.db
+cp .env.example .env
+npx auth@latest secret       # paste into BETTER_AUTH_SECRET
+npm run db:migrate           # creates dev.db
+npm run db:seed              # demo users + one organization
 npm run dev
 ```
 
 `src/env.mjs` validates every variable at startup, so a missing one fails the
 build rather than surfacing as `undefined` at runtime.
 
-### Clerk
+### Demo logins
 
-1. Create an application at [dashboard.clerk.com](https://dashboard.clerk.com)
-   and copy the publishable and secret keys into `.env`.
-2. Start a tunnel, because Clerk cannot reach `localhost`:
+`npm run db:seed` creates three accounts, all with the password
+**`password123`**:
 
-   ```bash
-   npm run tunnel
-   ```
+| Email | Role |
+|---|---|
+| `admin@konak.dev` | ADMIN |
+| `mod@konak.dev` | MODERATOR |
+| `user@konak.dev` | USER |
 
-3. Add a webhook endpoint pointing at
-   `https://konak-tunnel-web.loca.lt/api/webhooks/clerk`,
-   subscribed to `user.created`, `user.updated`, `user.deleted` and
-   `session.created`. Copy its signing secret into
-   `CLERK_WEBHOOK_SIGNING_SECRET`.
+They exist to make a fresh clone usable in one command. The password is a
+development convenience and the script refuses to run with
+`NODE_ENV=production`.
 
-Until the webhook fires there is no `UserAccount` row, and
-`user.getCurrent` answers `NOT_FOUND`. `session.created` is the safety net: it
-recreates a row for anyone who signed up while the endpoint was unreachable.
+Re-running the seed is a no-op — it skips users that already exist and upserts
+the organization.
+
+### Authentication
+
+Better Auth runs in-process: no dashboard, no tunnel, no webhook. Every route
+under `/api/auth/*` is served by `src/app/api/auth/[...all]/route.ts`, and
+`src/server/auth.ts` is the whole configuration.
+
+Email and password work with nothing but `BETTER_AUTH_SECRET` set. OAuth is
+optional — a provider is registered **only when both halves of its pair are
+present** in `.env`, so an unconfigured provider is absent from the runtime
+rather than present and broken, and its button is not rendered:
+
+```
+GITHUB_CLIENT_ID / GITHUB_CLIENT_SECRET   callback: /api/auth/callback/github
+GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET   callback: /api/auth/callback/google
+```
+
+After changing anything about the user model in `src/server/auth.ts`, run
+`npm run auth:generate` to rewrite `prisma/schema/identity.prisma`, then
+`npm run db:migrate`.
 
 ### Database
 
@@ -43,12 +63,14 @@ SQLite, so there is no service to run — the whole database is `dev.db`.
 ```bash
 npm run db:migrate   # create + apply a migration
 npm run db:push      # push the schema without a migration (prototyping)
+npm run db:seed      # demo data
 npm run db:studio    # browse the data
 ```
 
-Swapping to Postgres later is two edits: `provider` in
-`prisma/schema/_base.prisma`, and the adapter in `src/server/db.ts`
-(`@prisma/adapter-pg` instead of `@prisma/adapter-better-sqlite3`).
+Swapping to Postgres later is three edits: `provider` in
+`prisma/schema/_base.prisma`, the adapter in `src/server/db.ts`
+(`@prisma/adapter-pg` instead of `@prisma/adapter-better-sqlite3`), and the
+`provider` passed to `prismaAdapter` in `src/server/auth.ts`.
 
 ## Documentation
 
@@ -58,7 +80,7 @@ Swapping to Postgres later is two edits: `provider` in
 - **[docs/guides/ui-patterns.md](docs/guides/ui-patterns.md)** — forms, lists,
   the three kinds of dialog, comboboxes, the sidebar.
 - **[docs/guides/local-development.md](docs/guides/local-development.md)** —
-  running it, the database, webhooks, and how to run a script that imports
+  running it, the database, the seed, and how to run a script that imports
   server code.
 
 The rest of this file is the short version.
@@ -74,7 +96,7 @@ src/config/     nav-items.ts — the sidebar, as data
 src/hooks/      generic hooks only
 src/lib/        replaceable adapters
 src/store/      client-side providers (nice-modal)
-prisma/         schema split by domain, migrations
+prisma/         schema split by domain, migrations, seed
 ```
 
 One rule generates the tree:
@@ -101,7 +123,9 @@ build** instead of shipping the database client to the browser.
 
 `app/` holds routing and nothing else. A `page.tsx` reads params and renders
 feature components; if it has state, effects or queries, it is a feature
-component with the wrong filename.
+component with the wrong filename. `sign-in/page.tsx` is the smallest example:
+it resolves the session and the configured providers, then renders
+`<SignInForm />` from the `identity` feature.
 
 ## Shared dialogs
 
@@ -141,19 +165,24 @@ contract; copy its shape for any other paginated picker.
 
 ```
 src/features/identity/
-├── model/    UserRole, zod schemas — isomorphic
-├── server/   router.ts (tRPC procedures), service.ts (the Clerk → db upsert)
-├── client/   current-user-card.tsx, user-menu.tsx
+├── model/    UserRole, sign-in / sign-up schemas — isomorphic
+├── server/   router.ts (tRPC procedures)
+├── client/   current-user-card, sign-in-form, sign-up-form, oauth-buttons
 └── index.ts  re-exports model/ ONLY
 ```
 
-Clerk owns the credential; `UserAccount` mirrors just enough of the user
-(`uid` is the Clerk subject) for our own tables to join against. The webhook
-route is the only writer.
+Better Auth owns the `User` table outright — there is no mirror table and no
+sync step. It writes `users` and `accounts` in one transaction at sign-up, so
+a user row and its credential can never disagree.
+
+`role` is ours, added through `user.additionalFields` in `src/server/auth.ts`
+with **`input: false`**: that is what stops a caller POSTing themselves to
+`ADMIN` at sign-up. Only `adminProcedure` writes it, through Prisma.
 
 SQLite has no enum type, so `role` is a string column and `UserRole` lives in
 `model/` instead — one definition the server validates against and the client
-renders from.
+renders from. The credential forms take their schemas from the same place, so
+the form cannot accept a password the server will reject.
 
 ### `organizations`
 
@@ -217,15 +246,18 @@ The open/closed state is read from the `sidebar_state` cookie on the server in
 `app/dashboard/layout.tsx`, so the first paint matches what the person left it
 as instead of flashing open and snapping shut.
 
+That layout is also the app's single session read: it passes the signed-in
+person down to `<AppSidebar />` as props, which is why neither the sidebar
+footer nor the role-gated nav items fetch the current user again.
+
 ## Auth
 
-Access is checked **at the resource**, not by path:
+Access is checked **at the resource**, not by path. There is no `middleware.ts`
+— a layout runs on the server for every route beneath it and cannot be skipped
+the way a matcher pattern can:
 
-- `src/middleware.ts` runs `clerkMiddleware()` only — it hydrates the session
-  so `auth()` works, and decides nothing. (Clerk deprecated
-  `createRouteMatcher` because a matcher's idea of the URL space drifts from
-  Next.js's, and the gap is a reachable protected resource.)
-- `app/dashboard/layout.tsx` redirects an anonymous visitor to `/sign-in`.
+- `app/dashboard/layout.tsx` calls `auth.api.getSession` and redirects an
+  anonymous visitor to `/sign-in`.
 - `protectedProcedure` / `adminProcedure` in `src/server/trpc.ts` guard the
   API. Add a page under `dashboard/` and it inherits the layout's guard; add a
   procedure and you pick its guard explicitly.

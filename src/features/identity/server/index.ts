@@ -5,4 +5,3 @@ import "server-only";
  * client bundle is a build error, not a runtime surprise.
  */
 export { userRouter } from "./router";
-export { syncClerkUser, deleteClerkUser } from "./service";

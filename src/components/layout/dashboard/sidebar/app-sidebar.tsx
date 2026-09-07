@@ -6,9 +6,8 @@ import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader } from "@/compone
 import { accountNavItems, filterNavByRole, organizationNavItems } from "@/config/nav-items";
 import { UserRole } from "@/features/identity";
 import { OrganizationSwitcher } from "@/features/organizations/client";
-import { trpc } from "@/utils/trpc";
 import { NavMain } from "./nav-main";
-import { NavUser } from "./nav-user";
+import { NavUser, type SidebarUser } from "./nav-user";
 
 /**
  * The sidebar frame: header, a slot, footer.
@@ -23,20 +22,23 @@ import { NavUser } from "./nav-user";
  * A third level (per-feature nav inside an organization) drops in the same
  * way: read another route param, return another `NavGroup[]`. The frame knows
  * how to pick a level; it does not know what any feature needs.
+ *
+ * The signed-in person comes in as a prop from the dashboard layout's session
+ * read — both the footer and the role-gated nav items are served by that one
+ * server-side read rather than a query per navigation.
  */
-export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
+export function AppSidebar({
+  user,
+  ...props
+}: { user: SidebarUser & { role: UserRole } } & React.ComponentProps<typeof Sidebar>) {
   const params = useParams<{ orgId?: string }>();
-  const { data: currentUser } = trpc.user.getCurrent.useQuery(undefined, {
-    staleTime: 60_000,
-  });
 
   const organizationId = params?.orgId ? Number(params.orgId) : undefined;
 
   const navItems = useMemo(() => {
     if (organizationId) return organizationNavItems(organizationId);
-    const role = (currentUser?.role as UserRole) ?? UserRole.USER;
-    return filterNavByRole(accountNavItems, role);
-  }, [organizationId, currentUser]);
+    return filterNavByRole(accountNavItems, user.role);
+  }, [organizationId, user.role]);
 
   return (
     <Sidebar collapsible="icon" {...props}>
@@ -49,7 +51,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       </SidebarContent>
 
       <SidebarFooter>
-        <NavUser />
+        <NavUser user={user} />
       </SidebarFooter>
     </Sidebar>
   );

@@ -24,7 +24,7 @@ export async function assertSlugAvailable(
  */
 export async function createOrganizationWithOwner(
   db: OrgDb,
-  input: { name: string; slug: string; description?: string; ownerId: number }
+  input: { name: string; slug: string; description?: string; ownerId: string }
 ) {
   await assertSlugAvailable(db, input.slug);
 
@@ -52,8 +52,8 @@ export async function createOrganizationWithOwner(
 export async function transferOwnership(
   db: typeof prisma,
   organizationId: number,
-  fromUserId: number,
-  toUserId: number
+  fromUserId: string,
+  toUserId: string
 ) {
   const target = await db.organizationMember.findUnique({
     where: { organizationId_userId: { organizationId, userId: toUserId } },

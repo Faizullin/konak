@@ -27,7 +27,7 @@ export function OrganizationDangerZone({
 }: {
   organizationId: number;
   currentUserRole: OrgRole;
-  currentUserId?: number;
+  currentUserId?: string;
 }) {
   const router = useRouter();
   const utils = trpc.useUtils();
@@ -102,14 +102,14 @@ export function OrganizationDangerZone({
   const handleTransfer = async () => {
     const candidates = (members.data ?? [])
       .filter((m) => m.user.id !== currentUserId)
-      .map((m) => ({ id: m.user.id, label: `${m.user.username} · ${m.user.email}` }));
+      .map((m) => ({ id: m.user.id, label: `${m.user.name} · ${m.user.email}` }));
 
     if (candidates.length === 0) {
       toast.error("Add another member first — there is no one to transfer to.");
       return;
     }
 
-    const picked = await selectOne<{ id: number; label: string }>({
+    const picked = await selectOne<{ id: string; label: string }>({
       title: "Transfer ownership",
       description: "They become the owner; you stay on as an admin.",
       valueKey: "id",

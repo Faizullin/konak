@@ -1,9 +1,7 @@
 "use client";
 
-import { useClerk, useUser } from "@clerk/nextjs";
-import { EllipsisVertical, LogOut, UserCog } from "lucide-react";
+import { EllipsisVertical, LogOut } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useMemo } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -20,6 +18,18 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar";
+import { authClient } from "@/lib/auth-client";
+
+/**
+ * What the sidebar footer needs to draw a person. A hand-written shape rather
+ * than Better Auth's session type, because this crosses the server/client
+ * boundary as props and should carry nothing more than it renders.
+ */
+export interface SidebarUser {
+  name: string;
+  email: string;
+  image: string | null;
+}
 
 function initials(name: string) {
   const trimmed = name.trim();
@@ -35,21 +45,30 @@ function initials(name: string) {
   );
 }
 
-/** The signed-in person, in the sidebar footer. Identity comes from Clerk. */
-export function NavUser() {
-  const { user } = useUser();
-  const { signOut, openUserProfile } = useClerk();
+/**
+ * The signed-in person, in the sidebar footer.
+ *
+ * The session arrives as props from `app/dashboard/layout.tsx`, which already
+ * reads it for the route guard. Calling `useSession()` here instead would
+ * refetch on every navigation and flash an empty avatar first.
+ */
+export function NavUser({ user }: { user: SidebarUser }) {
   const { isMobile } = useSidebar();
   const router = useRouter();
 
-  const display = useMemo(
-    () => ({
-      name: user?.fullName || user?.username || "Account",
-      email: user?.primaryEmailAddress?.emailAddress ?? "",
-      avatar: user?.imageUrl ?? "",
-    }),
-    [user]
-  );
+  const display = {
+    name: user.name || "Account",
+    email: user.email,
+    avatar: user.image ?? "",
+  };
+
+  const handleSignOut = async () => {
+    await authClient.signOut();
+    router.push("/");
+    // The layout's session read is a server render; without this it would
+    // replay from cache and the guard would not fire.
+    router.refresh();
+  };
 
   return (
     <SidebarMenu>
@@ -88,12 +107,7 @@ export function NavUser() {
               </DropdownMenuLabel>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => openUserProfile()}>
-              <UserCog className="size-4" />
-              Manage account
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => signOut(() => router.push("/"))}>
+            <DropdownMenuItem onClick={handleSignOut}>
               <LogOut className="size-4" />
               Sign out
             </DropdownMenuItem>

@@ -15,7 +15,7 @@ import {
  * these functions decide what the router permits *and* what the UI offers, and
  * a disagreement between them is a button that 403s.
  *
- * Pure input and pure output — no database, no Clerk, no React. `npm test`
+ * Pure input and pure output — no database, no auth, no React. `npm test`
  * runs them with `node:test` through tsx.
  */
 

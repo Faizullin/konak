@@ -1,6 +1,10 @@
 import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
-import { env } from "@/env.mjs";
-import { PrismaClient } from "@/generated/prisma/client";
+// Relative, not "@/env.mjs" / "@/generated/prisma/client". `src/server/auth.ts`
+// imports this file, and `npm run auth:generate` loads that config through
+// jiti, which does not read tsconfig `paths`. The alias stays the convention
+// everywhere else — these two files are on the CLI's load path.
+import { env } from "../env.mjs";
+import { PrismaClient } from "../generated/prisma/client";
 
 const globalForPrisma = global as unknown as {
   prisma: PrismaClient;
