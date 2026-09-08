@@ -22,7 +22,9 @@ import prisma from "../src/server/db";
  * would change that — see `docs/guides/local-development.md`.
  */
 
-const PASSWORD = "password123";
+// Not a common password: `haveIBeenPwned()` in `auth.ts` rejects anything
+// that appears in a breach corpus, which "password123" very much does.
+const PASSWORD = "konak-demo-pw";
 
 const USERS = [
   { email: "admin@konak.dev", name: "Ada Admin", role: UserRole.ADMIN },
