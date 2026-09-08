@@ -177,12 +177,6 @@ barrels sound heavy.
 Carried until the phase that touches them, so they are not rediscovered as
 surprises:
 
-- **`organizationBySlug` runs two or three times per navigation** — once in
-  `[orgSlug]/layout.tsx`, once in the page, and again in `generateMetadata`.
-  A per-request cache fixes it, but the obvious tool is React's `cache()` and
-  `architecture.md` forbids React inside `features/*/server`. The fix is a
-  documented exception or a different home for the helper; both are decisions,
-  not typing. **Phase 4** touches every one of these routes.
 - **The grid will want a denormalised read model.** A month for sixty rooms is
   a range query across reservations, stays, rooms and rate calendar. Decide it
   against a real query plan in **Phase 4**, not in advance.

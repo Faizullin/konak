@@ -82,26 +82,27 @@ export const rateRouter = createTRPCRouter({
       throw new TRPCError({ code: "NOT_FOUND", message: "Rate plan not found" });
     }
 
-    await ctx.db.$transaction(
-      days.map((date) =>
-        ctx.db.rateCalendar.upsert({
-          where: {
-            ratePlanId_roomTypeId_date: {
-              ratePlanId: input.ratePlanId,
-              roomTypeId: input.roomTypeId,
-              date,
-            },
-          },
-          update: { priceMinor: input.priceMinor },
-          create: {
-            ratePlanId: input.ratePlanId,
-            roomTypeId: input.roomTypeId,
-            date,
-            priceMinor: input.priceMinor,
-          },
-        })
-      )
-    );
+    // Replace the range rather than upserting a row at a time: a season is
+    // ninety days, and ninety round trips is the difference between a save that
+    // feels instant and one that does not. Deleting exactly the range written
+    // makes this identical in effect to the upserts it replaces.
+    await ctx.db.$transaction(async (tx) => {
+      await tx.rateCalendar.deleteMany({
+        where: {
+          ratePlanId: input.ratePlanId,
+          roomTypeId: input.roomTypeId,
+          date: { in: days },
+        },
+      });
+      await tx.rateCalendar.createMany({
+        data: days.map((date) => ({
+          ratePlanId: input.ratePlanId,
+          roomTypeId: input.roomTypeId,
+          date,
+          priceMinor: input.priceMinor,
+        })),
+      });
+    });
 
     return { days: days.length };
   }),
@@ -124,26 +125,23 @@ export const rateRouter = createTRPCRouter({
         closedToDeparture: input.closedToDeparture ?? false,
       };
 
-      await ctx.db.$transaction(
-        days.map((date) =>
-          ctx.db.rateRestriction.upsert({
-            where: {
-              ratePlanId_roomTypeId_date: {
-                ratePlanId: input.ratePlanId,
-                roomTypeId: input.roomTypeId,
-                date,
-              },
-            },
-            update: values,
-            create: {
-              ratePlanId: input.ratePlanId,
-              roomTypeId: input.roomTypeId,
-              date,
-              ...values,
-            },
-          })
-        )
-      );
+      await ctx.db.$transaction(async (tx) => {
+        await tx.rateRestriction.deleteMany({
+          where: {
+            ratePlanId: input.ratePlanId,
+            roomTypeId: input.roomTypeId,
+            date: { in: days },
+          },
+        });
+        await tx.rateRestriction.createMany({
+          data: days.map((date) => ({
+            ratePlanId: input.ratePlanId,
+            roomTypeId: input.roomTypeId,
+            date,
+            ...values,
+          })),
+        });
+      });
 
       return { days: days.length };
     }),

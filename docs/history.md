@@ -171,3 +171,33 @@ module guard sat *before* the membership check, so an outsider probing another
 tenant learned which modules it runs.
 
 46 integration tests, 78 unit.
+
+## 2026-09-09 — the Phase 2 optimisation gate
+
+The pass over what Phase 2 created, measured rather than guessed.
+
+**`setRates` over a 90-day season was 91 queries** — one upsert per day inside
+a transaction. Replacing the range in two statements makes it 3, verified on
+the shipped path with 90 rows written. `setRestrictions` had the same shape and
+the same fix. Deleting exactly the range being written makes it identical in
+effect to the upserts it replaces.
+
+**`organizationBySlug` ran three times per navigation** — `generateMetadata`,
+the layout and the page. React's `cache()` makes it one, confirmed by counting
+queries across three concurrent calls before relying on it.
+
+That required settling a rule rather than working around it. The entry-point
+table said `features/*/server` may never import React, which is broader than
+its reason: the rule exists to keep components and hooks out of server code,
+and `cache()` is per-request memoisation, neither of those. The table now says
+"React components or hooks", and names `cache()` as the exception.
+
+**Client:** all four `useMemo` uses are load-bearing — two are tRPC query keys,
+one is react-table's column identity, one feeds the others' dependencies.
+There is no `useCallback` anywhere, and adding one would be overhead with
+nothing measured behind it. Bundles unchanged; the phase added no client code
+beyond the directory dialog.
+
+**Indexes** already covered every new query shape: availability reads room
+types, stays and holds through composite indexes that lead with the id, and the
+rate calendar through its unique key.

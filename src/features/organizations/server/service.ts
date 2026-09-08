@@ -1,4 +1,5 @@
 import "server-only";
+import { cache } from "react";
 import { TRPCError } from "@trpc/server";
 import { fieldError } from "@/server/errors";
 import prisma from "@/server/db";
@@ -92,13 +93,18 @@ export async function transferOwnership(
 /**
  * Routes carry the slug, procedures take the id; this is where the two meet.
  * Membership is not checked here — the procedures each page calls do it.
+ *
+ * `cache()` because a single navigation asks three times: `generateMetadata`,
+ * the layout, and the page. It is per-request, so it dedupes without ever
+ * serving one visitor's organization to another.
  */
-export async function organizationBySlug(slug: string): Promise<OrganizationRouteData | null> {
-  return prisma.organization.findUnique({
-    where: { slug },
-    select: ORGANIZATION_ROUTE_SELECT,
-  });
-}
+export const organizationBySlug = cache(
+  async (slug: string): Promise<OrganizationRouteData | null> =>
+    prisma.organization.findUnique({
+      where: { slug },
+      select: ORGANIZATION_ROUTE_SELECT,
+    })
+);
 
 /**
  * Refuses when an organization has this module switched off.

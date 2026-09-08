@@ -68,7 +68,7 @@ and `node:crypto` into the browser.
 
 | Entry | May import | Must never import |
 |---|---|---|
-| `<feature>/server` | other features' `server/`, `@/server/*`, `node:*`, Prisma | any `client/`, React |
+| `<feature>/server` | other features' `server/`, `@/server/*`, `node:*`, Prisma, React's `cache()` | any `client/`, React components or hooks |
 | `<feature>/client` | other features' `client/`, `model/`, `@/utils/trpc`, `components/*` | any `server/`, Prisma, `node:*` |
 | `<feature>` (root) | `model/` only | anything environment-specific |
 
@@ -88,6 +88,12 @@ Zones are written out per feature rather than globbed — the rule does not
 expand a glob in `target`, and a zone that matches nothing reports nothing,
 which is worse than no rule at all. **Adding a feature means adding its name to
 `FEATURES` in that file**, or it is unguarded.
+
+**`cache()` is the one React import a `server/` file may make.** The rule
+exists to keep components and hooks out of server code, and `cache()` is
+neither — it is per-request memoisation. `organizationBySlug` uses it because a
+single navigation asks three times: `generateMetadata`, the layout and the
+page. Measured, that is three queries becoming one.
 
 `src/server/*` is the framework layer and deliberately takes **no**
 `server-only`. That is what lets `prisma/seed.ts` import `src/server/auth.ts`
