@@ -16,6 +16,14 @@ fails at "Collecting page data" — *after* a successful compile — when one is
 missing or empty. A build that says `✓ Compiled successfully` and then errors
 is almost always an env problem, not a code problem.
 
+Everything in the app reads the validated `env`. Two files read `process.env`
+directly, and both say why in a comment: `next.config.ts`, which runs before
+the app and outside `env.mjs`'s module graph, and `getBaseUrl()` in
+`src/server/provider.tsx`, which is `"use client"` — the server block of
+`env.mjs` is unreachable from a client module, and mirroring the values into
+`NEXT_PUBLIC_` would publish them to the browser to no purpose. A third such
+read should be argued for, not added quietly.
+
 Copy `.env.example` to `.env`. Only three variables are required:
 `DATABASE_URL`, `BETTER_AUTH_SECRET` (generate one with `npx auth@latest
 secret`) and `BETTER_AUTH_URL`. The OAuth pairs are optional.
@@ -85,7 +93,7 @@ in the same breath — if `tsc` cannot find `organizationMember` on
 ### The seed
 
 `prisma/seed.ts` creates three users — `admin@konak.dev`, `mod@konak.dev`,
-`user@konak.dev`, all with the password `password123` — and one organization
+`user@konak.dev`, all with the password `konak-demo-pw` — and one organization
 with two members. `prisma.config.ts` wires it into `migrations.seed`, so
 `prisma migrate reset` reseeds automatically.
 

@@ -23,35 +23,20 @@ top of the file.
   return early with a spinner — that unmounts the form and loses what was typed.
 
 ```tsx
-"use client";
-
-import { zodResolver } from "@hookform/resolvers/zod";
-import { Controller, useForm } from "react-hook-form";
-import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
-import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
-import { createOrganizationSchema, type CreateOrganizationInput } from "@/features/organizations";
-import { trpc } from "@/utils/trpc";
-
 export function MyForm() {
-  const utils = trpc.useUtils();
-
   const form = useForm<CreateOrganizationInput>({
     resolver: zodResolver(createOrganizationSchema),
     defaultValues: { name: "", slug: "", description: "" },
   });
 
   const mutation = trpc.organization.create.useMutation({
-    onSuccess: async () => {
-      toast.success("Organization created");
-      await utils.organization.list.invalidate();
-    },
-    onError: (error) => toast.error(error.message),
+    onSuccess: () => toast.success("Organization created"),
+    onError: (e) => handleFormError(form, e),
   });
 
   return (
     <form onSubmit={form.handleSubmit((values) => mutation.mutate(values))} className="space-y-4">
+      <FormError message={form.formState.errors.root?.message} />
       <FieldGroup>
         <Controller
           control={form.control}
@@ -65,14 +50,12 @@ export function MyForm() {
           )}
         />
       </FieldGroup>
-
-      <Button type="submit" disabled={mutation.isPending}>
-        {mutation.isPending ? "Saving…" : "Save"}
-      </Button>
+      <Button type="submit" disabled={mutation.isPending}>Save</Button>
     </form>
   );
 }
 ```
+
 
 `FieldError` takes either `errors={[fieldState.error]}` (it de-duplicates and
 renders a list when there is more than one) or plain children for a single
@@ -80,6 +63,73 @@ message.
 
 `organization-form-nice-dialog.tsx` is the full worked example, including re-seeding the
 form on open so a cancelled edit never leaks into the next one.
+
+**Deriving a form schema from a router schema.** When the router's schema
+carries fields a form should not — an id the component holds as a prop, or a
+`.default()` — derive rather than write a second schema:
+
+```ts
+export const addMemberFormSchema = addMemberSchema
+  .omit({ organizationId: true })
+  .extend({ role: assignableOrgRoleSchema });
+```
+
+The `.extend()` is not decoration: `addMemberSchema.role` has a `.default()`,
+and the rule above says a schema default and `defaultValues` must not both
+exist. Stripping it there leaves the schema owning the rules and the form
+owning the default. Keep the derived schema in `model/` beside its parent, not
+in the component.
+
+---
+
+## Errors
+
+Where an error appears is decided once, in `lib/errors.ts`, not in each
+`onError`. `normalizeError` collapses the two dialects that reach the browser —
+tRPC **throws** `{ message, data: { code, httpStatus, zodError, field } }`,
+Better Auth **returns** `{ data, error }` with `{ message, status, code }` — into
+one `AppError`, and the kind decides the destination:
+
+| Kind | Comes from | Renders as |
+|---|---|---|
+| `field` | Zod's `fieldErrors`, or `fieldError()` naming one field | under that field |
+| `form` | `BAD_REQUEST`, `CONFLICT`, Zod's `formErrors` | `<FormError />` on the form |
+| `auth` | `UNAUTHORIZED` / 401 | redirect to `/sign-in`, handled globally |
+| `forbidden` | `FORBIDDEN` / 403 | toast — editing the form cannot fix it |
+| `notFound` | `NOT_FOUND` / 404 | toast |
+| `server` | anything else, including 500 | toast, **generic copy** |
+| `network` | the request never left | toast |
+
+A 500's message is dropped rather than shown — it quotes a stack trace or a
+connection string at someone who cannot act on it. `errors.test.ts` pins that.
+
+**In a component**, that is two shapes:
+
+```ts
+// a mutation with a form behind it
+onError: (e) => handleFormError(form, e),
+
+// a mutation without one
+onError: (e) => handleError(e),
+```
+
+`handleFormError` always places field errors; a server field with no
+counterpart on the form falls through to the form-level error rather than
+vanishing. Render that, or the branch is invisible:
+
+```tsx
+<FormError message={form.formState.errors.root?.message} />
+```
+
+Options: `fallback: "form" | "toast"` moves the non-field message,
+`fallbackMessage` fills in only when the error carried none of its own, `map`
+routes a server field name onto a different form field, `toast: false` hands
+the `AppError` back unrendered. The sign-in form passes `fallback: "form"` — a
+wrong password is a 401, and redirecting to `/sign-in` from `/sign-in` is absurd.
+
+**Naming a field is a server-side act.** Zod fills `zodError.fieldErrors`; for
+rules needing the database, `fieldError("slug", "That slug is already taken",
+"CONFLICT")` in `server/errors.ts` puts the message under the slug input.
 
 ---
 
@@ -97,11 +147,9 @@ markup; `member-table.tsx` is that case.
 keeps page, sort and every filter in the **URL** via `nuqs`, and your procedure
 does the work.
 
-That is the property worth having: the URL *is* the state, so a link to "orgs
-I own, sorted by newest" reopens exactly that, and a refresh does not reset the
-view.
-
-It requires `<NuqsAdapter>` in the root layout — already there.
+The URL *is* the state, so a link to "orgs I own, sorted by newest" reopens
+exactly that and a refresh does not reset the view. Needs `<NuqsAdapter>` in
+the root layout — already there.
 
 ### Wiring one up
 
@@ -174,7 +222,7 @@ function, and the encodings it decodes are:
 | a `text` filter | the raw string, under the column id |
 | a `multiSelect` filter | comma-separated values, under the column id |
 
-It is a second reader of one source of truth, not a second source of truth. A
+A second *reader* of one source of truth, not a second source of truth. A
 hand-edited `?sort=` falls back to the default ordering rather than throwing.
 
 ### Empty states
@@ -238,15 +286,27 @@ here. Confirming is a question, so it is awaited; the outcome is not.
 `organization-danger-zone.tsx` uses both shapes: a plain confirm, and a
 `selectOne()` followed by a confirm.
 
-### 2. `NiceModal.create` — a dialog with its own form
+### 2. `NiceModal.create` — a dialog with its own form, opened from anywhere
 
-For a dialog rich enough to have fields and mutations, and openable from
-anywhere:
+For a dialog rich enough to have fields and mutations, and reachable from more
+than one component:
 
 ```tsx
 export const OrganizationFormNiceDialog = NiceModal.create(({ mode, organizationId }) => {
   const modal = useModal();
-  return <Dialog open={modal.visible} onOpenChange={(open) => !open && modal.hide()}>…</Dialog>;
+  return (
+    <FormDialog
+      open={modal.visible}
+      onOpenChange={(open) => !open && modal.hide()}
+      title="New organization"
+      onSubmit={form.handleSubmit(onSubmit)}
+      error={form.formState.errors.root?.message}
+      isLoading={mutation.isPending}
+      submitText="Create organization"
+    >
+      …fields…
+    </FormDialog>
+  );
 });
 
 // from anywhere:
@@ -255,23 +315,35 @@ NiceModal.show(OrganizationFormNiceDialog, { mode: "edit", organizationId });
 
 ### 3. `useDialogControl` — state a component owns outright
 
-When one component opens one dialog and nobody else needs to:
+Same `FormDialog` as above — only the owner of `open` changes:
 
 ```tsx
-const dialog = useDialogControl<Member>();
+const control = useDialogControl<Member>();
 
-<Button onClick={() => dialog.show(member)}>Edit</Button>
-<Dialog open={dialog.isVisible} onOpenChange={dialog.hide}>
-  <DialogContent>{dialog.data && <MemberForm member={dialog.data} />}</DialogContent>
-</Dialog>
+<Button onClick={() => control.show(member)}>Edit</Button>
+<FormDialog open={control.isVisible} onOpenChange={(open) => !open && control.hide()} …>
 ```
 
-### Dialog composition
+Never a raw `Dialog` with a `useState(false)` beside it: that is this hook,
+written out longhand and without the `data` slot.
 
-A dialog a parent opens takes `open` / `onOpenChange` props and owns none of
-that state itself; the **parent** holds it with `useDialogControl`. That split
-keeps the dialog reusable and stops two components disagreeing about whether it
-is open.
+*Nothing in the template uses tier 3 yet — every dialog here is opened from
+more than one place. It is the shape to reach for when the first single-owner
+dialog appears, not a gap to fill.*
+
+### `BaseDialog` and `FormDialog`
+
+Both tiers above render through the same two components in
+`components/common/`, so the dialog chrome is written once:
+
+- **`BaseDialog`** — overlay, content, titled header, optional footer. Holds no
+  state; `open` / `onOpenChange` come from whoever owns the dialog.
+- **`FormDialog`** — `BaseDialog` plus the `<form>`, the `<FormError />`, and a
+  Cancel/Submit footer whose submit button spins and disables on `isLoading`.
+
+Pass `form.formState.errors.root?.message` as `error`. `handleFormError` puts
+anything it could not place under a field there, and a dialog that does not
+render it fails silently — see [Errors](#errors).
 
 ---
 
@@ -284,29 +356,16 @@ array, because the lists worth a combobox are the ones too long to hold in a
 and the load-more cursor all compare on it.
 
 ```tsx
-import { ComboBox } from "@/components/common/combobox";
-
-<Controller
-  control={form.control}
-  name="organization"
-  render={({ field, fieldState }) => (
-    <Field data-invalid={!!fieldState.error}>
-      <FieldLabel>Organization</FieldLabel>
-      <ComboBox
-        title="Select organization"
-        valueKey="id"
-        value={field.value}
-        onChange={field.onChange}
-        renderText={(org) => org.name}
-        searchFn={(search, offset, size) =>
-          utils.organization.search.fetch({ search, offset, size })
-        }
-      />
-      <FieldError errors={[fieldState.error]} />
-    </Field>
-  )}
+<ComboBox
+  title="Select organization"
+  valueKey="id"
+  value={field.value}
+  onChange={field.onChange}
+  renderText={(org) => org.name}
+  searchFn={(search, offset, size) => utils.organization.search.fetch({ search, offset, size })}
 />
 ```
+
 
 `organization.search` is a procedure written to exactly that contract
 (`{ search, offset, size }` in, a flat array out). Copy its shape for any other
@@ -321,13 +380,12 @@ with nothing to search.
 
 ## Toasts
 
-`toast` from **sonner** — `toast.success`, `toast.error`, and `toast.loading`
-with an id to update in place. The `<Toaster />` is mounted in
+`toast` from **sonner** — `toast.success`, `toast.error`, `toast.loading` with
+an id to update in place. `<Toaster />` is mounted in
 `components/layout/providers.tsx`.
 
-Every mutation gets an `onError: (e) => toast.error(e.message)`. The router's
-messages are written to be read by a person, which is the point of putting them
-there rather than throwing bare codes.
+Toast successes and things a person did. For failures use `handleError` /
+`handleFormError`, never `toast.error(e.message)` — see [Errors](#errors).
 
 ---
 
@@ -342,7 +400,7 @@ link renders the right sidebar on first paint:
 
 ```
 /dashboard/*                accountNavItems
-/dashboard/orgs/[orgId]/*   organizationNavItems(orgId)
+/dashboard/orgs/[orgSlug]/*  organizationNavItems(orgSlug)
 ```
 
 Adding a level is the same move: read another route param in `app-sidebar.tsx`

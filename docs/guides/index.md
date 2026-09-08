@@ -1,13 +1,7 @@
 # Guides
 
-How to work in this codebase. **Guides describe how things are**;
-[plans](../plans/index.md) describe what is still planned. If the two disagree,
-the guide is wrong — fix it.
-
-A plan is deleted once it ships: the code is the record of what was built, and
-a finished plan is one more file to read before finding out it no longer
-decides anything. What survives a plan is whatever it taught, moved into a
-guide.
+How to work in this codebase. Guides describe how things **are** — if one
+disagrees with the code, the guide is wrong; fix it.
 
 | Guide | Read it when |
 |---|---|
@@ -15,11 +9,20 @@ guide.
 | [ui-patterns.md](ui-patterns.md) | building a form, list, dialog or combobox |
 | [local-development.md](local-development.md) | setting up, running scripts, the seed, the database |
 
+## Tests
+
 `npm test` runs `node:test` through tsx over `src/**/*.test.ts`.
-`features/organizations/model/organization.test.ts` is the worked example, and
+`features/organizations/model/organization.test.ts` is the worked example.
+
 `model/` is the half worth testing: those functions decide what the router
 permits *and* what the UI offers, so a disagreement between them is a button
 that 403s.
 
-The [README](../../README.md) is the short version of all three: what is in the
-template, and how to start it.
+**When a rule is fused to a query, split it rather than mock the query.** The
+last-admin guard needed a row count, so the decision moved to `model/user.ts`
+as `couldRemoveLastAdmin` and `isLastAdmin`, and `user.updateRole` kept only
+the queries and the throw. `server/caller.ts` builds an end-to-end caller if a
+procedure ever needs one — reach for that second, since it tests the wiring and
+the wiring is rarely the dangerous part.
+
+The [README](../../README.md) is the short version of all three.

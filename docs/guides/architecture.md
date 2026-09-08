@@ -13,17 +13,17 @@ Two tests decide where any file goes:
    → it is infrastructure (`src/lib`). If it knows our models or our rules, it
    is a feature.
 
-The second test is what keeps `lib/` nearly empty here. `lib/utils.ts` (the
-`cn` class merger) passes it, and so does `lib/auth-client.ts` — it is the
-browser half of an auth vendor and knows none of our rules. A hypothetical
-`lib/org-invite-mailer.ts` would not: it would know our roles and our wording,
-so it belongs to `features/organizations`.
+The second test keeps `lib/` nearly empty: `utils.ts`, `auth-client.ts` and
+`errors.ts` know no business rules. Anything that knows our roles or our
+wording belongs to a feature.
 
 ## The tree
 
 ```
 src/
-├── app/          ROUTING ONLY — page, layout, loading, error, not-found
+├── app/          ROUTING ONLY — page, layout, error, not-found
+│   ├── (auth)/   /sign-in, /sign-up — the not-signed-in guard + card
+│   ├── (app)/    /dashboard/* — the session guard + sidebar shell
 │   └── api/      route handlers (tRPC transport, Better Auth catch-all)
 ├── features/     THE DOMAIN — vertical slices, each complete
 │   └── <name>/
@@ -31,7 +31,7 @@ src/
 │       ├── client/   "use client" components and hooks
 │       ├── model/    zod schemas, types, constants — isomorphic
 │       └── index.ts  re-exports model/ ONLY
-├── server/       FRAMEWORK — trpc, root, db, auth, provider
+├── server/       FRAMEWORK — trpc, root, db, auth, errors, provider
 ├── components/   SHARED UI — ui (shadcn), common (ours), data-table, layout (the shell)
 ├── config/       nav-items.ts — the sidebar, as data
 ├── hooks/        generic hooks only
@@ -104,16 +104,43 @@ A file under `app/` is one of five Next.js primitives: `page`, `layout`,
 routing needs, and renders feature components. If it has state, effects or
 queries, it is a feature component with the wrong filename.
 
-That is why the organization pages are three-line files that render
+That is why the organization pages are near-empty files that render
 `OrganizationOverview`, `OrganizationMembersPanel` and
 `OrganizationSettingsPanel` from
 `features/organizations/client/components/organization-panels.tsx`. The panels
 hold the queries; the routes hold the params.
 
-`sign-in/page.tsx` and `sign-up/page.tsx` are the same shape. They resolve two
-things routing owns — is there already a session, and which OAuth providers are
-configured — and hand off to `<SignInForm />` / `<SignUpForm />`. Neither page
-has `"use client"`, `useState` or `useForm`; all of that is in the feature.
+Those routes are keyed by **slug**, not id: `/dashboard/orgs/acme`. The slug is
+the half a person can read, type and share, and `organizationSlugSchema`
+already guaranteed it was unique and URL-safe.
+
+Each page calls `organizationBySlug(slug)` once and hands the result down as
+`OrganizationRouteData` — id, name, slug, description, the shape declared in
+`model/` beside the Prisma `select` that produces it. The id is what every
+procedure takes; the rest lets the panel draw its heading and
+`generateMetadata` fill a title without waiting on a query. Only what a route
+cannot know — the caller's role, the member count — is still fetched client
+side. Membership stays where it was: checked by the procedures the page calls,
+never a second time in the route.
+
+`(auth)/sign-in/page.tsx` and `(auth)/sign-up/page.tsx` are the same shape:
+a heading and a form. What they no longer each carry is the guard — *is there
+already a session* — and the centred card around it. Both were written twice,
+in files that do not import one another, and both now live in
+`(auth)/layout.tsx`. Neither page has `"use client"`, `useState` or `useForm`;
+all of that is in the feature.
+
+**Route groups mark a layout, never a URL.** `(auth)` and `(app)` add no path
+segment — `/sign-in` and `/dashboard` are unchanged — and each exists because
+something real differs beneath it: a guard, a shell. Add one when a set of
+routes needs its own layout or its own gate, not to file things tidily; a group
+that wraps nothing is four invisible levels a reader has to hold. There is one
+public page today, so there is no `(public)` group: an empty group asserts a
+grouping that does not exist, the same way an empty barrel does.
+
+`/dashboard` stays a real segment rather than folding into `(app)`. It is the
+seam a second surface mounts beside — `/portal`, `/admin` — without every new
+top-level route risking a collision with a public page.
 
 There are no `_components/` directories. Feature UI lives in the feature.
 
@@ -142,6 +169,35 @@ and the job comes first — `OrganizationFormNiceDialog` is a form, in a
 NiceModal dialog. See [ui-patterns.md](ui-patterns.md#dialogs) for the dialog
 rules the suffix implies.
 
+## Errors
+
+`src/server/errors.ts` holds the `TRPCError`s thrown from more than one place —
+`userNotFound()` and `memberNotFound()` today. Everything else spells its
+`{ code, message }` out at the throw, and should: a message with a single
+caller reads better next to the condition that raises it than it does behind a
+name. Each helper *returns* the error rather than throwing it, so `throw` stays
+visible at the call site.
+
+The threshold is the **third caller, not the second**. Two copies are a
+coincidence; three are a pattern, and only then does the wrapper pay for its
+indirection. Most `TRPCError` sites in the tree have exactly one caller and are
+meant to stay literal — the file to grow is the router, not `errors.ts`.
+
+**Every throw needs a message.** Every client mutation handler is
+`onError: (e) => toast.error(e.message)`, so the message *is* the UI: a throw
+without one ships an empty toast. That applies to the framework guards in
+`trpc.ts` as much as to feature routers.
+
+`fieldError(field, message, code)` marks an error as belonging to one input.
+`errorFormatter` in `trpc.ts` copies the name onto `data.field`, and the client
+half — `src/lib/errors.ts` — turns it into an error under that field. That is
+the only way a rule needing the database ("that slug is taken") can render
+where a schema failure would.
+
+`errors.ts` must not import from `features/`. `auth.ts` reaches it, and
+`npm run auth:generate` loads `auth.ts` through jiti, which does not read
+tsconfig `paths` — see [local-development.md](local-development.md).
+
 ## Access control
 
 Access is checked **at the resource**, never by path matching.
@@ -151,7 +207,7 @@ matcher has its own idea of the URL space, that idea drifts from Next.js's, and
 the gap is a reachable protected resource. A layout cannot drift: it runs on
 the server for every route beneath it, because it *is* beneath-ness.
 
-- `app/dashboard/layout.tsx` calls `auth.api.getSession` and redirects an
+- `app/(app)/dashboard/layout.tsx` calls `auth.api.getSession` and redirects an
   anonymous visitor. Every page beneath it inherits that guard by being beneath
   it. It is also the app's single session read — the result goes to
   `<AppSidebar />` as props, so nothing below refetches the current user.
@@ -187,11 +243,10 @@ export const orgStatements = {
 } as const;
 ```
 
-We take that dependency for the primitive alone — it ships no tables, no routes
-and no hooks, just two functions. The `organization` plugin, which *does* own
-storage, is deliberately unused: `Organization` and `OrganizationMember` are
-ours, and adopting it would mean moving onto its six tables to gain roles we
-already have.
+That dependency is taken for the primitive alone — two functions, no tables or
+routes. Better Auth's `organization` plugin *does* own storage and is
+deliberately unused: adopting it would mean moving onto its six tables to gain
+roles we already have.
 
 `as const` is load-bearing. `Statements` wants readonly arrays and
 `createAccessControl` is a `const` generic, so widening these to `string[]`
@@ -210,10 +265,9 @@ Three properties make the table safe to extend:
 
 The last two are pinned by tests; the first is the type system's job.
 
-The `canX` predicates remain the vocabulary the app speaks, each one `orgCan`
-call. Keep them — a statement literal at a call site says the same thing less
-legibly, in more places. A new domain adds a resource and a grant per role, not
-a predicate per verb.
+The `canX` predicates are the vocabulary the app speaks, each one `orgCan`
+call. A new domain adds a resource and a grant per role — not a predicate per
+verb.
 
 The install-wide scope has its own table of the same shape:
 `identity/model/user.ts` declares `userStatements` and grants them per
@@ -222,12 +276,10 @@ The install-wide scope has its own table of the same shape:
 holding all of it. A procedure wanting one capability rather than all of them
 calls `userCan` directly instead of widening that guard.
 
-Two tables, not one merged set, because the two questions are answered by
-different data: `UserRole` rides on the session and is free to consult, while
-`OrgRole` costs a membership lookup. `userCan` also takes a plain `string`
-rather than a `UserRole` — `User.role` is a string column, so an unrecognised
-value has to read as "no" instead of throwing. `MODERATOR` is granted nothing,
-which is the honest encoding of a role no code has ever consulted.
+Two tables, not one: `UserRole` rides on the session and is free to consult,
+`OrgRole` costs a membership lookup. `userCan` takes a plain `string` because
+`User.role` is a string column — an unrecognised value reads as "no" instead of
+throwing.
 
 ## Identity is owned, not mirrored
 
@@ -235,10 +287,9 @@ Better Auth writes our own `users` table through the Prisma adapter. There is
 no mirror, no external subject id, and no sync step — `User.id` *is* the
 identity, and every other table foreign-keys straight to it.
 
-That removes a class of bug rather than solving it: there is no window in which
-a credential exists and its row does not, because sign-up writes `users` and
-`accounts` in one transaction. `user.getCurrent` cannot answer `NOT_FOUND` for
-a freshly signed-up person.
+There is no window in which a credential exists and its row does not — sign-up
+writes `users` and `accounts` in one transaction — so `user.getCurrent` cannot
+answer `NOT_FOUND` for a freshly signed-up person.
 
 `User.id` is a Better Auth string, not an integer and not a uuid. Never
 validate one with `z.uuid()`. Organizations still key on integers; only the

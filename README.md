@@ -21,7 +21,7 @@ build rather than surfacing as `undefined` at runtime.
 ### Demo logins
 
 `npm run db:seed` creates three accounts, all with the password
-**`password123`**:
+**`konak-demo-pw`**:
 
 | Email | Role |
 |---|---|
@@ -123,9 +123,13 @@ build** instead of shipping the database client to the browser.
 
 `app/` holds routing and nothing else. A `page.tsx` reads params and renders
 feature components; if it has state, effects or queries, it is a feature
-component with the wrong filename. `sign-in/page.tsx` is the smallest example:
-it resolves the session and the configured providers, then renders
-`<SignInForm />` from the `identity` feature.
+component with the wrong filename. `(auth)/sign-in/page.tsx` is the smallest
+example: a heading, the configured providers, and `<SignInForm />` from the
+`identity` feature. The "already signed in" guard and the card around it sit in
+`(auth)/layout.tsx`, shared with sign-up.
+
+Route groups mark a layout, not a URL: `(auth)` and `(app)` add no path
+segment, so `/sign-in` and `/dashboard` are unchanged.
 
 ## Shared dialogs
 
@@ -152,7 +156,12 @@ screen — see `organization-danger-zone.tsx` for all three shapes.
 | `selectOne()` | `components/common/select-nice-dialog.tsx` | "pick one of many" |
 | `ComboBox` | `components/common/combobox.tsx` | a searchable, paginated select |
 | `DataTable` | `components/data-table/` | sortable, filterable, paginated lists |
+| `FormDialog` | `components/common/form-dialog.tsx` | any dialog containing a form |
+| `BaseDialog` | `components/common/base-dialog.tsx` | dialog chrome without a form |
 | `useDialogControl()` | `hooks/use-dialog-control.ts` | a dialog a component owns outright |
+| `handleFormError()` | `lib/errors.ts` | a failed mutation behind a form |
+| `handleError()` | `lib/errors.ts` | a failed mutation without one |
+| `FormError` | `components/common/form-error.tsx` | the form-level message |
 
 `ComboBox` takes a `searchFn(query, offset, size)` rather than an options
 array, because the lists worth a combobox are the ones too long to hold in a
@@ -234,7 +243,7 @@ sync:
 
 ```
 /dashboard/*                account nav      accountNavItems
-/dashboard/orgs/[orgId]/*   organization nav organizationNavItems(id)
+/dashboard/orgs/[orgSlug]/*  organization nav organizationNavItems(slug)
 ```
 
 Adding a third level (a per-feature nav inside an organization) is the same
@@ -243,7 +252,7 @@ move: read another route param in `app-sidebar.tsx`, return another
 feature needs.
 
 The open/closed state is read from the `sidebar_state` cookie on the server in
-`app/dashboard/layout.tsx`, so the first paint matches what the person left it
+`app/(app)/dashboard/layout.tsx`, so the first paint matches what the person left it
 as instead of flashing open and snapping shut.
 
 That layout is also the app's single session read: it passes the signed-in
@@ -256,7 +265,7 @@ Access is checked **at the resource**, not by path. There is no `middleware.ts`
 — a layout runs on the server for every route beneath it and cannot be skipped
 the way a matcher pattern can:
 
-- `app/dashboard/layout.tsx` calls `auth.api.getSession` and redirects an
+- `app/(app)/dashboard/layout.tsx` calls `auth.api.getSession` and redirects an
   anonymous visitor to `/sign-in`.
 - `protectedProcedure` / `adminProcedure` in `src/server/trpc.ts` guard the
   API. Add a page under `dashboard/` and it inherits the layout's guard; add a
