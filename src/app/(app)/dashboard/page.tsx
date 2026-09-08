@@ -1,5 +1,5 @@
 import { PageHeader } from "@/components/common/page-header";
-import { CurrentUserCard } from "@/features/identity/client";
+import { CurrentUserCard } from "@/features/identity/client/components/current-user-card";
 
 export default function DashboardPage() {
   return (

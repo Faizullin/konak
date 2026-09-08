@@ -26,7 +26,8 @@ src/
 │   ├── (app)/    /dashboard/* — the session guard + sidebar shell
 │   └── api/      route handlers (tRPC transport, Better Auth catch-all)
 ├── features/     THE DOMAIN — vertical slices, each complete
-│   └── <name>/       identity · organizations · directory · platform
+│   └── <name>/       identity · organizations · directory
+│                      platform · rates · reservations
 │       ├── server/   router, services, db access        ("server-only")
 │       ├── client/   "use client" components and hooks
 │       ├── model/    zod schemas, types, constants — isomorphic
@@ -40,10 +41,23 @@ src/
 └── utils/ generated/
 ```
 
-Two features ship in the template: `identity` (who the caller is) and
-`organizations` (the container the rest of the domain hangs off).
-`organizations` is the worked example — it exercises every layer, and a third
-feature should look like it.
+Six features exist. `identity` (who the caller is) and `organizations` (the
+container the rest hangs off) exercise every layer, and `organizations` is the
+worked example. `directory` (people and companies) has a `model/` and a
+`server/`; `platform`, `rates` and `reservations` are `model/`-only so far —
+the rules the database cannot hold, tested without one.
+
+### When a router needs a `service.ts`
+
+**When it owns a multi-step transaction or enforces an invariant** — not at a
+line count. `organizations/server/service.ts` exists because creating an
+organization writes two tables as one unit and because slug uniqueness is an
+invariant. `directory/server/router.ts` is nearly the same size with no
+service, and that is correct: it validates, scopes and writes single rows.
+
+The distinction matters most for the routers not yet written. Logic that lands
+inside a tRPC procedure cannot be tested without a database, which is exactly
+the property that makes `model/` worth having.
 
 ## The three entry points
 
@@ -58,11 +72,22 @@ and `node:crypto` into the browser.
 | `<feature>/client` | other features' `client/`, `model/`, `@/utils/trpc`, `components/*` | any `server/`, Prisma, `node:*` |
 | `<feature>` (root) | `model/` only | anything environment-specific |
 
-Enforced, not just documented: every file under `features/*/server/` starts
-with `import "server-only"`, so a client component importing one **fails the
-build** instead of shipping the database client to the browser. (The same guard
-is what makes standalone scripts awkward — see
+Enforced, not just documented, in two ways. Every file under
+`features/*/server/` starts with `import "server-only"`, so a client component
+importing one **fails the build** instead of shipping the database client to the
+browser. (The same guard is what makes standalone scripts awkward — see
 [local-development.md](local-development.md).)
+
+The other directions are `import/no-restricted-paths` zones in
+`eslint.config.mjs`, and `next.config.ts` no longer ignores lint during builds,
+so they fail a build too: `model/` may not reach `@/server`, `app/` or any
+feature's `server/`/`client/`; a `client/` may not import a `server/`; a feature
+may not import a route; and `lib/` and `components/ui` may not import a feature.
+
+Zones are written out per feature rather than globbed — the rule does not
+expand a glob in `target`, and a zone that matches nothing reports nothing,
+which is worse than no rule at all. **Adding a feature means adding its name to
+`FEATURES` in that file**, or it is unguarded.
 
 `src/server/*` is the framework layer and deliberately takes **no**
 `server-only`. That is what lets `prisma/seed.ts` import `src/server/auth.ts`
@@ -72,10 +97,20 @@ from other server code.
 A feature with nothing genuinely shared has no `model/` and no root barrel. That
 is deliberate: an empty barrel asserts a sharing that does not exist.
 
-**Client components live in `client/components/` behind a `client/index.ts`.**
-Both features do this, so a page imports `@/features/organizations/client` and
-never a file path inside it — which is what lets a component be renamed or
-split without touching the routes that render it.
+**Client components live in `client/components/`, imported directly.** There is
+no `client/index.ts`, and that is deliberate: a `"use client"` module is a
+bundler entry point, so Turbopack cannot tree-shake across it and every
+consumer of a barrel receives all of its exports. Measured, removing them took
+`/sign-in` from 476 kB to 360 kB and `/dashboard` from 498 kB to 402 kB —
+`/sign-in` renders a heading and a form, and was shipping
+`@tanstack/react-table`.
+
+The encapsulation a barrel bought is now held by
+`import/no-restricted-paths` in `eslint.config.mjs`, which is a better
+mechanism for it: a rule that fails the build rather than a convention.
+
+`server/` and `model/` keep their barrels. Server code never reaches a bundle,
+and `model/` is small.
 
 ### What goes in `model/`
 

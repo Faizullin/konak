@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { OrganizationMembersPanel } from "@/features/organizations/client";
+import { OrganizationMembersPanel } from "@/features/organizations/client/components/organization-panels";
 import { organizationBySlug } from "@/features/organizations/server";
 
 export default async function OrganizationMembersPage({

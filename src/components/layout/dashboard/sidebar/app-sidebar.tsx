@@ -5,7 +5,7 @@ import { useMemo } from "react";
 import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader } from "@/components/ui/sidebar";
 import { accountNavItems, filterNavByRole, organizationNavItems } from "@/config/nav-items";
 import { UserRole } from "@/features/identity";
-import { OrganizationSwitcher } from "@/features/organizations/client";
+import { OrganizationSwitcher } from "@/features/organizations/client/components/organization-switcher";
 import { NavMain } from "./nav-main";
 import { NavUser, type SidebarUser } from "./nav-user";
 

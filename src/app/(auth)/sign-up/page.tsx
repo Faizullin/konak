@@ -1,4 +1,4 @@
-import { SignUpForm } from "@/features/identity/client";
+import { SignUpForm } from "@/features/identity/client/components/sign-up-form";
 import { configuredSocialProviders } from "@/server/auth";
 
 /** A shell around `<SignUpForm />`. See the note in `sign-in/page.tsx`. */

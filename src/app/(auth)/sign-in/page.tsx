@@ -1,4 +1,4 @@
-import { SignInForm } from "@/features/identity/client";
+import { SignInForm } from "@/features/identity/client/components/sign-in-form";
 import { configuredSocialProviders } from "@/server/auth";
 
 /**

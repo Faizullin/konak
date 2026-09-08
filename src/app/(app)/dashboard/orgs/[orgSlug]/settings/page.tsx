@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { OrganizationSettingsPanel } from "@/features/organizations/client";
+import { OrganizationSettingsPanel } from "@/features/organizations/client/components/organization-panels";
 import { organizationBySlug } from "@/features/organizations/server";
 
 export default async function OrganizationSettingsPage({

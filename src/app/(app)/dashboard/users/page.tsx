@@ -1,5 +1,5 @@
 import { PageHeader } from "@/components/common/page-header";
-import { UsersTableView } from "@/features/identity/client";
+import { UsersTableView } from "@/features/identity/client/components/users-table-view";
 
 export default function UsersPage() {
   return (

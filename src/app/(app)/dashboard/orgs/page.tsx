@@ -1,5 +1,5 @@
 import { PageHeader } from "@/components/common/page-header";
-import { OrganizationList } from "@/features/organizations/client";
+import { OrganizationList } from "@/features/organizations/client/components/organization-list";
 
 export default function OrganizationsPage() {
   return (
