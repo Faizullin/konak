@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { trpc } from "@/utils/trpc";
-import { OrganizationDialog } from "./organization-dialog";
+import { OrganizationFormNiceDialog } from "./organization-form-nice-dialog";
 import { OrganizationsTableView } from "./organizations-table-view";
 
 /**
@@ -23,7 +23,7 @@ export function OrganizationList() {
     staleTime: 60_000,
   });
 
-  const openCreate = () => NiceModal.show(OrganizationDialog, { mode: "create" });
+  const openCreate = () => NiceModal.show(OrganizationFormNiceDialog, { mode: "create" });
 
   if (isLoading) {
     return <Skeleton className="h-64" />;

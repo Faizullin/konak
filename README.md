@@ -148,8 +148,8 @@ screen — see `organization-danger-zone.tsx` for all three shapes.
 
 | Piece | Where | For |
 |---|---|---|
-| `confirm()` | `components/common/confirm-dialog.tsx` | destructive actions |
-| `selectOne()` | `components/common/select-dialog.tsx` | "pick one of many" |
+| `confirm()` | `components/common/confirm-nice-dialog.tsx` | destructive actions |
+| `selectOne()` | `components/common/select-nice-dialog.tsx` | "pick one of many" |
 | `ComboBox` | `components/common/combobox.tsx` | a searchable, paginated select |
 | `DataTable` | `components/data-table/` | sortable, filterable, paginated lists |
 | `useDialogControl()` | `hooks/use-dialog-control.ts` | a dialog a component owns outright |

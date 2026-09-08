@@ -117,6 +117,31 @@ has `"use client"`, `useState` or `useForm`; all of that is in the feature.
 
 There are no `_components/` directories. Feature UI lives in the feature.
 
+## Naming
+
+Files are kebab-case and name their main export: `sign-in-form.tsx` exports
+`SignInForm`. Rename one and rename the other, or the next person greps for the
+wrong half.
+
+A suffix says **which mechanism**, not just which noun, so the filename answers
+a question you would otherwise open the file to settle:
+
+| Suffix | Means | Example |
+|---|---|---|
+| `*NiceDialog` / `*-nice-dialog.tsx` | built with `NiceModal.create`, opened by `NiceModal.show` from anywhere | `confirm-nice-dialog.tsx` |
+| `*Form` / `*-form.tsx` | `useForm` + `zodResolver` over a schema from `model/` | `sign-up-form.tsx` |
+| `*TableView` / `*-table-view.tsx` | the `@/components/data-table` stack — sortable, filterable, paginated | `users-table-view.tsx` |
+| `*Table` / `*-table.tsx` | a plain `@/components/ui/table`, few rows, no toolbar | `member-table.tsx` |
+
+The two table suffixes are a real distinction, not a leftover: reaching for
+`DataTable` brings URL state, a toolbar and pagination with it, and the name is
+what warns you which one you are about to copy.
+
+Where a component does more than one of these, the mechanism suffix goes last
+and the job comes first — `OrganizationFormNiceDialog` is a form, in a
+NiceModal dialog. See [ui-patterns.md](ui-patterns.md#dialogs) for the dialog
+rules the suffix implies.
+
 ## Access control
 
 Access is checked **at the resource**, never by path matching.

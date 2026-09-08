@@ -22,7 +22,7 @@ import {
  * near-identical dialogs. Resolves `null` when dismissed.
  */
 
-export interface SelectDialogProps<T extends object> {
+export interface SelectNiceDialogProps<T extends object> {
   title: ReactNode;
   description?: ReactNode;
   /** The field that identifies an option, e.g. `"id"`. */
@@ -34,7 +34,7 @@ export interface SelectDialogProps<T extends object> {
   initialValue?: T | null;
 }
 
-function SelectDialogImpl<T extends object>({
+function SelectNiceDialogImpl<T extends object>({
   title,
   description,
   valueKey,
@@ -43,7 +43,7 @@ function SelectDialogImpl<T extends object>({
   placeholder = "Select…",
   confirmLabel = "Select",
   initialValue = null,
-}: SelectDialogProps<T>) {
+}: SelectNiceDialogProps<T>) {
   const modal = useModal();
   const [selected, setSelected] = useState<T | null>(initialValue);
 
@@ -84,14 +84,14 @@ function SelectDialogImpl<T extends object>({
 
 // `NiceModal.create` erases the generic, so the cast is reinstated by
 // `selectOne` below — callers keep full inference, the registry stays untyped.
-export const SelectDialog = NiceModal.create(
-  SelectDialogImpl as unknown as (props: SelectDialogProps<object>) => ReactNode
+export const SelectNiceDialog = NiceModal.create(
+  SelectNiceDialogImpl as unknown as (props: SelectNiceDialogProps<object>) => ReactNode
 );
 
 /** Ask which one, and wait. Resolves `null` when dismissed. */
-export function selectOne<T extends object>(props: SelectDialogProps<T>): Promise<T | null> {
+export function selectOne<T extends object>(props: SelectNiceDialogProps<T>): Promise<T | null> {
   return NiceModal.show(
-    SelectDialog,
-    props as unknown as SelectDialogProps<object>
+    SelectNiceDialog,
+    props as unknown as SelectNiceDialogProps<object>
   ) as Promise<T | null>;
 }

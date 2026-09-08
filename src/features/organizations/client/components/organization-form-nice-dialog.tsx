@@ -34,13 +34,13 @@ import { trpc } from "@/utils/trpc";
  * something the server will reject.
  */
 
-export interface OrganizationDialogProps {
+export interface OrganizationFormNiceDialogProps {
   mode?: "create" | "edit";
   organizationId?: number;
 }
 
-export const OrganizationDialog = NiceModal.create(
-  ({ mode = "create", organizationId }: OrganizationDialogProps) => {
+export const OrganizationFormNiceDialog = NiceModal.create(
+  ({ mode = "create", organizationId }: OrganizationFormNiceDialogProps) => {
     const isEdit = mode === "edit";
     const modal = useModal();
     const utils = trpc.useUtils();

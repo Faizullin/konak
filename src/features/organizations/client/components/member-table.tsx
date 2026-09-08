@@ -3,7 +3,7 @@
 import { LoaderIcon, UserPlus } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
-import { confirm } from "@/components/common/confirm-dialog";
+import { confirm } from "@/components/common/confirm-nice-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";

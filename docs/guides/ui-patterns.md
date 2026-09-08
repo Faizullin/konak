@@ -78,7 +78,7 @@ export function MyForm() {
 renders a list when there is more than one) or plain children for a single
 message.
 
-`organization-dialog.tsx` is the full worked example, including re-seeding the
+`organization-form-nice-dialog.tsx` is the full worked example, including re-seeding the
 form on open so a cancelled edit never leaks into the next one.
 
 ---
@@ -191,6 +191,28 @@ organizations *at all* before deciding which to show.
 
 Three tools, in order of how much state you want to own.
 
+**Naming.** A component built with `NiceModal.create` ends in `NiceDialog`, and
+its file is that name in kebab-case — `ConfirmNiceDialog` in
+`confirm-nice-dialog.tsx`. The suffix is load-bearing rather than decorative: a
+`NiceDialog` is mounted once under the provider and opened by `NiceModal.show`
+from anywhere, so it is never imported and rendered as JSX the way an ordinary
+dialog is. Reading the suffix tells you which of the three tools below you are
+looking at.
+
+Say what the dialog *does* before the suffix. `OrganizationFormNiceDialog`
+carries a form, so `Form` is in the name; a plain question would be
+`SomethingConfirmNiceDialog`. The `confirm()` and `selectOne()` wrappers keep
+their verb names — they are the API, and the component behind each is an
+implementation detail.
+
+**Which tier.** Choose by *ownership*, not by how many call sites exist today.
+`confirm()` and `selectOne()` are generic — any feature can ask a yes/no
+question or pick one of many — so they are `NiceDialog`s even while only one
+caller exists. A single call site there is a fact about the app's age, not
+about who owns the dialog. `useDialogControl` is for the opposite case: a
+dialog whose content belongs to one component and that nobody else would ever
+open.
+
 ### 1. `confirm()` and `selectOne()` — no state at all
 
 Global, promise-based, mounted once under `NiceModal.Provider`. Use these for
@@ -198,8 +220,8 @@ anything destructive or for "pick one of many". An event handler reads top to
 bottom:
 
 ```ts
-import { confirm } from "@/components/common/confirm-dialog";
-import { selectOne } from "@/components/common/select-dialog";
+import { confirm } from "@/components/common/confirm-nice-dialog";
+import { selectOne } from "@/components/common/select-nice-dialog";
 
 if (!(await confirm({ title: "Remove Alice?", destructive: true }))) return;
 removeMember.mutate({ organizationId, userId });
@@ -208,13 +230,13 @@ const picked = await selectOne({ title: "Transfer to", valueKey: "id", renderTex
 if (!picked) return;
 ```
 
-`confirm()` takes an optional `onConfirm` that is **awaited before the dialog
-closes**, so the button spins while the mutation runs and a throw leaves the
-dialog up with the error still on screen. Without it the dialog closes at once
-and resolves `true`.
+`confirm()` resolves when the person answers — `true` for confirm, `false` for
+cancel or dismiss — and the dialog closes either way. The mutation runs after,
+reporting through its own `onSuccess` / `onError` like every other mutation
+here. Confirming is a question, so it is awaited; the outcome is not.
 
-`organization-danger-zone.tsx` uses all three shapes — plain confirm, confirm
-with `onConfirm`, and `selectOne` followed by a confirm.
+`organization-danger-zone.tsx` uses both shapes: a plain confirm, and a
+`selectOne()` followed by a confirm.
 
 ### 2. `NiceModal.create` — a dialog with its own form
 
@@ -222,13 +244,13 @@ For a dialog rich enough to have fields and mutations, and openable from
 anywhere:
 
 ```tsx
-export const OrganizationDialog = NiceModal.create(({ mode, organizationId }) => {
+export const OrganizationFormNiceDialog = NiceModal.create(({ mode, organizationId }) => {
   const modal = useModal();
   return <Dialog open={modal.visible} onOpenChange={(open) => !open && modal.hide()}>…</Dialog>;
 });
 
 // from anywhere:
-NiceModal.show(OrganizationDialog, { mode: "edit", organizationId });
+NiceModal.show(OrganizationFormNiceDialog, { mode: "edit", organizationId });
 ```
 
 ### 3. `useDialogControl` — state a component owns outright

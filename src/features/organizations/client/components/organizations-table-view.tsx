@@ -30,7 +30,7 @@ import {
 } from "@/features/organizations";
 import type { GeneralRouterOutputs } from "@/server/types";
 import { trpc } from "@/utils/trpc";
-import { OrganizationDialog } from "./organization-dialog";
+import { OrganizationFormNiceDialog } from "./organization-form-nice-dialog";
 
 type OrganizationRow = GeneralRouterOutputs["organization"]["list"]["items"][number];
 
@@ -190,7 +190,7 @@ export function OrganizationsTableView() {
                       <DropdownMenuSeparator />
                       <DropdownMenuItem
                         onClick={() =>
-                          NiceModal.show(OrganizationDialog, {
+                          NiceModal.show(OrganizationFormNiceDialog, {
                             mode: "edit",
                             organizationId: org.id,
                           })

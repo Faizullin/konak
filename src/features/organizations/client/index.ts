@@ -2,7 +2,7 @@
 
 export { MemberTable } from "./components/member-table";
 export { OrganizationDangerZone } from "./components/organization-danger-zone";
-export { OrganizationDialog } from "./components/organization-dialog";
+export { OrganizationFormNiceDialog } from "./components/organization-form-nice-dialog";
 export { OrganizationList } from "./components/organization-list";
 export {
   OrganizationMembersPanel,

@@ -1,6 +1,6 @@
 # One form validates in the browser, the other does not
 
-`organization-dialog.tsx` validates with `zodResolver` and renders failures
+`organization-form-nice-dialog.tsx` validates with `zodResolver` and renders failures
 inline under the field. The add-member form in `member-table.tsx` validates
 nowhere, so a typo'd email travels to the server and comes back as a toast.
 Same product, two different answers to "you typed something wrong".
@@ -25,7 +25,7 @@ throws that structure away and toasts a string.
 ## What to do
 
 Convert the add-member form to the pattern already used by
-`organization-dialog.tsx` — `useForm` + `zodResolver`, `Controller`, and
+`organization-form-nice-dialog.tsx` — `useForm` + `zodResolver`, `Controller`, and
 `<Field data-invalid>` / `<FieldError>` from `@/components/ui/field`, as
 described in `../guides/ui-patterns.md`.
 

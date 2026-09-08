@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/sidebar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { trpc } from "@/utils/trpc";
-import { OrganizationDialog } from "./organization-dialog";
+import { OrganizationFormNiceDialog } from "./organization-form-nice-dialog";
 
 /**
  * The organization switcher, in the sidebar header.
@@ -108,7 +108,7 @@ export function OrganizationSwitcher() {
             <DropdownMenuSeparator />
             <DropdownMenuItem
               className="gap-2 p-2"
-              onClick={() => NiceModal.show(OrganizationDialog, { mode: "create" })}
+              onClick={() => NiceModal.show(OrganizationFormNiceDialog, { mode: "create" })}
             >
               <Plus className="size-4" />
               <span>New organization</span>

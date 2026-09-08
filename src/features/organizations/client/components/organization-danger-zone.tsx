@@ -2,24 +2,13 @@
 
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { confirm } from "@/components/common/confirm-dialog";
-import { selectOne } from "@/components/common/select-dialog";
+import { confirm } from "@/components/common/confirm-nice-dialog";
+import { selectOne } from "@/components/common/select-nice-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { OrgRole } from "@/features/organizations";
 import { trpc } from "@/utils/trpc";
 
-/**
- * The three irreversible actions, kept together and away from the ordinary
- * settings above them.
- *
- * Each one goes through `confirm()`; transfer additionally goes through
- * `selectOne()` — two shared dialogs, no local dialog state in this file.
- *
- * The dialog is awaited, the mutation is not: confirming is a question, so it
- * blocks, while the outcome is reported by the mutation's own callbacks like
- * every other mutation in the template.
- */
 export function OrganizationDangerZone({
   organizationId,
   currentUserRole,

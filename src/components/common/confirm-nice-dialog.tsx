@@ -29,7 +29,7 @@ import { cn } from "@/lib/utils";
  * ```
  */
 
-export interface ConfirmDialogProps {
+export interface ConfirmNiceDialogProps {
   title: ReactNode;
   description?: ReactNode;
   confirmLabel?: string;
@@ -38,14 +38,14 @@ export interface ConfirmDialogProps {
   destructive?: boolean;
 }
 
-export const ConfirmDialog = NiceModal.create(
+export const ConfirmNiceDialog = NiceModal.create(
   ({
     title,
     description,
     confirmLabel = "Confirm",
     cancelLabel = "Cancel",
     destructive = false,
-  }: ConfirmDialogProps) => {
+  }: ConfirmNiceDialogProps) => {
     const modal = useModal();
 
     const close = (answer: boolean) => {
@@ -81,6 +81,6 @@ export const ConfirmDialog = NiceModal.create(
 );
 
 /** Ask, and wait for the answer. Resolves `false` on cancel or dismiss. */
-export function confirm(props: ConfirmDialogProps): Promise<boolean> {
-  return NiceModal.show(ConfirmDialog, props) as Promise<boolean>;
+export function confirm(props: ConfirmNiceDialogProps): Promise<boolean> {
+  return NiceModal.show(ConfirmNiceDialog, props) as Promise<boolean>;
 }

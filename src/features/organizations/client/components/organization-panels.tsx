@@ -10,7 +10,7 @@ import { ORG_ROLE_LABELS, canEditOrganization, type OrgRole } from "@/features/o
 import { trpc } from "@/utils/trpc";
 import { MemberTable } from "./member-table";
 import { OrganizationDangerZone } from "./organization-danger-zone";
-import { OrganizationDialog } from "./organization-dialog";
+import { OrganizationFormNiceDialog } from "./organization-form-nice-dialog";
 
 /**
  * The three organization pages, each a thin panel over one query.
@@ -62,7 +62,9 @@ export function OrganizationOverview({ organizationId }: { organizationId: numbe
             <Button
               variant="outline"
               size="sm"
-              onClick={() => NiceModal.show(OrganizationDialog, { mode: "edit", organizationId })}
+              onClick={() =>
+                NiceModal.show(OrganizationFormNiceDialog, { mode: "edit", organizationId })
+              }
             >
               <Pencil className="size-4" />
               Edit
@@ -166,7 +168,9 @@ export function OrganizationSettingsPanel({ organizationId }: { organizationId: 
             <Button
               variant="outline"
               size="sm"
-              onClick={() => NiceModal.show(OrganizationDialog, { mode: "edit", organizationId })}
+              onClick={() =>
+                NiceModal.show(OrganizationFormNiceDialog, { mode: "edit", organizationId })
+              }
             >
               <Pencil className="size-4" />
               Edit
