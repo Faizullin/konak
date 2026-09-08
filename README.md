@@ -69,6 +69,11 @@ npm run db:seed      # demo data
 npm run db:studio    # browse the data
 ```
 
+```bash
+npm test             # unit — pure, no services, runs anywhere
+npm run test:server  # integration — needs the database above
+```
+
 Postgres rather than SQLite because two stays of the same room may not share a
 night, and that is an **exclusion constraint** SQLite cannot express. The
 migration `*_reservation_overlap` carries it.

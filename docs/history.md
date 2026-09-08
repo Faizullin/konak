@@ -65,3 +65,31 @@ a multi-room booking can be cancelled while the rest stands.
 
 The SQLite migrations were deleted rather than converted; their SQL cannot run
 on Postgres, and nothing was deployed.
+
+## 2026-09-09 — tests, and a boundary that was only prose
+
+Three kinds of test, separated by directory rather than filename — verified
+against the runner, `src/**/*.test.ts` also matches `foo.int.test.ts`, so a
+suffix split would have dragged database tests into the suite that must run
+without Docker. Unit tests stay beside their module; `tests/server/` holds the
+fifteen integration tests, which belong to no single module.
+
+The seed had twenty empty tables. Six are now filled and thirteen are left
+empty on purpose, with the reason written down: faking a hold or a fiscal
+receipt makes a screen look finished while the flow that fills it does not
+exist.
+
+Boundaries became `import/no-restricted-paths` zones and `ignoreDuringBuilds`
+came off, so a violation fails a build. One violation existed already —
+`config/nav-items.ts` reached a feature's `model/`, a fourth door.
+
+The client barrels came out. A `"use client"` module is a bundler entry point,
+so nothing tree-shakes across it: `/sign-in` was shipping
+`@tanstack/react-table` to render a heading and a form. 476 kB to 360 kB;
+`/dashboard` 498 to 402.
+
+**Learned:** a lint rule can be decorative. The first zone list used
+`./src/features/*/model` as a target, passed lint, and caught nothing —
+`import/no-restricted-paths` does not expand a glob in `target`. It was only
+found by deliberately committing the violation it was supposed to forbid. Every
+zone is now proven to fire that way.

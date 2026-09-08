@@ -10,6 +10,7 @@ only: the rules the database cannot hold, tested without one.
 **Where to start.** `docs/todo.md`, top entry.
 
 **Before you finish.** `npm run lint && npm test && npx tsc --noEmit && npm run format:check`,
+and `npm run test:server` when a router or the schema changed,
 plus `npm run build` if routing or config moved.
 
 **What is binding.** `docs/guides/` describes how things are. `CLAUDE.md` lists

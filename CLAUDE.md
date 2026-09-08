@@ -30,5 +30,6 @@ signature. Several files here over-explain; do not add to it.
 
 ## Before finishing
 
-`npm run lint && npm test && npx tsc --noEmit && npm run format:check`, plus
+`npm run lint && npm test && npx tsc --noEmit && npm run format:check`,
+and `npm run test:server` when a router or the schema changed, plus
 `npm run build` when routing or config changed.
