@@ -4,9 +4,8 @@ An all-in-one property management system: reservations, distribution, rates,
 guests, housekeeping, billing, compliance, locks and analytics, run from one
 dashboard.
 
-This is the product. Everything below is a module under one contract: a module
-owns its own tables in its own schema file, declares its own permissions, and
-adds nothing to the core.
+This is the product. Everything below is meant to be a module under one
+contract — and that contract does not exist yet, which is the first item.
 
 ## Prerequisites no module can be finished without
 
@@ -16,6 +15,35 @@ adds nothing to the core.
 | A job queue draining `OutboxTask` | channels, locks, fiscal, registration | Every external system is slow and fails. Retries, idempotency and dead letters are not optional. |
 | Real-time push | grid, housekeeping | A receptionist and a housekeeper must not see stale state; there is no subscription transport. |
 | Field-level encryption | passports, payment references | `IdentityDocument.numberEncrypted` is named for an obligation the code does not meet. |
+
+## The module contract, which is asserted and not built
+
+Ten modules is exactly the case a contract exists for, and every part of it is
+still hand-wired:
+
+| Claimed | Actually |
+|---|---|
+| a module declares its own permissions | `directory`, `identity` and `organizations` each call `createAccessControl` separately; nothing merges them |
+| a module adds nothing to the core | `src/server/root.ts` composes three routers by hand — `directory` added a line |
+| a module can be off for an organization | there is no enablement table |
+| the registry declares a module | `ORG_FEATURE_REGISTRY` carries `label`, `icon`, `segment` — presentation only |
+
+Four changes to core, once, for every module after:
+
+1. **`OrgModule`** in `organizations/model/registry.ts`, widening today's
+   `OrgFeatureDefinition` with `statements` and `grants`. The built-ins become
+   manifests too, so there is one kind of thing rather than two.
+2. **`root.ts` composes from the registry** instead of by hand. The only file
+   where "modules exist" is visible.
+3. **Statements merge** before `createAccessControl`. Granting a verb a module
+   never declared must stay a compile error — that property is load-bearing
+   today and cannot be lost in the merge.
+4. **`OrganizationModule(organizationId, moduleId, enabled)`**, read by the nav,
+   the route guard and the procedures. **The procedure is the enforcement** — a
+   hidden nav item is a courtesy, exactly as with roles.
+
+It goes first because the alternative is doing it after the reservation,
+rates and platform routers exist, when it is a much wider edit.
 
 ## The modelling decisions that are expensive to reverse
 
@@ -166,6 +194,13 @@ cost is named.
 7. **The booking widget is deferred to Phase 7**, keeping phases 0–3 entirely
    behind existing auth. It is a second identity story and a public attack
    surface.
+
+## Smaller, once the above exists
+
+- **CSV export of a guest's data.** Inherited from the CRM plan for a different
+  reason: not a sales report, a person asking what is held about them. It pairs
+  with `IdentityDocument.purgeAfter`, which is the deletion half of the same
+  obligation.
 
 ## Open questions
 

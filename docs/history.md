@@ -93,3 +93,24 @@ so nothing tree-shakes across it: `/sign-in` was shipping
 `import/no-restricted-paths` does not expand a glob in `target`. It was only
 found by deliberately committing the violation it was supposed to forbid. Every
 zone is now proven to fire that way.
+
+## 2026-09-09 — Phase 1 closed
+
+The database is done: 45 models on Postgres, the overlap invariant held by an
+exclusion constraint, five more held by tested pure functions, 70 unit and 15
+integration tests, and boundaries that fail a build.
+
+Two earlier plans were recovered from `origin/master` before those commits are
+discarded. The booking one was superseded in full. The CRM one had a part that
+never shipped and was quietly assumed to exist: `hotel-pms.md` opened by
+claiming a module contract — a module declares its own permissions, adds
+nothing to the core, can be switched off — and all four claims were false.
+`root.ts` composes three routers by hand, three features call
+`createAccessControl` separately, and there is no enablement table. It is now
+the plan's first item rather than its premise.
+
+**Learned:** a plan can assert its own foundation. This one had done so for
+weeks, and only reading a superseded predecessor surfaced it.
+
+Recovered plans are kept with a `v1_` prefix and a header saying what survives.
+They are not plans; nothing is worked from them.

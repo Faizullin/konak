@@ -9,5 +9,9 @@ leaves here, what it taught moves into a guide, and the fact of it goes into
 |---|---|
 | [hotel-pms.md](hotel-pms.md) | the product: reservations, distribution, rates, compliance |
 
+Files prefixed `v1_` are **not plans**. They are earlier ones recovered from
+git history, kept only because something in them had not shipped; each says at
+the top what survives and what was superseded. Do not work from them.
+
 Each plan states the evidence it rests on as `file:line`. Check the citation
 before acting on it — a plan written against a moved line is worse than no plan.
