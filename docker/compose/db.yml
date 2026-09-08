@@ -1,0 +1,33 @@
+# Development database only.
+#
+# Postgres rather than SQLite because the reservation overlap invariant is an
+# exclusion constraint, which SQLite cannot express. Nothing else in this file
+# is production configuration — no backups, no tuning, and the password is in
+# the repository on purpose.
+#
+#   docker compose -f docker/compose/db.yml up -d
+#   docker compose -f docker/compose/db.yml down          # keeps the volume
+#   docker compose -f docker/compose/db.yml down -v       # drops the data
+
+name: konak
+
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: konak
+      POSTGRES_PASSWORD: konak
+      POSTGRES_DB: konak
+    ports:
+      - "5432:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U konak -d konak"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  db-data:

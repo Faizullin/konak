@@ -1,3 +1,4 @@
+import { directoryRouter } from "@/features/directory/server";
 import { userRouter } from "@/features/identity/server";
 import { organizationRouter } from "@/features/organizations/server";
 import { createTRPCRouter } from "./trpc";
@@ -6,6 +7,7 @@ import { createTRPCRouter } from "./trpc";
 // lives in `features/<name>/server/router.ts`; only the root imports them.
 export const appRouter = createTRPCRouter({
   user: userRouter,
+  directory: directoryRouter,
   organization: organizationRouter,
 });
 

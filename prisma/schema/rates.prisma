@@ -1,0 +1,94 @@
+// rates
+//
+// A `RatePlan` is the commercial offer — "Standard, breakfast included,
+// non-refundable". `RateCalendar` is its price for one room type on one day,
+// and `RateRestriction` is what stops that day being sold in the wrong shape.
+//
+// Prices are per night, per room, for the room type's `baseOccupancy`. Extra
+// people are priced by the plan's per-person amounts, which is why occupancy
+// is on the stay and not in the price.
+//
+// One row per plan × type × day is deliberate. A rule engine ("+20% at
+// weekends") is easier to write and impossible to reconcile with what a channel
+// manager already pushed to an OTA; the calendar is the record of what was
+// actually offered.
+
+model RatePlan {
+  id           Int    @id @default(autoincrement())
+  propertyId   Int
+  // Null means the plan applies to every room type in the property.
+  roomTypeId   Int?
+  name         String
+  code         String
+  currencyCode String
+
+  mealPlan                String  @default("ROOM_ONLY") // ROOM_ONLY, BREAKFAST, HALF_BOARD, FULL_BOARD, ALL_INCLUSIVE
+  isRefundable            Boolean @default(true)
+  // Hours before check-in that free cancellation ends. Null with
+  // `isRefundable` false is a non-refundable plan.
+  cancellationCutoffHours Int?
+  cancellationPolicy      String?
+
+  extraAdultMinor Int @default(0)
+  extraChildMinor Int @default(0)
+
+  // Defaults applied when a day has no `RateRestriction` row of its own.
+  defaultMinLengthOfStay Int @default(1)
+
+  archivedAt  DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdById String?
+  updatedById String?
+
+  property        Property          @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  calendar        RateCalendar[]
+  restrictions    RateRestriction[]
+  stays           RoomStay[]
+  channelMappings ChannelMapping[]
+
+  @@unique([propertyId, code])
+  @@index([propertyId, archivedAt])
+  @@map("rate_plans")
+}
+
+model RateCalendar {
+  id         Int      @id @default(autoincrement())
+  ratePlanId Int
+  roomTypeId Int
+  // Date-only, property-local midnight.
+  date       DateTime
+  priceMinor Int
+  updatedAt  DateTime @updatedAt
+
+  ratePlan RatePlan @relation(fields: [ratePlanId], references: [id], onDelete: Cascade)
+
+  @@unique([ratePlanId, roomTypeId, date])
+  @@index([roomTypeId, date])
+  @@map("rate_calendar")
+}
+
+// Absent means unrestricted. Only days someone deliberately constrained get a
+// row, so an empty calendar sells normally rather than not at all.
+model RateRestriction {
+  id         Int      @id @default(autoincrement())
+  ratePlanId Int
+  roomTypeId Int
+  date       DateTime
+
+  minLengthOfStay   Int?
+  maxLengthOfStay   Int?
+  // Closed outright, or closed only to stays that start or end on this day —
+  // the three flags every OTA speaks.
+  closed            Boolean @default(false)
+  closedToArrival   Boolean @default(false)
+  closedToDeparture Boolean @default(false)
+
+  updatedAt DateTime @updatedAt
+
+  ratePlan RatePlan @relation(fields: [ratePlanId], references: [id], onDelete: Cascade)
+
+  @@unique([ratePlanId, roomTypeId, date])
+  @@index([roomTypeId, date])
+  @@map("rate_restrictions")
+}

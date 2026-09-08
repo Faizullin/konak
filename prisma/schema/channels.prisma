@@ -1,0 +1,89 @@
+// channels
+//
+// Distribution: what each OTA calls our rooms, and what we last told it.
+//
+// The connection is to a **channel-manager vendor**, not to Booking.com
+// directly — one integration and one certification instead of one per channel.
+// `channelCode` records which OTA is behind it so a reservation can say where
+// it came from.
+//
+// Credentials are never stored here. `credentialsRef` is a pointer into
+// whatever holds secrets; a row in this table is safe to read in a support
+// session.
+
+model ChannelConnection {
+  id          Int    @id @default(autoincrement())
+  propertyId  Int
+  provider    String // the channel manager vendor
+  channelCode String // BOOKING_COM, AIRBNB, EXPEDIA, OSTROVOK, …
+  status      String @default("PAUSED") // ACTIVE, PAUSED, ERROR
+
+  externalPropertyId String?
+  credentialsRef     String?
+
+  lastSyncedAt DateTime?
+  lastError    String?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdById String?
+
+  property Property           @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  mappings ChannelMapping[]
+  state    ChannelSyncState[]
+
+  @@unique([propertyId, channelCode])
+  @@index([status, lastSyncedAt])
+  @@map("channel_connections")
+}
+
+// What the OTA calls one of our room types, and optionally one of our rate
+// plans. Without a mapping row a type is simply not distributed — absent means
+// off, so a new room type is never accidentally on sale everywhere.
+model ChannelMapping {
+  id                 Int     @id @default(autoincrement())
+  connectionId       Int
+  roomTypeId         Int
+  ratePlanId         Int?
+  externalRoomTypeId String
+  externalRatePlanId String?
+  isActive           Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  connection ChannelConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  roomType   RoomType          @relation(fields: [roomTypeId], references: [id], onDelete: Cascade)
+  ratePlan   RatePlan?         @relation(fields: [ratePlanId], references: [id], onDelete: SetNull)
+
+  @@unique([connectionId, roomTypeId, ratePlanId])
+  @@index([roomTypeId])
+  @@map("channel_mappings")
+}
+
+// The mirror: what we last successfully told this channel about this room type
+// on this day.
+//
+// It exists so a push can be a diff rather than a full re-send, and so a
+// disagreement is visible — if the channel sold a room we had closed, this row
+// is the evidence of what it was told and when. It is a **cache of an external
+// system's belief**, never a source of truth for our own availability.
+model ChannelSyncState {
+  id           Int      @id @default(autoincrement())
+  connectionId Int
+  roomTypeId   Int
+  date         DateTime
+
+  pushedAvailability     Int?
+  pushedPriceMinor       Int?
+  pushedRestrictionsJson String?
+  pushedAt               DateTime @default(now())
+  // Set when the channel rejected the push; cleared on the next success.
+  lastError              String?
+
+  connection ChannelConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@unique([connectionId, roomTypeId, date])
+  @@index([connectionId, date])
+  @@map("channel_sync_state")
+}

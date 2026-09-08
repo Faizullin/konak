@@ -1,0 +1,242 @@
+// platform
+//
+// The substrate every domain hangs things on: what happened, what it is called,
+// what is attached to it, what was added to it, who read it, what it is worth
+// and what still has to be sent.
+//
+// Subjects are joined by one nullable foreign key each, exactly one non-null —
+// never a `subjectType`/`subjectId` pair, which throws away referential
+// integrity and lets a row outlive its subject. The invariant is enforced in
+// `model/`; SQLite has no CHECK constraint to hold it.
+
+model Activity {
+  id             Int       @id @default(autoincrement())
+  organizationId Int
+  type           String // NOTE, CALL, EMAIL, MEETING, TASK
+  subject        String
+  body           String?
+  dueAt          DateTime?
+  doneAt         DateTime?
+  // The staff member it belongs to. Null means the organization owns it.
+  ownerUserId    String?
+  // Written offline and reconciled later without duplicating.
+  clientEventId  String?   @unique
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  createdById    String?
+
+  personId   Int?
+  companyId  Int?
+  propertyId Int?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  person       Person?      @relation(fields: [personId], references: [id], onDelete: Cascade)
+  company      Company?     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  property     Property?    @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, createdAt])
+  @@index([personId, createdAt])
+  @@index([companyId, createdAt])
+  @@index([ownerUserId, doneAt])
+  @@map("activities")
+}
+
+model Tag {
+  id             Int      @id @default(autoincrement())
+  organizationId Int
+  name           String
+  colour         String?
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  entities     EntityTag[]
+
+  @@unique([organizationId, name])
+  @@map("tags")
+}
+
+model EntityTag {
+  id    Int @id @default(autoincrement())
+  tagId Int
+
+  personId   Int?
+  companyId  Int?
+  propertyId Int?
+
+  tag      Tag       @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  person   Person?   @relation(fields: [personId], references: [id], onDelete: Cascade)
+  company  Company?  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  property Property? @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@unique([tagId, personId])
+  @@unique([tagId, companyId])
+  @@unique([tagId, propertyId])
+  @@index([personId])
+  @@index([companyId])
+  @@map("entity_tags")
+}
+
+// Files, and the consent that governs them. A passport scan is an attachment
+// whose retention is a legal question: `signedAt` records agreement,
+// `revokedAt` withdrawal, `expiresAt` when it must be purged. Withdrawal hides
+// the file without deleting the record that it existed.
+model Attachment {
+  id             Int       @id @default(autoincrement())
+  organizationId Int
+  kind           String    @default("FILE") // FILE, CONSENT, IDENTITY_DOCUMENT, CONTRACT
+  fileName       String
+  storageKey     String
+  mimeType       String?
+  sizeBytes      Int?
+  signedAt       DateTime?
+  revokedAt      DateTime?
+  expiresAt      DateTime?
+  uploadedById   String?
+  createdAt      DateTime  @default(now())
+
+  personId   Int?
+  companyId  Int?
+  propertyId Int?
+
+  organization      Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  person            Person?            @relation(fields: [personId], references: [id], onDelete: Cascade)
+  company           Company?           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  property          Property?          @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  identityDocuments IdentityDocument[]
+
+  @@index([organizationId, kind])
+  @@index([personId])
+  @@index([expiresAt])
+  @@map("attachments")
+}
+
+// The bounded escape hatch: a tenant adds a field without a migration, and the
+// value lands in the subject's `customFields` JSON column. `options` is a JSON
+// array for SELECT types — SQLite has no Json type, so both are String.
+model CustomFieldDefinition {
+  id             Int       @id @default(autoincrement())
+  organizationId Int
+  entityType     String // PERSON, COMPANY, PROPERTY
+  key            String
+  label          String
+  fieldType      String // TEXT, NUMBER, BOOLEAN, DATE, SELECT
+  options        String?
+  required       Boolean   @default(false)
+  position       Int       @default(0)
+  archivedAt     DateTime?
+  createdAt      DateTime  @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, entityType, key])
+  @@index([organizationId, entityType, position])
+  @@map("custom_field_definitions")
+}
+
+// Append-only. Nothing updates or deletes a row here.
+//
+// The actor is the *user* id, not the membership id, so the trail survives a
+// member being removed. `VIEW` matters as much as `UPDATE`: "who read this
+// passport" is the question a regulator asks.
+model AuditLog {
+  id             Int      @id @default(autoincrement())
+  organizationId Int
+  actorUserId    String?
+  action         String // VIEW, CREATE, UPDATE, ARCHIVE, EXPORT, SIGN
+  entityType     String
+  entityId       String
+  summary        String?
+  diffJson       String?
+  ipAddress      String?
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, createdAt])
+  @@index([entityType, entityId])
+  @@index([actorUserId, createdAt])
+  @@map("audit_logs")
+}
+
+// Reference data, deliberately without a tenant column: ISO 4217 is the same
+// list for everyone. `minorUnits` is what makes integer money arithmetic
+// correct — JPY has 0, most have 2, and dividing by 100 everywhere is a bug.
+model Currency {
+  code       String   @id
+  name       String
+  symbol     String?
+  minorUnits Int      @default(2)
+  createdAt  DateTime @default(now())
+
+  @@map("currencies")
+}
+
+model ExchangeRate {
+  id        Int      @id @default(autoincrement())
+  baseCode  String
+  quoteCode String
+  // Rate scaled by 1e6 and stored as an integer, for the same reason money is:
+  // a float rate silently loses cents on a large folio.
+  rateMicro BigInt
+  asOf      DateTime
+  createdAt DateTime @default(now())
+
+  @@unique([baseCode, quoteCode, asOf])
+  @@index([baseCode, quoteCode, asOf])
+  @@map("exchange_rates")
+}
+
+// The outbox. Every external system — channel manager, fiscal register,
+// lock controller — is slow and fails, so nothing calls one inline. A row here
+// is the intent; a worker drains it.
+//
+// `idempotencyKey` is what makes a retry safe, and `availableAt` is what makes
+// a backoff possible without a scheduler.
+model OutboxTask {
+  id             Int       @id @default(autoincrement())
+  organizationId Int?
+  type           String
+  payloadJson    String
+  status         String    @default("PENDING") // PENDING, RUNNING, DONE, FAILED
+  attempts       Int       @default(0)
+  availableAt    DateTime  @default(now())
+  lockedAt       DateTime?
+  completedAt    DateTime?
+  lastError      String?
+  idempotencyKey String?   @unique
+  createdAt      DateTime  @default(now())
+
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([status, availableAt])
+  @@index([organizationId, type])
+  @@map("outbox_tasks")
+}
+
+// Sequenced numbers that someone outside the company will read: booking
+// references, invoice numbers, receipts. A counter in a row, taken inside the
+// transaction that consumes it — never `count() + 1`, which repeats a number
+// the moment two clerks save at once, and skips one the moment a row is
+// deleted.
+//
+// `period` holds the window the counter resets in ("2026", "2026-09"), so the
+// reset policy needs no scheduled job.
+model NumberSeries {
+  id             Int      @id @default(autoincrement())
+  organizationId Int
+  propertyId     Int?
+  kind           String // RESERVATION, INVOICE, RECEIPT
+  prefix         String   @default("")
+  resetPolicy    String   @default("YEARLY") // NEVER, YEARLY, MONTHLY
+  period         String?
+  counter        Int      @default(0)
+  padding        Int      @default(5)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  property     Property?    @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, propertyId, kind])
+  @@map("number_series")
+}

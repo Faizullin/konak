@@ -1,0 +1,118 @@
+// billing
+//
+// A `Folio` is one bill. A reservation usually has one, but a company paying
+// for the room while the guest pays for the bar is two — which is why the folio
+// is its own row and not columns on the reservation.
+//
+// Every amount is integer minor units in the folio's currency. `Currency.minorUnits`
+// is what turns them back into a displayed number; dividing by 100 everywhere
+// is wrong for JPY and right by accident elsewhere.
+//
+// Lines are **frozen on posting**. `amountMinor` is stored, not recomputed from
+// quantity × price, because a rate that changes next week must not silently
+// rewrite last week's bill.
+
+model Folio {
+  id            Int    @id @default(autoincrement())
+  propertyId    Int
+  reservationId Int?
+  // Set when a company settles the bill rather than the guest.
+  companyId     Int?
+  number        String
+  status        String @default("OPEN") // OPEN, CLOSED, VOID
+  currencyCode  String
+
+  // Frozen at close, so a closed bill reads the same forever even if a line is
+  // later voided by correction. Null while the folio is open — the live total
+  // is the sum of its lines.
+  closedTotalMinor Int?
+  closedAt         DateTime?
+  voidedAt         DateTime?
+  voidReason       String?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdById String?
+  updatedById String?
+
+  property    Property     @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  reservation Reservation? @relation(fields: [reservationId], references: [id], onDelete: SetNull)
+  company     Company?     @relation(fields: [companyId], references: [id], onDelete: SetNull)
+
+  lines          FolioLine[]
+  payments       Payment[]
+  fiscalReceipts FiscalReceipt[]
+
+  @@unique([propertyId, number])
+  @@index([propertyId, status])
+  @@index([reservationId])
+  @@map("folios")
+}
+
+model FolioLine {
+  id          Int    @id @default(autoincrement())
+  folioId     Int
+  type        String // ROOM, EXTRA, SERVICE, TAX, DISCOUNT, CITY_TAX
+  description String
+
+  // Which night of which stay this line pays for. Null for a bar tab or a
+  // one-off charge that belongs to no stay.
+  roomStayId  Int?
+  serviceDate DateTime?
+
+  quantity       Int @default(1)
+  unitPriceMinor Int
+  // Basis points: 2000 is 20%. An integer rate keeps the arithmetic exact and
+  // records what was actually charged, not what today's rate would be.
+  taxRateBp      Int @default(0)
+  taxAmountMinor Int @default(0)
+  amountMinor    Int
+
+  postedAt   DateTime  @default(now())
+  postedById String?
+  // Corrections void a line and post a new one; nothing is edited or deleted,
+  // because a bill someone has seen is a record.
+  voidedAt   DateTime?
+  voidedById String?
+
+  folio    Folio     @relation(fields: [folioId], references: [id], onDelete: Cascade)
+  roomStay RoomStay? @relation(fields: [roomStayId], references: [id], onDelete: SetNull)
+
+  @@index([folioId, postedAt])
+  @@index([roomStayId])
+  @@map("folio_lines")
+}
+
+model Payment {
+  id            Int  @id @default(autoincrement())
+  propertyId    Int
+  folioId       Int?
+  reservationId Int?
+
+  method       String // CASH, CARD, BANK_TRANSFER, ONLINE, VOUCHER, OTA_COLLECT
+  status       String @default("PENDING") // PENDING, CAPTURED, FAILED, REFUNDED
+  amountMinor  Int
+  currencyCode String
+
+  // The processor's own id, and the key that makes a retry safe. A double-click
+  // on "charge" must not take the money twice.
+  externalRef    String?
+  idempotencyKey String? @unique
+
+  capturedAt    DateTime?
+  refundedAt    DateTime?
+  failureReason String?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdById String?
+
+  property       Property        @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  folio          Folio?          @relation(fields: [folioId], references: [id], onDelete: SetNull)
+  reservation    Reservation?    @relation(fields: [reservationId], references: [id], onDelete: SetNull)
+  fiscalReceipts FiscalReceipt[]
+
+  @@index([propertyId, status])
+  @@index([folioId])
+  @@map("payments")
+}

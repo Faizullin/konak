@@ -1,0 +1,109 @@
+// access
+//
+// Who may open which door, and for how long — plus the guest's own way into
+// the system, which is a token rather than an account.
+//
+// **A guest is not a user.** They have a `Person` row and a signed link; they
+// never get an `OrganizationMember`. The same idea issues a door PIN: a
+// credential is a capability with an expiry, not an identity.
+//
+// Secrets are stored hashed, never in clear. A PIN readable from the database
+// is a PIN readable by anyone with a backup.
+
+model LockDevice {
+  id         Int       @id @default(autoincrement())
+  propertyId Int
+  // Null for a shared door — a lobby, a gym, a car park barrier.
+  roomId     Int?
+  vendor     String
+  externalId String
+  label      String?
+  status     String    @default("OFFLINE") // ONLINE, OFFLINE, ERROR
+  batteryPct Int?
+  lastSeenAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  property    Property           @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  room        Room?              @relation(fields: [roomId], references: [id], onDelete: SetNull)
+  credentials AccessCredential[]
+
+  @@unique([propertyId, vendor, externalId])
+  @@index([propertyId, status])
+  @@map("lock_devices")
+}
+
+// A key, in whatever form the lock speaks.
+//
+// `validFrom`/`validUntil` come from the stay, so a key stops working at
+// check-out without anyone revoking it. `status` tracks what the lock vendor
+// has actually been told — issuing is an outbox job, so PENDING is normal for
+// a moment and permanent when the vendor is down.
+model AccessCredential {
+  id            Int  @id @default(autoincrement())
+  propertyId    Int
+  lockDeviceId  Int?
+  reservationId Int?
+  roomStayId    Int?
+  personId      Int?
+
+  type   String @default("PIN") // PIN, RFID_CARD, MOBILE_KEY
+  status String @default("PENDING") // PENDING, ACTIVE, REVOKED, EXPIRED, FAILED
+
+  // Hashed. The clear value is shown once, when it is issued, and never stored.
+  secretHash  String?
+  // The vendor's own id for this credential, needed to revoke it.
+  externalRef String?
+
+  validFrom  DateTime
+  validUntil DateTime
+  issuedAt   DateTime?
+  revokedAt  DateTime?
+
+  idempotencyKey String? @unique
+  lastError      String?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdById String?
+
+  property    Property     @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  lockDevice  LockDevice?  @relation(fields: [lockDeviceId], references: [id], onDelete: SetNull)
+  reservation Reservation? @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+  roomStay    RoomStay?    @relation(fields: [roomStayId], references: [id], onDelete: SetNull)
+  person      Person?      @relation(fields: [personId], references: [id], onDelete: SetNull)
+
+  @@index([propertyId, status])
+  @@index([validUntil])
+  @@index([reservationId])
+  @@map("access_credentials")
+}
+
+// The guest's way in: a link they were emailed, scoped to one thing they may
+// do. This is the whole of the second identity story — no password, no account,
+// no membership.
+//
+// Only the hash is stored, for the same reason a password is: the row is not a
+// credential, the email is.
+model GuestAccessToken {
+  id            Int    @id @default(autoincrement())
+  propertyId    Int
+  reservationId Int
+  personId      Int?
+  tokenHash     String @unique
+  scope         String @default("BOOKING_VIEW") // BOOKING_VIEW, ONLINE_CHECK_IN, FOLIO_VIEW
+
+  expiresAt  DateTime
+  lastUsedAt DateTime?
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+
+  property    Property    @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  reservation Reservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+  person      Person?     @relation(fields: [personId], references: [id], onDelete: SetNull)
+
+  @@index([reservationId])
+  @@index([expiresAt])
+  @@map("guest_access_tokens")
+}

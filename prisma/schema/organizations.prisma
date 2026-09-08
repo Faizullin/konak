@@ -5,15 +5,25 @@
 // string columns; the allowed values live in `features/*/model`.
 
 model Organization {
-  id          Int                  @id @default(autoincrement())
-  name        String
-  slug        String               @unique
-  description String?
-  ownerId     String
-  createdAt   DateTime             @default(now())
-  updatedAt   DateTime             @updatedAt
-  owner       User                 @relation("OrganizationOwner", fields: [ownerId], references: [id], onDelete: Cascade)
-  members     OrganizationMember[]
+  id                     Int                     @id @default(autoincrement())
+  name                   String
+  slug                   String                  @unique
+  description            String?
+  ownerId                String
+  createdAt              DateTime                @default(now())
+  updatedAt              DateTime                @updatedAt
+  owner                  User                    @relation("OrganizationOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  members                OrganizationMember[]
+  people                 Person[]
+  companies              Company[]
+  activities             Activity[]
+  tags                   Tag[]
+  attachments            Attachment[]
+  customFieldDefinitions CustomFieldDefinition[]
+  auditLogs              AuditLog[]
+  outboxTasks            OutboxTask[]
+  properties             Property[]
+  numberSeries           NumberSeries[]
 
   @@index([ownerId])
   @@index([slug])
@@ -21,13 +31,16 @@ model Organization {
 }
 
 model OrganizationMember {
-  id             Int          @id @default(autoincrement())
-  organizationId Int
-  userId         String
-  role           String       @default("MEMBER")
-  joinedAt       DateTime     @default(now())
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                Int                @id @default(autoincrement())
+  organizationId    Int
+  userId            String
+  role              String             @default("MEMBER")
+  joinedAt          DateTime           @default(now())
+  organization      Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  housekeepingTasks HousekeepingTask[] @relation("HousekeepingAssignee")
+  reportedIssues    MaintenanceIssue[] @relation("MaintenanceReporter")
+  assignedIssues    MaintenanceIssue[] @relation("MaintenanceAssignee")
 
   @@unique([organizationId, userId])
   @@index([organizationId])

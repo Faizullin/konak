@@ -26,6 +26,14 @@ import prisma from "../src/server/db";
 // that appears in a breach corpus, which "password123" very much does.
 const PASSWORD = "konak-demo-pw";
 
+/** ISO 4217. `minorUnits` is what keeps integer money arithmetic honest. */
+const CURRENCIES = [
+  { code: "USD", name: "US Dollar", symbol: "$", minorUnits: 2 },
+  { code: "EUR", name: "Euro", symbol: "€", minorUnits: 2 },
+  { code: "KZT", name: "Kazakhstani Tenge", symbol: "₸", minorUnits: 2 },
+  { code: "JPY", name: "Japanese Yen", symbol: "¥", minorUnits: 0 },
+];
+
 const USERS = [
   { email: "admin@konak.dev", name: "Ada Admin", role: UserRole.ADMIN },
   { email: "mod@konak.dev", name: "Mo Moderator", role: UserRole.MODERATOR },
@@ -63,7 +71,7 @@ async function main() {
   const owner = await prisma.user.findUniqueOrThrow({ where: { email: "admin@konak.dev" } });
   const member = await prisma.user.findUniqueOrThrow({ where: { email: "user@konak.dev" } });
 
-  await prisma.organization.upsert({
+  const organization = await prisma.organization.upsert({
     where: { slug: "acme" },
     update: {},
     create: {
@@ -77,6 +85,300 @@ async function main() {
           { userId: member.id, role: OrgRole.MEMBER },
         ],
       },
+    },
+  });
+
+  // Reference data, not tenant data: the same list for every organization.
+  for (const currency of CURRENCIES) {
+    await prisma.currency.upsert({
+      where: { code: currency.code },
+      update: {},
+      create: currency,
+    });
+  }
+
+  // One property, one guest, and one of everything the platform tables carry —
+  // enough to prove the core composes before any reservation exists.
+  const property = await prisma.property.upsert({
+    where: { organizationId_slug: { organizationId: organization.id, slug: "seaside" } },
+    update: {},
+    create: {
+      organization: { connect: { id: organization.id } },
+      name: "Seaside Hotel",
+      slug: "seaside",
+      timezone: "Europe/Berlin",
+      currencyCode: "EUR",
+      createdById: owner.id,
+      updatedById: owner.id,
+      address: {
+        create: { line1: "1 Harbour Road", city: "Kiel", countryCode: "DE" },
+      },
+    },
+  });
+
+  const guest = await prisma.person.upsert({
+    where: { organizationId_email: { organizationId: organization.id, email: "ada@example.com" } },
+    update: {},
+    create: {
+      organization: { connect: { id: organization.id } },
+      firstName: "Ada",
+      lastName: "Lovelace",
+      email: "ada@example.com",
+      phone: "+49 431 000000",
+      createdById: owner.id,
+      updatedById: owner.id,
+    },
+  });
+
+  const tag = await prisma.tag.upsert({
+    where: { organizationId_name: { organizationId: organization.id, name: "VIP" } },
+    update: {},
+    create: { organizationId: organization.id, name: "VIP", colour: "#c084fc" },
+  });
+
+  await prisma.entityTag.upsert({
+    where: { tagId_personId: { tagId: tag.id, personId: guest.id } },
+    update: {},
+    create: { tagId: tag.id, personId: guest.id },
+  });
+
+  // `clientEventId` is the idempotency key: re-running must not duplicate it.
+  await prisma.activity.upsert({
+    where: { clientEventId: "seed-activity-1" },
+    update: {},
+    create: {
+      organizationId: organization.id,
+      type: "NOTE",
+      subject: "Prefers a quiet room away from the lift",
+      personId: guest.id,
+      propertyId: property.id,
+      ownerUserId: owner.id,
+      createdById: owner.id,
+      clientEventId: "seed-activity-1",
+    },
+  });
+
+  // The PMS core, end to end: a type with two rooms, a plan that prices it, and
+  // one booked stay — enough to prove the chain holds before any UI exists.
+  const roomType = await prisma.roomType.upsert({
+    where: { propertyId_code: { propertyId: property.id, code: "DBL" } },
+    update: {},
+    create: {
+      propertyId: property.id,
+      name: "Double Room",
+      code: "DBL",
+      baseOccupancy: 2,
+      maxOccupancy: 3,
+      maxAdults: 2,
+      maxChildren: 1,
+      createdById: owner.id,
+      updatedById: owner.id,
+    },
+  });
+
+  for (const number of ["101", "102"]) {
+    await prisma.room.upsert({
+      where: { propertyId_number: { propertyId: property.id, number } },
+      update: {},
+      create: {
+        propertyId: property.id,
+        roomTypeId: roomType.id,
+        number,
+        floor: "1",
+        createdById: owner.id,
+        updatedById: owner.id,
+      },
+    });
+  }
+
+  const ratePlan = await prisma.ratePlan.upsert({
+    where: { propertyId_code: { propertyId: property.id, code: "BAR" } },
+    update: {},
+    create: {
+      propertyId: property.id,
+      roomTypeId: roomType.id,
+      name: "Best Available Rate",
+      code: "BAR",
+      currencyCode: "EUR",
+      mealPlan: "BREAKFAST",
+      extraAdultMinor: 2500,
+      createdById: owner.id,
+      updatedById: owner.id,
+    },
+  });
+
+  // Date-only: UTC midnight of the property-local day.
+  const day = (offset: number) => {
+    const d = new Date(Date.UTC(2026, 8, 14 + offset));
+    return d;
+  };
+
+  for (let i = 0; i < 3; i += 1) {
+    await prisma.rateCalendar.upsert({
+      where: {
+        ratePlanId_roomTypeId_date: {
+          ratePlanId: ratePlan.id,
+          roomTypeId: roomType.id,
+          date: day(i),
+        },
+      },
+      update: {},
+      create: {
+        ratePlanId: ratePlan.id,
+        roomTypeId: roomType.id,
+        date: day(i),
+        priceMinor: 12000,
+      },
+    });
+
+    await prisma.roomTypeInventory.upsert({
+      where: { roomTypeId_date: { roomTypeId: roomType.id, date: day(i) } },
+      update: {},
+      create: { roomTypeId: roomType.id, date: day(i), totalRooms: 2 },
+    });
+  }
+
+  await prisma.numberSeries.upsert({
+    where: {
+      organizationId_propertyId_kind: {
+        organizationId: organization.id,
+        propertyId: property.id,
+        kind: "RESERVATION",
+      },
+    },
+    update: {},
+    create: {
+      organizationId: organization.id,
+      propertyId: property.id,
+      kind: "RESERVATION",
+      prefix: "SEA-",
+      period: "2026",
+      counter: 1,
+    },
+  });
+
+  await prisma.reservation.upsert({
+    where: { propertyId_reference: { propertyId: property.id, reference: "SEA-00001" } },
+    update: {},
+    create: {
+      propertyId: property.id,
+      reference: "SEA-00001",
+      status: "CONFIRMED",
+      source: "DIRECT",
+      bookerPersonId: guest.id,
+      currencyCode: "EUR",
+      totalMinor: 24000,
+      createdById: owner.id,
+      updatedById: owner.id,
+      stays: {
+        create: [
+          {
+            roomTypeId: roomType.id,
+            ratePlanId: ratePlan.id,
+            roomId: null,
+            status: "CONFIRMED",
+            checkIn: day(0),
+            checkOut: day(2),
+            adults: 2,
+            currencyCode: "EUR",
+            totalMinor: 24000,
+          },
+        ],
+      },
+      guests: { create: [{ personId: guest.id, isPrimary: true }] },
+    },
+  });
+
+  // The money chain: a bill, its frozen lines, and what was paid against it.
+  const reservation = await prisma.reservation.findUniqueOrThrow({
+    where: { propertyId_reference: { propertyId: property.id, reference: "SEA-00001" } },
+    include: { stays: true },
+  });
+  const stay = reservation.stays[0];
+
+  const folio = await prisma.folio.upsert({
+    where: { propertyId_number: { propertyId: property.id, number: "SEA-F-00001" } },
+    update: {},
+    create: {
+      propertyId: property.id,
+      reservationId: reservation.id,
+      number: "SEA-F-00001",
+      currencyCode: "EUR",
+      createdById: owner.id,
+      updatedById: owner.id,
+      lines: {
+        create: [
+          {
+            type: "ROOM",
+            description: "Double Room — 14 Sep",
+            roomStayId: stay?.id,
+            serviceDate: day(0),
+            unitPriceMinor: 12000,
+            taxRateBp: 700,
+            taxAmountMinor: 785,
+            amountMinor: 12000,
+            postedById: owner.id,
+          },
+          {
+            type: "ROOM",
+            description: "Double Room — 15 Sep",
+            roomStayId: stay?.id,
+            serviceDate: day(1),
+            unitPriceMinor: 12000,
+            taxRateBp: 700,
+            taxAmountMinor: 785,
+            amountMinor: 12000,
+            postedById: owner.id,
+          },
+          {
+            type: "CITY_TAX",
+            description: "City tax — 2 nights × 2 guests",
+            quantity: 4,
+            unitPriceMinor: 200,
+            amountMinor: 800,
+            postedById: owner.id,
+          },
+        ],
+      },
+    },
+  });
+
+  await prisma.payment.upsert({
+    where: { idempotencyKey: "seed-payment-1" },
+    update: {},
+    create: {
+      propertyId: property.id,
+      folioId: folio.id,
+      reservationId: reservation.id,
+      method: "CARD",
+      status: "CAPTURED",
+      amountMinor: 24800,
+      currencyCode: "EUR",
+      idempotencyKey: "seed-payment-1",
+      capturedAt: new Date(),
+      createdById: owner.id,
+    },
+  });
+
+  // The ops chain: check-out leaves a room dirty and a task behind it.
+  const room101 = await prisma.room.findUniqueOrThrow({
+    where: { propertyId_number: { propertyId: property.id, number: "101" } },
+  });
+  const ownerMember = await prisma.organizationMember.findUniqueOrThrow({
+    where: { organizationId_userId: { organizationId: organization.id, userId: owner.id } },
+  });
+
+  await prisma.housekeepingTask.upsert({
+    where: { clientEventId: "seed-task-1" },
+    update: {},
+    create: {
+      propertyId: property.id,
+      roomId: room101.id,
+      type: "DEPARTURE_CLEAN",
+      dueDate: day(2),
+      assignedMemberId: ownerMember.id,
+      clientEventId: "seed-task-1",
+      createdById: owner.id,
     },
   });
 

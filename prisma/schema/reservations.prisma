@@ -1,0 +1,130 @@
+// reservations
+//
+// A `Reservation` is the commercial agreement; a `RoomStay` is one room type
+// for one date range inside it. A family taking two rooms is one reservation
+// and two stays, which is also why the money lives on both.
+//
+// `status` is a state machine, not a label — the legal transitions and their
+// side effects (inventory, folio, keycard, housekeeping) live in
+// `features/reservations/model`. A free-form column lets a room check out twice.
+//
+// **The overlap invariant.** Two confirmed stays must never hold the same
+// `roomId` on overlapping nights. On Postgres that is one `EXCLUDE USING gist`
+// over a range; SQLite cannot express it, so until the switch it is a check
+// inside a transaction, with a real race window between check and write. That
+// window is the reason the switch is not optional before go-live.
+
+model Reservation {
+  id         Int    @id @default(autoincrement())
+  propertyId Int
+  // Quoted outside the building — a guest's confirmation link, a channel's
+  // reference. Sequential ids would leak how many bookings the hotel takes.
+  publicId   String @unique @default(uuid(7))
+  // Human-readable and quoted to the guest. Comes from a `NumberSeries`, never
+  // from `count() + 1`.
+  reference  String
+  status     String @default("ENQUIRY") // ENQUIRY, CONFIRMED, CHECKED_IN, CHECKED_OUT, CANCELLED, NO_SHOW
+  source     String @default("DIRECT") // DIRECT, WIDGET, PHONE, WALK_IN, OTA
+
+  // Which channel sold it, and that channel's own id. The pair is unique so a
+  // webhook or a poll can be replayed without creating the booking twice.
+  channelCode String?
+  externalRef String?
+
+  bookerPersonId Int?
+  companyId      Int?
+
+  currencyCode String
+  totalMinor   Int    @default(0)
+  paidMinor    Int    @default(0)
+
+  bookedAt           DateTime  @default(now())
+  cancelledAt        DateTime?
+  cancellationReason String?
+  notes              String?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdById String?
+  updatedById String?
+
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  booker   Person?  @relation("ReservationBooker", fields: [bookerPersonId], references: [id], onDelete: SetNull)
+  company  Company? @relation(fields: [companyId], references: [id], onDelete: SetNull)
+
+  stays             RoomStay[]
+  guests            ReservationGuest[]
+  folios            Folio[]
+  payments          Payment[]
+  accessCredentials AccessCredential[]
+  guestAccessTokens GuestAccessToken[]
+
+  @@unique([propertyId, reference])
+  @@unique([propertyId, channelCode, externalRef])
+  @@index([propertyId, status])
+  @@index([propertyId, bookedAt])
+  @@index([bookerPersonId])
+  @@map("reservations")
+}
+
+model RoomStay {
+  id            Int  @id @default(autoincrement())
+  reservationId Int
+  roomTypeId    Int
+  // Assigned at or before check-in. Null is normal for a future booking: the
+  // guest bought a type, not this room.
+  roomId        Int?
+  ratePlanId    Int?
+
+  // Mirrors the reservation, and exists so the overlap constraint can be
+  // written: a database constraint cannot read another table's column. It is
+  // also honest modelling — one room of a multi-room booking can be cancelled
+  // while the rest of the reservation stands.
+  status String @default("ENQUIRY") // see features/reservations/model
+
+  // Date-only, property-local midnight. `checkOut` is exclusive: a stay of
+  // 3rd→4th is one night, which is what makes night counting subtraction.
+  checkIn  DateTime
+  checkOut DateTime
+
+  adults   Int @default(1)
+  children Int @default(0)
+
+  currencyCode String
+  totalMinor   Int    @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  reservation       Reservation        @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+  roomType          RoomType           @relation(fields: [roomTypeId], references: [id], onDelete: Restrict)
+  room              Room?              @relation(fields: [roomId], references: [id], onDelete: SetNull)
+  ratePlan          RatePlan?          @relation(fields: [ratePlanId], references: [id], onDelete: SetNull)
+  folioLines        FolioLine[]
+  accessCredentials AccessCredential[]
+
+  @@index([roomTypeId, checkIn, checkOut])
+  @@index([roomId, checkIn, checkOut])
+  @@index([reservationId])
+  @@map("room_stays")
+}
+
+// Who is actually staying, which is not always who booked. Immigration
+// registration files one record per guest, so this is the table that module
+// reads — not `Reservation.booker`.
+model ReservationGuest {
+  id            Int       @id @default(autoincrement())
+  reservationId Int
+  personId      Int
+  isPrimary     Boolean   @default(false)
+  // Set when this guest's registration was filed with the authorities.
+  registeredAt  DateTime?
+
+  reservation   Reservation         @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+  person        Person              @relation(fields: [personId], references: [id], onDelete: Restrict)
+  registrations GuestRegistration[]
+
+  @@unique([reservationId, personId])
+  @@index([personId])
+  @@map("reservation_guests")
+}

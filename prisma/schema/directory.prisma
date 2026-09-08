@@ -1,0 +1,119 @@
+// directory
+//
+// The people and companies an organization deals with. Guests, corporate
+// clients, agencies — one directory, because a person who books a room and a
+// person on a client account are the same person.
+//
+// Scoped to the organization, not the property: a guest belongs to the tenant
+// and may stay at any of its properties.
+//
+// `customFields` holds JSON in a String column — SQLite has no Json type. The
+// parser lives in `features/directory/model`.
+
+model Person {
+  id             Int       @id @default(autoincrement())
+  organizationId Int
+  firstName      String
+  lastName       String
+  // Primary contact only. A second email would want its own table; nothing
+  // needs one yet, and `email` is also the dedupe key below.
+  email          String?
+  phone          String?
+  dateOfBirth    DateTime?
+  notes          String?
+  customFields   String?
+  addressId      Int?
+  archivedAt     DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  createdById    String?
+  updatedById    String?
+
+  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  address            Address?            @relation(fields: [addressId], references: [id], onDelete: SetNull)
+  companies          PersonCompany[]
+  activities         Activity[]
+  entityTags         EntityTag[]
+  attachments        Attachment[]
+  reservationsBooked Reservation[]       @relation("ReservationBooker")
+  reservationGuests  ReservationGuest[]
+  identityDocuments  IdentityDocument[]
+  guestRegistrations GuestRegistration[]
+  accessCredentials  AccessCredential[]
+  guestAccessTokens  GuestAccessToken[]
+
+  @@unique([organizationId, email])
+  @@index([organizationId, archivedAt])
+  @@index([organizationId, lastName])
+  @@map("people")
+}
+
+model Company {
+  id             Int       @id @default(autoincrement())
+  organizationId Int
+  name           String
+  legalName      String?
+  taxId          String?
+  email          String?
+  phone          String?
+  website        String?
+  notes          String?
+  customFields   String?
+  addressId      Int?
+  archivedAt     DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  createdById    String?
+  updatedById    String?
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  address      Address?        @relation(fields: [addressId], references: [id], onDelete: SetNull)
+  people       PersonCompany[]
+  activities   Activity[]
+  entityTags   EntityTag[]
+  attachments  Attachment[]
+  reservations Reservation[]
+  folios       Folio[]
+
+  @@unique([organizationId, taxId])
+  @@index([organizationId, archivedAt])
+  @@index([organizationId, name])
+  @@map("companies")
+}
+
+// Who works where. A person may be attached to several companies — a travel
+// agent booking for two agencies is the ordinary case, not the exception.
+model PersonCompany {
+  id        Int     @id @default(autoincrement())
+  personId  Int
+  companyId Int
+  jobTitle  String?
+  isPrimary Boolean @default(false)
+
+  person  Person  @relation(fields: [personId], references: [id], onDelete: Cascade)
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([personId, companyId])
+  @@index([companyId])
+  @@map("person_companies")
+}
+
+// Referenced by whoever has one, rather than pointing back at them: an address
+// belongs to exactly one subject, and the subject is what gets looked up.
+model Address {
+  id          Int      @id @default(autoincrement())
+  line1       String
+  line2       String?
+  city        String?
+  region      String?
+  postalCode  String?
+  countryCode String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  people     Person[]
+  companies  Company[]
+  properties Property[]
+
+  @@map("addresses")
+}

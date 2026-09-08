@@ -1,0 +1,121 @@
+// compliance
+//
+// Fiscal receipts and guest registration: the two things a hotel does because
+// the law says so, not because a guest asked.
+//
+// Both are **jurisdictional**. `provider` names the country adapter that owns
+// the format and the endpoint — nothing generic can be built here, and the
+// interface is designed for one country and generalised only when a second is
+// paid for.
+//
+// Both keep `requestJson` and `responseJson`. That is not debugging: when an
+// authority disputes a filing, the record of exactly what was sent and what
+// came back is the defence.
+
+model FiscalReceipt {
+  id         Int  @id @default(autoincrement())
+  propertyId Int
+  paymentId  Int?
+  folioId    Int?
+
+  provider String // KZ_OFD, RU_OFD, … — the country adapter
+  kind     String @default("SALE") // SALE, REFUND, CORRECTION
+  status   String @default("PENDING") // PENDING, REGISTERED, FAILED
+
+  // Issued by the authority, not by us. Null until registration succeeds.
+  number       String?
+  fiscalSign   String?
+  registeredAt DateTime?
+
+  requestJson    String
+  responseJson   String?
+  lastError      String?
+  // A retry after a timeout must not register the sale twice — the money is
+  // already taken and the receipt is a legal document.
+  idempotencyKey String? @unique
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdById String?
+
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  payment  Payment? @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  folio    Folio?   @relation(fields: [folioId], references: [id], onDelete: SetNull)
+
+  @@unique([propertyId, provider, number])
+  @@index([propertyId, status])
+  @@map("fiscal_receipts")
+}
+
+// A passport, kept apart from `Person` on purpose.
+//
+// This is the most sensitive row in the database. Separating it means access
+// can be audited and refused independently of reading a guest's name, and
+// `purgeAfter` can delete the document without deleting the guest.
+//
+// `numberEncrypted` is named for the obligation: it must hold ciphertext.
+// Application-level encryption is **not yet implemented** — until it is, this
+// column is a known gap, not a solved problem.
+model IdentityDocument {
+  id       Int    @id @default(autoincrement())
+  personId Int
+  type     String // PASSPORT, ID_CARD, DRIVING_LICENCE, VISA, RESIDENCE_PERMIT
+
+  numberEncrypted String
+  // Last four characters, in clear, so a receptionist can confirm a document
+  // without the system revealing it.
+  numberLast4     String?
+  issuingCountry  String
+  issuedAt        DateTime?
+  expiresAt       DateTime?
+
+  // The scan. Its consent lifecycle lives on the attachment.
+  attachmentId Int?
+  // When retention expires. A purge job reads this column; nothing else should.
+  purgeAfter   DateTime?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdById String?
+
+  person     Person      @relation(fields: [personId], references: [id], onDelete: Cascade)
+  attachment Attachment? @relation(fields: [attachmentId], references: [id], onDelete: SetNull)
+
+  @@index([personId])
+  @@index([purgeAfter])
+  @@map("identity_documents")
+}
+
+// One filing per guest, not per reservation — a family of four is four
+// registrations, which is why this points at `ReservationGuest`.
+model GuestRegistration {
+  id                 Int  @id @default(autoincrement())
+  propertyId         Int
+  reservationGuestId Int?
+  personId           Int
+
+  provider String // KZ_MIGRATION, RU_MVD, … — the country adapter
+  status   String @default("PENDING") // PENDING, SUBMITTED, ACCEPTED, REJECTED
+
+  referenceNumber String?
+  submittedAt     DateTime?
+  acceptedAt      DateTime?
+  rejectedReason  String?
+
+  requestJson    String?
+  responseJson   String?
+  lastError      String?
+  idempotencyKey String? @unique
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdById String?
+
+  property         Property          @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  reservationGuest ReservationGuest? @relation(fields: [reservationGuestId], references: [id], onDelete: SetNull)
+  person           Person            @relation(fields: [personId], references: [id], onDelete: Restrict)
+
+  @@index([propertyId, status])
+  @@index([personId])
+  @@map("guest_registrations")
+}

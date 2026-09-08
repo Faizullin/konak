@@ -1,0 +1,56 @@
+// properties
+//
+// A property is one hotel, hostel or rental. An organization is the tenant that
+// pays for the software and may own several — a management company with four
+// hotels is one Organization and four Properties.
+//
+// Every domain table above this one carries `propertyId`; `propertyId` resolves
+// to an organization, which is what the existing member guards check.
+
+model Property {
+  id              Int       @id @default(autoincrement())
+  organizationId  Int
+  name            String
+  slug            String
+  description     String?
+  // IANA zone. Opening hours and a stay's dates are meaningless without it, and
+  // it is what makes a nightly rate land on the right calendar day.
+  timezone        String    @default("UTC")
+  // ISO 4217. A fixed vocabulary the code branches on, so a column rather than
+  // a per-tenant lookup table.
+  currencyCode    String    @default("USD")
+  // Minutes past midnight, property-local.
+  checkInMinutes  Int       @default(840)
+  checkOutMinutes Int       @default(660)
+  addressId       Int?
+  archivedAt      DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  createdById     String?
+  updatedById     String?
+
+  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  address            Address?            @relation(fields: [addressId], references: [id], onDelete: SetNull)
+  activities         Activity[]
+  entityTags         EntityTag[]
+  attachments        Attachment[]
+  roomTypes          RoomType[]
+  rooms              Room[]
+  ratePlans          RatePlan[]
+  reservations       Reservation[]
+  numberSeries       NumberSeries[]
+  folios             Folio[]
+  payments           Payment[]
+  housekeepingTasks  HousekeepingTask[]
+  maintenanceIssues  MaintenanceIssue[]
+  channelConnections ChannelConnection[]
+  fiscalReceipts     FiscalReceipt[]
+  guestRegistrations GuestRegistration[]
+  lockDevices        LockDevice[]
+  accessCredentials  AccessCredential[]
+  guestAccessTokens  GuestAccessToken[]
+
+  @@unique([organizationId, slug])
+  @@index([organizationId, archivedAt])
+  @@map("properties")
+}

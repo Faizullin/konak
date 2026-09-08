@@ -1,0 +1,123 @@
+// inventory
+//
+// The decision the whole system turns on: **a guest books a room type, not a
+// room.** Availability is counted against `RoomType`; a physical `Room` is
+// assigned at or before check-in. Rates, restrictions and channel mappings all
+// hang off the type, never off a room — model it the other way and every rate
+// plan and every OTA push has to be rewritten.
+//
+// Date columns here are date-only: UTC midnight of the property-local day. A
+// nightly rate belongs to a calendar day, not an instant.
+
+model RoomType {
+  id            Int     @id @default(autoincrement())
+  propertyId    Int
+  // Named by the public availability widget, which has no session to check.
+  publicId      String  @unique @default(uuid(7))
+  name          String
+  // Stable short code. This is what a channel manager maps to an OTA's own id,
+  // so it outlives renaming the type.
+  code          String
+  description   String?
+  // The rate is quoted for `baseOccupancy`; anyone beyond it is priced by the
+  // plan's extra-person amounts.
+  baseOccupancy Int     @default(2)
+  maxOccupancy  Int     @default(2)
+  maxAdults     Int     @default(2)
+  maxChildren   Int     @default(0)
+  sizeSqm       Int?
+  position      Int     @default(0)
+
+  archivedAt  DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdById String?
+  updatedById String?
+
+  property        Property            @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  rooms           Room[]
+  inventory       RoomTypeInventory[]
+  holds           InventoryHold[]
+  stays           RoomStay[]
+  channelMappings ChannelMapping[]
+
+  @@unique([propertyId, code])
+  @@index([propertyId, archivedAt])
+  @@map("room_types")
+}
+
+model Room {
+  id         Int     @id @default(autoincrement())
+  propertyId Int
+  roomTypeId Int
+  number     String
+  floor      String?
+  // Housekeeping state. Set to DIRTY automatically at check-out; OUT_OF_ORDER
+  // is what removes the room from the count in `RoomTypeInventory`.
+  status     String  @default("CLEAN") // CLEAN, DIRTY, IN_PROGRESS, INSPECTED, OUT_OF_ORDER
+  notes      String?
+
+  archivedAt  DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdById String?
+  updatedById String?
+
+  property          Property           @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  roomType          RoomType           @relation(fields: [roomTypeId], references: [id], onDelete: Restrict)
+  stays             RoomStay[]
+  housekeepingTasks HousekeepingTask[]
+  maintenanceIssues MaintenanceIssue[]
+  lockDevices       LockDevice[]
+
+  @@unique([propertyId, number])
+  @@index([propertyId, roomTypeId])
+  @@index([propertyId, status])
+  @@map("rooms")
+}
+
+// One row per room type per day: how many rooms exist that night, and how many
+// staff have deliberately withheld.
+//
+// `soldRooms` is **not** stored. Sold is derived from confirmed stays, because
+// a cached count drifts the first time a channel cancels and nobody notices —
+// and a wrong count here is an overbooking. What a channel manager pushes is
+// `total - blocked - sold`, computed at push time.
+model RoomTypeInventory {
+  id           Int      @id @default(autoincrement())
+  roomTypeId   Int
+  date         DateTime
+  totalRooms   Int
+  blockedRooms Int      @default(0)
+  updatedAt    DateTime @updatedAt
+
+  roomType RoomType @relation(fields: [roomTypeId], references: [id], onDelete: Cascade)
+
+  @@unique([roomTypeId, date])
+  @@index([date])
+  @@map("room_type_inventory")
+}
+
+// A slot held while someone is still paying.
+//
+// A uniqueness or exclusion constraint refuses the *second writer*; a hold
+// stops the second guest ever reaching the payment page. `releaseAt` is what
+// makes an abandoned checkout give the room back without a human.
+model InventoryHold {
+  id         Int      @id @default(autoincrement())
+  roomTypeId Int
+  checkIn    DateTime
+  checkOut   DateTime
+  quantity   Int      @default(1)
+  // The checkout session this hold belongs to; unique so a refresh re-uses it
+  // rather than holding a second room.
+  holdKey    String   @unique
+  releaseAt  DateTime
+  createdAt  DateTime @default(now())
+
+  roomType RoomType @relation(fields: [roomTypeId], references: [id], onDelete: Cascade)
+
+  @@index([roomTypeId, checkIn, checkOut])
+  @@index([releaseAt])
+  @@map("inventory_holds")
+}

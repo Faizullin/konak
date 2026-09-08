@@ -1,0 +1,72 @@
+// housekeeping
+//
+// `Room.status` is what a room *is* right now; these are the work items that
+// change it. Keeping them apart matters: a room can be DIRTY with nobody
+// assigned, and a task can be done by someone who never touched the status.
+//
+// Assignment is to an `OrganizationMember`, not a `User` — a cleaner's access
+// to this property is what makes them assignable, and revoking membership
+// should unassign them.
+
+model HousekeepingTask {
+  id         Int    @id @default(autoincrement())
+  propertyId Int
+  roomId     Int
+  type       String @default("DEPARTURE_CLEAN") // DEPARTURE_CLEAN, STAY_OVER, DEEP_CLEAN, INSPECTION, TURNDOWN
+  status     String @default("PENDING") // PENDING, IN_PROGRESS, DONE, BLOCKED
+  priority   Int    @default(0)
+
+  // Date-only, property-local. A task belongs to a working day, not an instant.
+  dueDate          DateTime
+  assignedMemberId Int?
+  startedAt        DateTime?
+  completedAt      DateTime?
+  notes            String?
+
+  // Written on a phone that may be offline in a stairwell, and reconciled when
+  // it reaches signal again.
+  clientEventId String? @unique
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdById String?
+
+  property Property            @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  room     Room                @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  assignee OrganizationMember? @relation("HousekeepingAssignee", fields: [assignedMemberId], references: [id], onDelete: SetNull)
+
+  @@index([propertyId, dueDate, status])
+  @@index([assignedMemberId, status])
+  @@index([roomId, dueDate])
+  @@map("housekeeping_tasks")
+}
+
+// A broken thing, reported from the floor. `BLOCKING` is the severity that
+// takes the room OUT_OF_ORDER, which removes it from `RoomTypeInventory` — so
+// this table can cost the hotel a sale, and that is the intended behaviour.
+model MaintenanceIssue {
+  id          Int     @id @default(autoincrement())
+  propertyId  Int
+  roomId      Int?
+  title       String
+  description String?
+  severity    String  @default("MEDIUM") // LOW, MEDIUM, HIGH, BLOCKING
+  status      String  @default("OPEN") // OPEN, IN_PROGRESS, RESOLVED, WONT_FIX
+
+  reportedByMemberId Int?
+  assignedMemberId   Int?
+  resolvedAt         DateTime?
+  resolutionNotes    String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  property   Property            @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  room       Room?               @relation(fields: [roomId], references: [id], onDelete: SetNull)
+  reportedBy OrganizationMember? @relation("MaintenanceReporter", fields: [reportedByMemberId], references: [id], onDelete: SetNull)
+  assignee   OrganizationMember? @relation("MaintenanceAssignee", fields: [assignedMemberId], references: [id], onDelete: SetNull)
+
+  @@index([propertyId, status, severity])
+  @@index([roomId, status])
+  @@map("maintenance_issues")
+}
