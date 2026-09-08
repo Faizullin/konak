@@ -9,9 +9,10 @@ layout from `web_backend` without any of its domain code.
 ```bash
 npm install
 cp .env.example .env
-npx auth@latest secret       # paste into BETTER_AUTH_SECRET
-npm run db:migrate           # creates dev.db
-npm run db:seed              # demo users + one organization
+npx auth@latest secret                            # paste into BETTER_AUTH_SECRET
+docker compose -f docker/compose/db.yml up -d     # Postgres for development
+npm run db:migrate                                # create the schema
+npm run db:seed                                   # demo users, property, booking
 npm run dev
 ```
 
@@ -58,7 +59,8 @@ After changing anything about the user model in `src/server/auth.ts`, run
 
 ### Database
 
-SQLite, so there is no service to run — the whole database is `dev.db`.
+Postgres, in Docker. `docker/compose/db.yml` is development only — no backups,
+no tuning, and the password is in the repository on purpose.
 
 ```bash
 npm run db:migrate   # create + apply a migration
@@ -67,10 +69,9 @@ npm run db:seed      # demo data
 npm run db:studio    # browse the data
 ```
 
-Swapping to Postgres later is three edits: `provider` in
-`prisma/schema/_base.prisma`, the adapter in `src/server/db.ts`
-(`@prisma/adapter-pg` instead of `@prisma/adapter-better-sqlite3`), and the
-`provider` passed to `prismaAdapter` in `src/server/auth.ts`.
+Postgres rather than SQLite because two stays of the same room may not share a
+night, and that is an **exclusion constraint** SQLite cannot express. The
+migration `*_reservation_overlap` carries it.
 
 ## Documentation
 

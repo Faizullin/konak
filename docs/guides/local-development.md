@@ -69,8 +69,8 @@ so the UI cannot advertise a provider the server did not register.
 
 ## Database
 
-SQLite, so there is no service to run — the whole database is `dev.db`,
-and deleting it is a valid reset.
+Postgres in Docker — see [The database](#the-database) below for the compose
+file. Start it before any Prisma command.
 
 ```bash
 npm run db:migrate   # prisma migrate dev — create and apply a migration
@@ -108,33 +108,42 @@ Re-running is a no-op: existing users are skipped and the organization is
 upserted. The script refuses to run when `NODE_ENV=production` — the shared
 password is a development convenience only.
 
-### SQLite has no enums
+### The database
 
-`provider = "sqlite"` cannot express a Prisma `enum`. `User.role` and
-`OrganizationMember.role` are therefore `String` columns, and the allowed
-values live in the feature's `model/` as a const object plus a zod schema. The
-database will accept any string; the schema is what stops one getting in.
+Postgres, in Docker, for development:
+
+```bash
+docker compose -f docker/compose/db.yml up -d     # start
+docker compose -f docker/compose/db.yml down      # stop, keep the data
+docker compose -f docker/compose/db.yml down -v   # stop, drop the data
+```
+
+Postgres rather than SQLite because the reservation overlap invariant is an
+**exclusion constraint** — two stays of the same room may not share a night —
+and SQLite cannot express one. `prisma/migrations/*_reservation_overlap`
+carries it, along with the `btree_gist` extension that lets an equality column
+share a GiST index with a range.
+
+`RoomStay.status` is denormalised from the reservation for that constraint: a
+constraint cannot read another table's column.
+
+### Enums are still string columns
+
+The role columns are `String`, and the allowed values live in the feature's
+`model/` as a const object plus a zod schema. Postgres could hold real enums
+now, but `model/` is already the enforcement, is tested, and answers "no" to an
+unrecognised value rather than throwing. Converting would be churn against a
+hole that is not open — and some of those columns are candidates for per-tenant
+lookup tables instead, which is a decision per field.
 
 ### User ids are strings
 
 Better Auth generates `User.id`, and it is a string — not an integer, and not a
-uuid. Never validate one with `z.uuid()`. Organizations still key on
-autoincrementing integers; only the user side is string-keyed, so a
-`userId`/`organizationId` pair mixes the two.
+uuid. Never validate one with `z.uuid()`. Everything else keys on
+autoincrementing integers, so a `userId`/`organizationId` pair mixes the two.
 
-### Moving to Postgres
-
-Three edits, plus a fresh migration:
-
-1. `prisma/schema/_base.prisma` — `provider = "postgresql"`.
-2. `src/server/db.ts` — `@prisma/adapter-pg` (`PrismaPg`) instead of
-   `@prisma/adapter-better-sqlite3`.
-3. `src/server/auth.ts` — the `provider` passed to `prismaAdapter`. It is a
-   separate string from the schema's and will not follow it.
-
-Then the string role columns can become real enums, and `mode: "insensitive"`
-becomes available on the `contains` filters in the routers (SQLite ignores it,
-which is why it is absent here).
+Rows that are quoted outside the building carry a separate
+`publicId` (UUIDv7) — see [architecture.md](architecture.md#table-conventions).
 
 ## Running scripts that import feature code
 

@@ -26,7 +26,7 @@ src/
 │   ├── (app)/    /dashboard/* — the session guard + sidebar shell
 │   └── api/      route handlers (tRPC transport, Better Auth catch-all)
 ├── features/     THE DOMAIN — vertical slices, each complete
-│   └── <name>/
+│   └── <name>/       identity · organizations · directory · platform
 │       ├── server/   router, services, db access        ("server-only")
 │       ├── client/   "use client" components and hooks
 │       ├── model/    zod schemas, types, constants — isomorphic
@@ -88,9 +88,11 @@ Anything both sides need to agree on. In practice that is three things:
   `signInSchema` and `signUpSchema` are the same relationship with Better Auth
   instead of a router: the server re-validates, and the schema exists so the
   form cannot accept a password the server will reject.
-- **Enums.** SQLite has no enum type, so `UserRole` and `OrgRole` are string
-  columns and the values live in `model/`. One definition the server validates
-  against and the client renders from.
+- **Enums.** `UserRole`, `OrgRole` and the status columns are `String`, with
+  the values in `model/`. Postgres could hold real enums; `model/` is the
+  enforcement anyway, is tested, and answers "no" to an unrecognised value
+  rather than throwing — see
+  [local-development.md](local-development.md).
 - **Permissions.** A statement table declares which resources exist and what
   each role may do with them; `canManageMembers(role)` and its siblings are the
   named questions asked of it. The router calls them to decide and the UI calls
@@ -143,6 +145,60 @@ seam a second surface mounts beside — `/portal`, `/admin` — without every ne
 top-level route risking a collision with a public page.
 
 There are no `_components/` directories. Feature UI lives in the feature.
+
+## Table conventions
+
+Every table obeys these. A review rejects one that does not.
+
+1. **An aggregate root carries the tenant column** — `organizationId`, or
+   `propertyId`, which resolves to one. Child rows inherit it through a
+   required parent rather than duplicating it: a copied scope can disagree with
+   its parent, which is worse than the join it saves.
+2. **Integer autoincrement keys.** `User.id` is a Better Auth string, and that
+   is the only exception.
+3. **`publicId String @unique @default(uuid(7))` on rows that escape the
+   building** — quoted to a guest, an OTA or the public widget. `id` joins,
+   `publicId` travels. `Property` and `Organization` need none: their `slug` is
+   already that. UUIDv7, not v4, so inserts keep index locality.
+4. **Audit columns**: `createdAt`, `updatedAt`, `createdById`, `updatedById`,
+   passed explicitly from `ctx.session.user.id` — never Prisma middleware.
+5. **An append-only `AuditLog` beside them**, whose actor is the *user* id, so
+   the trail survives a membership being deleted. "Who read this passport" is a
+   question the columns cannot answer.
+6. **Archive, never delete**: `archivedAt` nullable, filtered out of every list.
+7. **Money is integer minor units** plus a currency code. `Currency.minorUnits`
+   turns them back into a number — JPY has 0, and dividing by 100 everywhere is
+   right only by accident.
+8. **Time is UTC in the column**, with an IANA zone on the property. Dates that
+   mean a *day* are stored as UTC midnight of the property-local day.
+9. **Enum or lookup table, decided per field.** Code branches on it → a const in
+   `model/`. The customer edits the list → a per-tenant table.
+10. **Any row a client can create offline carries an idempotency key** —
+    `clientEventId` or `idempotencyKey`, unique.
+11. **Sequenced legal numbers come from `NumberSeries`**, consumed inside the
+    transaction that uses them — never `count() + 1`.
+12. **Index every foreign key and every tenant scope**, tenant first.
+13. **One Prisma file per domain.** Prisma concatenates `prisma/schema/`, so the
+    split is for readers.
+
+### What the database cannot hold
+
+Postgres holds one of these — overlapping stays, as an exclusion constraint.
+The rest it cannot express, so they live in `model/` as pure functions with
+tests, which is also the only way to test them without a database:
+
+- **Exactly one subject.** Activities, tags and attachments carry one nullable
+  foreign key per subject; zero is an orphan and two is ambiguous.
+- **No overlapping stays in one room.** Half-open `[checkIn, checkOut)`, so a
+  same-day turnover is legal and a shared night is not. The database enforces
+  this one too; `model/` is what lets the UI refuse before the round trip.
+- **Legal status transitions.** A reservation moves forward or ends; nothing
+  returns to an earlier state, because the side effects are not reversible by
+  flipping a column back.
+- **One property per row.** `RoomStay` names a reservation, a room type, a room
+  and a rate plan — all property-scoped, and nothing stops them disagreeing.
+- **Unguessable storage keys.** A passport scan at a path built from integers is
+  readable by anyone who can count.
 
 ## Naming
 

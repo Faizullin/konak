@@ -3,6 +3,13 @@
 How to work in this codebase. Guides describe how things **are** — if one
 disagrees with the code, the guide is wrong; fix it.
 
+Four documents sit beside these, each with one job and no overlap:
+[handoff](../handoff.md) is where to pick up, [todo](../todo.md) is what is
+next, [history](../history.md) is what shipped (append-only), and
+[plans](../plans/index.md) describe what is not built yet. **A plan carries no
+status**; when something ships it leaves the plan, what it taught moves into a
+guide, and the fact of it is appended to history.
+
 | Guide | Read it when |
 |---|---|
 | [architecture.md](architecture.md) | you are new, or unsure where a file goes |
