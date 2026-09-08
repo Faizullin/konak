@@ -1,6 +1,7 @@
 import "dotenv/config";
 import { UserRole } from "../src/features/identity/model";
 import { OrgRole } from "../src/features/organizations/model";
+import { newStorageKey } from "../src/features/platform/model";
 import { env } from "../src/env.mjs";
 import { auth } from "../src/server/auth";
 import prisma from "../src/server/db";
@@ -15,6 +16,15 @@ import prisma from "../src/server/db";
  * `import "dotenv/config"` is the one concession to running outside Next.js —
  * `env.mjs` reads `process.env`, and nothing has populated it in a bare `tsx`
  * process. `prisma.config.ts` does the same thing for the same reason.
+ *
+ * What is deliberately **not** seeded: rows that only a real flow produces —
+ * holds, outbox tasks, guest tokens, door credentials, fiscal receipts,
+ * registrations, channel connections, exchange rates. Faking them would make
+ * screens look finished while the flow that fills them does not exist.
+ *
+ * `identity_documents` is left empty on purpose and not merely by omission:
+ * `numberEncrypted` is named for an obligation the code does not yet meet, and
+ * seeding a passport number in clear would set exactly the wrong example.
  *
  * Import discipline: this reaches only into `src/server`, and the `model`
  * directory of a feature. Neither carries `import "server-only"`, so it runs
@@ -361,9 +371,14 @@ async function main() {
   });
 
   // The ops chain: check-out leaves a room dirty and a task behind it.
-  const room101 = await prisma.room.findUniqueOrThrow({
-    where: { propertyId_number: { propertyId: property.id, number: "101" } },
-  });
+  const [room101, room102] = await Promise.all([
+    prisma.room.findUniqueOrThrow({
+      where: { propertyId_number: { propertyId: property.id, number: "101" } },
+    }),
+    prisma.room.findUniqueOrThrow({
+      where: { propertyId_number: { propertyId: property.id, number: "102" } },
+    }),
+  ]);
   const ownerMember = await prisma.organizationMember.findUniqueOrThrow({
     where: { organizationId_userId: { organizationId: organization.id, userId: owner.id } },
   });
@@ -381,6 +396,143 @@ async function main() {
       createdById: owner.id,
     },
   });
+
+  // Assign the stay to a room, so the reservation grid has something to draw and
+  // the overlap constraint is actually exercised by the demo data.
+  await prisma.roomStay.updateMany({
+    where: { reservationId: reservation.id },
+    data: { roomId: room101.id },
+  });
+
+  // A corporate client, and the guest who books for them.
+  const company = await prisma.company.upsert({
+    where: { organizationId_taxId: { organizationId: organization.id, taxId: "DE123456789" } },
+    update: {},
+    create: {
+      organization: { connect: { id: organization.id } },
+      name: "Northwind Travel",
+      legalName: "Northwind Travel GmbH",
+      taxId: "DE123456789",
+      email: "bookings@northwind.example",
+      createdById: owner.id,
+      updatedById: owner.id,
+      address: { create: { line1: "9 Agency Street", city: "Hamburg", countryCode: "DE" } },
+    },
+  });
+
+  await prisma.personCompany.upsert({
+    where: { personId_companyId: { personId: guest.id, companyId: company.id } },
+    update: {},
+    create: {
+      personId: guest.id,
+      companyId: company.id,
+      jobTitle: "Travel Manager",
+      isPrimary: true,
+    },
+  });
+
+  // The custom-field escape hatch, with one definition so the mechanism is
+  // visible rather than theoretical.
+  await prisma.customFieldDefinition.upsert({
+    where: {
+      organizationId_entityType_key: {
+        organizationId: organization.id,
+        entityType: "PERSON",
+        key: "loyaltyTier",
+      },
+    },
+    update: {},
+    create: {
+      organizationId: organization.id,
+      entityType: "PERSON",
+      key: "loyaltyTier",
+      label: "Loyalty tier",
+      fieldType: "SELECT",
+      options: JSON.stringify(["bronze", "silver", "gold"]),
+    },
+  });
+
+  // Restrictions: a two-night minimum on the first day, and the third closed to
+  // arrival. Absent rows stay unrestricted, which is what makes the rest sell.
+  await prisma.rateRestriction.upsert({
+    where: {
+      ratePlanId_roomTypeId_date: {
+        ratePlanId: ratePlan.id,
+        roomTypeId: roomType.id,
+        date: day(0),
+      },
+    },
+    update: {},
+    create: {
+      ratePlanId: ratePlan.id,
+      roomTypeId: roomType.id,
+      date: day(0),
+      minLengthOfStay: 2,
+    },
+  });
+
+  await prisma.rateRestriction.upsert({
+    where: {
+      ratePlanId_roomTypeId_date: {
+        ratePlanId: ratePlan.id,
+        roomTypeId: roomType.id,
+        date: day(2),
+      },
+    },
+    update: {},
+    create: {
+      ratePlanId: ratePlan.id,
+      roomTypeId: roomType.id,
+      date: day(2),
+      closedToArrival: true,
+    },
+  });
+
+  // Something broken on the floor, so housekeeping has both of its halves.
+  if (!(await prisma.maintenanceIssue.findFirst({ where: { propertyId: property.id } }))) {
+    await prisma.maintenanceIssue.create({
+      data: {
+        propertyId: property.id,
+        roomId: room102.id,
+        title: "Dripping tap in the bathroom",
+        description: "Reported by the guest at check-out.",
+        severity: "LOW",
+        reportedByMemberId: ownerMember.id,
+      },
+    });
+  }
+
+  // An attachment, with a storage key generated the way the code must generate
+  // them: random, never derived from a row id.
+  if (!(await prisma.attachment.findFirst({ where: { personId: guest.id } }))) {
+    await prisma.attachment.create({
+      data: {
+        organizationId: organization.id,
+        personId: guest.id,
+        kind: "CONSENT",
+        fileName: "marketing-consent.pdf",
+        storageKey: newStorageKey(`org/${organization.id}/attachments`, "marketing-consent.pdf"),
+        mimeType: "application/pdf",
+        signedAt: new Date(),
+        uploadedById: owner.id,
+      },
+    });
+  }
+
+  // One audit row, so the trail is visibly append-only rather than an empty
+  // table nobody trusts.
+  if (!(await prisma.auditLog.findFirst({ where: { organizationId: organization.id } }))) {
+    await prisma.auditLog.create({
+      data: {
+        organizationId: organization.id,
+        actorUserId: owner.id,
+        action: "CREATE",
+        entityType: "Reservation",
+        entityId: String(reservation.id),
+        summary: `Created reservation ${reservation.reference}`,
+      },
+    });
+  }
 
   console.log(
     created === 0

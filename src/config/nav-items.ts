@@ -7,7 +7,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { UserRole } from "@/features/identity";
-import { ORG_FEATURE_REGISTRY } from "@/features/organizations/model";
+import { ORG_FEATURE_REGISTRY } from "@/features/organizations";
 
 /**
  * Sidebar navigation, as data.

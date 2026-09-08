@@ -15,7 +15,8 @@
     "db:seed": "tsx prisma/seed.ts",
     "db:studio": "prisma studio",
     "auth:generate": "npm run db:generate && SKIP_ENV_VALIDATION=1 npx auth@latest generate --config src/server/auth.ts --output prisma/schema/identity.prisma",
-    "test": "tsx --test \"src/**/*.test.ts\""
+    "test": "tsx --test \"src/**/*.test.ts\"",
+    "test:server": "tsx --conditions=react-server --test \"tests/server/**/*.test.ts\""
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",
