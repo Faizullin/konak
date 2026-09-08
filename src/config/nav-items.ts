@@ -65,8 +65,8 @@ export const accountNavItems: NavGroup[] = [
 
 /**
  * Level 2: inside one organization. A function, not a constant, because every
- * url carries the id — building them here keeps the id in one place rather
- * than in each nav component.
+ * url carries the slug — building them here keeps it in one place rather than
+ * in each nav component.
  */
 const ORG_ICONS: Record<string, LucideIcon> = {
   LayoutDashboard,
@@ -74,8 +74,8 @@ const ORG_ICONS: Record<string, LucideIcon> = {
   Settings,
 };
 
-export function organizationNavItems(organizationId: number): NavGroup[] {
-  const base = `/dashboard/orgs/${organizationId}`;
+export function organizationNavItems(orgSlug: string): NavGroup[] {
+  const base = `/dashboard/orgs/${orgSlug}`;
 
   const dynamicItems = Object.values(ORG_FEATURE_REGISTRY).map((feature) => ({
     title: feature.label,

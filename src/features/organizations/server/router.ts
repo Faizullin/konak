@@ -3,7 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import type { Prisma } from "@/generated/prisma/client";
 import { requireOrgManager, requireOrgMember, requireOrgOwner, requireUser } from "@/server/auth";
-import { memberNotFound } from "@/server/errors";
+import { fieldError, memberNotFound } from "@/server/errors";
 import { createTRPCRouter, protectedProcedure } from "@/server/trpc";
 import {
   OrgRole,
@@ -205,10 +205,11 @@ export const organizationRouter = createTRPCRouter({
 
     const target = await ctx.db.user.findUnique({ where: { email: input.email } });
     if (!target) {
-      throw new TRPCError({
-        code: "NOT_FOUND",
-        message: "No account with that email. They need to sign up first.",
-      });
+      throw fieldError(
+        "email",
+        "No account with that email. They need to sign up first.",
+        "NOT_FOUND"
+      );
     }
 
     const existing = await ctx.db.organizationMember.findUnique({
@@ -217,7 +218,7 @@ export const organizationRouter = createTRPCRouter({
       },
     });
     if (existing) {
-      throw new TRPCError({ code: "CONFLICT", message: "They are already a member" });
+      throw fieldError("email", "They are already a member", "CONFLICT");
     }
 
     return ctx.db.organizationMember.create({

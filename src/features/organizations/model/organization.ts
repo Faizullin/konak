@@ -137,6 +137,33 @@ export const addMemberSchema = z.object({
 
 export type AddMemberInput = z.infer<typeof addMemberSchema>;
 
+/** What a route resolves from a slug: enough for a heading and `generateMetadata`. */
+export type OrganizationRouteData = {
+  id: number;
+  name: string;
+  slug: string;
+  description: string | null;
+};
+
+/** The Prisma `select` that produces it. Kept beside the type so they cannot drift. */
+export const ORGANIZATION_ROUTE_SELECT = {
+  id: true,
+  name: true,
+  slug: true,
+  description: true,
+} as const;
+
+/**
+ * The form's half of `addMemberSchema`, derived so the two cannot drift.
+ * `organizationId` is a prop, and the `.default()` is stripped because a schema
+ * default and `defaultValues` silently override one another.
+ */
+export const addMemberFormSchema = addMemberSchema
+  .omit({ organizationId: true })
+  .extend({ role: assignableOrgRoleSchema });
+
+export type AddMemberFormInput = z.infer<typeof addMemberFormSchema>;
+
 /**
  * Derive a URL-safe slug from a display name. Used to prefill the create
  * form — the field stays editable, and the schema above has the final say.

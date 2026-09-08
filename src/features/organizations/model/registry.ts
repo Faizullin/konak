@@ -11,7 +11,7 @@ export interface OrgFeatureDefinition {
   label: string;
   /** The string name of a Lucide icon */
   icon: string;
-  /** The URL segment under `/dashboard/orgs/[id]/` */
+  /** The URL segment under `/dashboard/orgs/[orgSlug]/` */
   segment: string;
 }
 

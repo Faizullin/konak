@@ -5,7 +5,14 @@ import type { Prisma } from "@/generated/prisma/client";
 import { requireUser } from "@/server/auth";
 import { userNotFound } from "@/server/errors";
 import { adminProcedure, createTRPCRouter, protectedProcedure } from "@/server/trpc";
-import { UserRole, listUsersInputSchema, updateProfileInputSchema, userRoleSchema } from "../model";
+import {
+  UserRole,
+  couldRemoveLastAdmin,
+  isLastAdmin,
+  listUsersInputSchema,
+  updateProfileInputSchema,
+  userRoleSchema,
+} from "../model";
 
 /**
  * Identity feature — who the caller is. Better Auth owns the `User` table and
@@ -68,25 +75,25 @@ export const userRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       // Demoting the final ADMIN leaves nobody who can reach this procedure
       // again: `adminProcedure` is the only way in, and it is the thing being
-      // taken away. There is no in-app route back, so the check lives here
-      // rather than in the UI — hiding the control is a courtesy, never the
-      // enforcement. Self-demotion is deliberately allowed while another
-      // admin remains; it is only the last one that is refused.
-      if (input.role !== UserRole.ADMIN) {
-        const target = await ctx.db.user.findUnique({ where: { id: input.id } });
-        if (!target) {
-          throw userNotFound();
-        }
-        if (target.role === UserRole.ADMIN) {
-          const remainingAdmins = await ctx.db.user.count({
-            where: { role: UserRole.ADMIN, id: { not: input.id } },
+      // taken away. The check lives on the server rather than in the UI —
+      // hiding the control is a courtesy, never the enforcement.
+      //
+      // The rule itself is in `model/`, where it is tested without a database.
+      // What stays here is the two queries it needs and the throw.
+      const target = await ctx.db.user.findUnique({ where: { id: input.id } });
+      if (!target) {
+        throw userNotFound();
+      }
+
+      if (couldRemoveLastAdmin(target.role, input.role)) {
+        const otherAdminCount = await ctx.db.user.count({
+          where: { role: UserRole.ADMIN, id: { not: input.id } },
+        });
+        if (isLastAdmin(otherAdminCount)) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Cannot demote the last admin",
           });
-          if (remainingAdmins === 0) {
-            throw new TRPCError({
-              code: "BAD_REQUEST",
-              message: "Cannot demote the last admin",
-            });
-          }
         }
       }
 

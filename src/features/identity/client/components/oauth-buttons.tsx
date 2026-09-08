@@ -1,9 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { authClient } from "@/lib/auth-client";
+import { handleError } from "@/lib/errors";
 
 /**
  * The social half of the credential screens.
@@ -41,7 +41,9 @@ export function OAuthButtons({
     // `pending` is only ever cleared on failure.
     const { error } = await authClient.signIn.social({ provider, callbackURL });
     if (error) {
-      toast.error(error.message ?? `Could not continue with ${PROVIDER_LABELS[provider]}`);
+      handleError(error, {
+        fallbackMessage: `Could not continue with ${PROVIDER_LABELS[provider]}`,
+      });
       setPending(null);
     }
   };

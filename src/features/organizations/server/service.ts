@@ -1,7 +1,8 @@
 import "server-only";
 import { TRPCError } from "@trpc/server";
-import type prisma from "@/server/db";
-import { OrgRole } from "../model";
+import { fieldError } from "@/server/errors";
+import prisma from "@/server/db";
+import { ORGANIZATION_ROUTE_SELECT, OrgRole, type OrganizationRouteData } from "../model";
 
 type OrgDb = Pick<typeof prisma, "organization" | "organizationMember">;
 
@@ -13,7 +14,7 @@ export async function assertSlugAvailable(
 ): Promise<void> {
   const existing = await db.organization.findUnique({ where: { slug } });
   if (existing && existing.id !== excludeId) {
-    throw new TRPCError({ code: "CONFLICT", message: "That slug is already taken" });
+    throw fieldError("slug", "That slug is already taken", "CONFLICT");
   }
 }
 
@@ -79,4 +80,15 @@ export async function transferOwnership(
       data: { ownerId: toUserId },
     }),
   ]);
+}
+
+/**
+ * Routes carry the slug, procedures take the id; this is where the two meet.
+ * Membership is not checked here — the procedures each page calls do it.
+ */
+export async function organizationBySlug(slug: string): Promise<OrganizationRouteData | null> {
+  return prisma.organization.findUnique({
+    where: { slug },
+    select: ORGANIZATION_ROUTE_SELECT,
+  });
 }

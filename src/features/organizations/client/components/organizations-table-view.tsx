@@ -85,7 +85,7 @@ export function OrganizationsTableView() {
         header: ({ column }) => <DataTableColumnHeader column={column} title="Organization" />,
         cell: ({ row }) => (
           <Link
-            href={`/dashboard/orgs/${row.original.id}`}
+            href={`/dashboard/orgs/${row.original.slug}`}
             className="flex items-center gap-2 font-medium hover:underline"
           >
             <div className="bg-primary/10 flex size-8 items-center justify-center rounded-md">
@@ -179,10 +179,10 @@ export function OrganizationsTableView() {
                     <DropdownMenuLabel>{org.name}</DropdownMenuLabel>
                   </DropdownMenuGroup>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem render={<Link href={`/dashboard/orgs/${org.id}`} />}>
+                  <DropdownMenuItem render={<Link href={`/dashboard/orgs/${org.slug}`} />}>
                     Open
                   </DropdownMenuItem>
-                  <DropdownMenuItem render={<Link href={`/dashboard/orgs/${org.id}/members`} />}>
+                  <DropdownMenuItem render={<Link href={`/dashboard/orgs/${org.slug}/members`} />}>
                     Members
                   </DropdownMenuItem>
                   {canEditOrganization(org.currentUserRole) && (

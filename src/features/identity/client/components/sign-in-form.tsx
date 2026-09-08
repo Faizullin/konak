@@ -5,12 +5,13 @@ import { LoaderIcon } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Controller, useForm } from "react-hook-form";
-import { toast } from "sonner";
+import { FormError } from "@/components/common/form-error";
 import { Button } from "@/components/ui/button";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { signInSchema, type SignInInput } from "@/features/identity";
 import { authClient } from "@/lib/auth-client";
+import { handleFormError } from "@/lib/errors";
 import { OAuthButtons, type OAuthProvider } from "./oauth-buttons";
 
 /**
@@ -35,7 +36,9 @@ export function SignInForm({ providers = [] }: { providers?: OAuthProvider[] }) 
     // without this branch a failed sign-in would look like a success.
     const { error } = await authClient.signIn.email(values);
     if (error) {
-      toast.error(error.message ?? "Could not sign in");
+      // A wrong password belongs on the form, not in a toast that fades:
+      // the person is still looking at the boxes they need to correct.
+      handleFormError(form, error, { fallback: "form", fallbackMessage: "Could not sign in" });
       return;
     }
 
@@ -50,6 +53,8 @@ export function SignInForm({ providers = [] }: { providers?: OAuthProvider[] }) 
       <OAuthButtons providers={providers} />
 
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+        <FormError message={form.formState.errors.root?.message} />
+
         <FieldGroup>
           <Controller
             control={form.control}

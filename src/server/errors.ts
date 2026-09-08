@@ -1,20 +1,11 @@
 import { TRPCError } from "@trpc/server";
 
 /**
- * The errors thrown from more than one place.
+ * Errors thrown from more than one place. A message with a single caller stays
+ * inline at the throw; these earned a name by having two.
  *
- * Most throws in this codebase spell out their message inline, and should: a
- * message with a single caller reads better next to the condition that raises
- * it than it does behind a name. These two earned a name by having two callers
- * each, in files that do not import one another — so nothing made the two
- * copies change together.
- *
- * Each returns the error rather than throwing it, so `throw` stays visible at
- * the call site and the control flow reads the same as the inline throws it
- * replaces.
- *
- * This file is reached by `auth.ts`, which `npm run auth:generate` loads
- * through jiti — so it must never import through a tsconfig `paths` alias.
+ * Reached by `auth.ts`, which `auth:generate` loads through jiti — so no `@/`
+ * aliases here.
  */
 
 /** The signed-in caller has no `User` row: deleted mid-session, usually. */
@@ -25,4 +16,25 @@ export function userNotFound() {
 /** No `OrganizationMember` row joins that user to that organization. */
 export function memberNotFound() {
   return new TRPCError({ code: "NOT_FOUND", message: "Member not found" });
+}
+
+/**
+ * Carries a field name on the error's `cause`; `errorFormatter` copies it onto
+ * `data.field`. Gives the rules Zod cannot express — a taken slug, an address
+ * with no account — the same channel Zod's own field errors use.
+ */
+export class FieldErrorCause extends Error {
+  constructor(readonly field: string) {
+    super(`field:${field}`);
+    this.name = "FieldErrorCause";
+  }
+}
+
+/** A `TRPCError` the client can render under `field`. */
+export function fieldError(
+  field: string,
+  message: string,
+  code: "BAD_REQUEST" | "CONFLICT" | "NOT_FOUND" = "BAD_REQUEST"
+) {
+  return new TRPCError({ code, message, cause: new FieldErrorCause(field) });
 }

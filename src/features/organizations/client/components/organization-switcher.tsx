@@ -32,19 +32,17 @@ import { OrganizationFormNiceDialog } from "./organization-form-nice-dialog";
  * header never changes height or disappears between pages.
  */
 export function OrganizationSwitcher() {
-  const params = useParams<{ orgId?: string }>();
+  const params = useParams<{ orgSlug?: string }>();
   const { isMobile } = useSidebar();
 
-  const organizationId = params?.orgId ? Number(params.orgId) : undefined;
+  const orgSlug = params?.orgSlug;
   const organizations = trpc.organization.listMine.useQuery(undefined, {
     // The shell renders on every page; refetching this on each navigation is
     // noise.
     staleTime: 60_000,
   });
 
-  const current = organizationId
-    ? organizations.data?.find((o) => o.id === organizationId)
-    : undefined;
+  const current = orgSlug ? organizations.data?.find((o) => o.slug === orgSlug) : undefined;
 
   return (
     <SidebarMenu>
@@ -62,7 +60,7 @@ export function OrganizationSwitcher() {
               <Building2 className="size-4" />
             </div>
             <div className="grid flex-1 text-left text-sm leading-tight">
-              {organizations.isLoading && organizationId ? (
+              {organizations.isLoading && orgSlug ? (
                 <Skeleton className="h-4 w-24" />
               ) : (
                 <>
@@ -93,10 +91,10 @@ export function OrganizationSwitcher() {
                 <DropdownMenuItem
                   key={org.id}
                   className="gap-2 p-2"
-                  render={<Link href={`/dashboard/orgs/${org.id}`} />}
+                  render={<Link href={`/dashboard/orgs/${org.slug}`} />}
                 >
                   <span className="flex-1 truncate">{org.name}</span>
-                  {org.id === organizationId && <Check className="size-4" />}
+                  {org.slug === orgSlug && <Check className="size-4" />}
                 </DropdownMenuItem>
               ))}
             </DropdownMenuGroup>

@@ -2,19 +2,10 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import NiceModal, { useModal } from "@ebay/nice-modal-react";
-import { LoaderIcon } from "lucide-react";
 import { useEffect } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { FormDialog } from "@/components/common/form-dialog";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import {
@@ -22,6 +13,7 @@ import {
   slugify,
   type CreateOrganizationInput,
 } from "@/features/organizations";
+import { handleFormError } from "@/lib/errors";
 import { trpc } from "@/utils/trpc";
 
 /**
@@ -88,7 +80,9 @@ export const OrganizationFormNiceDialog = NiceModal.create(
         toast.success("Organization created");
         await close();
       },
-      onError: (e) => toast.error(e.message),
+      // A taken slug arrives from `fieldError("slug", …)` and lands under the
+      // slug box; anything else lands on the form.
+      onError: (e) => handleFormError(form, e),
     });
 
     const updateMutation = trpc.organization.update.useMutation({
@@ -96,7 +90,7 @@ export const OrganizationFormNiceDialog = NiceModal.create(
         toast.success("Organization updated");
         await close();
       },
-      onError: (e) => toast.error(e.message),
+      onError: (e) => handleFormError(form, e),
     });
 
     const mutation = isEdit ? updateMutation : createMutation;
@@ -110,83 +104,71 @@ export const OrganizationFormNiceDialog = NiceModal.create(
     };
 
     return (
-      <Dialog open={modal.visible} onOpenChange={(open) => !open && modal.hide()}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{isEdit ? "Organization settings" : "New organization"}</DialogTitle>
-            <DialogDescription>
-              The slug appears in URLs and must be unique across the install.
-            </DialogDescription>
-          </DialogHeader>
+      <FormDialog
+        open={modal.visible}
+        onOpenChange={(open) => !open && modal.hide()}
+        title={isEdit ? "Organization settings" : "New organization"}
+        description="The slug appears in URLs and must be unique across the install."
+        onSubmit={form.handleSubmit(onSubmit)}
+        error={form.formState.errors.root?.message}
+        isLoading={mutation.isPending}
+        submitText={isEdit ? "Save changes" : "Create organization"}
+      >
+        <FieldGroup>
+          <Controller
+            control={form.control}
+            name="name"
+            render={({ field, fieldState }) => (
+              <Field data-invalid={!!fieldState.error}>
+                <FieldLabel htmlFor="org-name">Name</FieldLabel>
+                <Input
+                  id="org-name"
+                  placeholder="Acme Inc."
+                  {...field}
+                  onChange={(e) => {
+                    field.onChange(e);
+                    // Prefill the slug only while creating, and only while
+                    // the person has not typed their own.
+                    if (!isEdit && !form.formState.dirtyFields.slug) {
+                      form.setValue("slug", slugify(e.target.value));
+                    }
+                  }}
+                />
+                {fieldState.error && <FieldError>{fieldState.error.message}</FieldError>}
+              </Field>
+            )}
+          />
 
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-            <FieldGroup>
-              <Controller
-                control={form.control}
-                name="name"
-                render={({ field, fieldState }) => (
-                  <Field data-invalid={!!fieldState.error}>
-                    <FieldLabel htmlFor="org-name">Name</FieldLabel>
-                    <Input
-                      id="org-name"
-                      placeholder="Acme Inc."
-                      {...field}
-                      onChange={(e) => {
-                        field.onChange(e);
-                        // Prefill the slug only while creating, and only while
-                        // the person has not typed their own.
-                        if (!isEdit && !form.formState.dirtyFields.slug) {
-                          form.setValue("slug", slugify(e.target.value));
-                        }
-                      }}
-                    />
-                    {fieldState.error && <FieldError>{fieldState.error.message}</FieldError>}
-                  </Field>
-                )}
-              />
+          <Controller
+            control={form.control}
+            name="slug"
+            render={({ field, fieldState }) => (
+              <Field data-invalid={!!fieldState.error}>
+                <FieldLabel htmlFor="org-slug">Slug</FieldLabel>
+                <Input id="org-slug" placeholder="acme" {...field} />
+                {fieldState.error && <FieldError>{fieldState.error.message}</FieldError>}
+              </Field>
+            )}
+          />
 
-              <Controller
-                control={form.control}
-                name="slug"
-                render={({ field, fieldState }) => (
-                  <Field data-invalid={!!fieldState.error}>
-                    <FieldLabel htmlFor="org-slug">Slug</FieldLabel>
-                    <Input id="org-slug" placeholder="acme" {...field} />
-                    {fieldState.error && <FieldError>{fieldState.error.message}</FieldError>}
-                  </Field>
-                )}
-              />
-
-              <Controller
-                control={form.control}
-                name="description"
-                render={({ field, fieldState }) => (
-                  <Field data-invalid={!!fieldState.error}>
-                    <FieldLabel htmlFor="org-description">Description</FieldLabel>
-                    <Input
-                      id="org-description"
-                      placeholder="Optional"
-                      {...field}
-                      value={field.value ?? ""}
-                    />
-                    {fieldState.error && <FieldError>{fieldState.error.message}</FieldError>}
-                  </Field>
-                )}
-              />
-            </FieldGroup>
-
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => modal.hide()}>
-                Cancel
-              </Button>
-              <Button type="submit" disabled={mutation.isPending}>
-                {mutation.isPending && <LoaderIcon className="size-4 animate-spin" />}
-                {isEdit ? "Save changes" : "Create organization"}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+          <Controller
+            control={form.control}
+            name="description"
+            render={({ field, fieldState }) => (
+              <Field data-invalid={!!fieldState.error}>
+                <FieldLabel htmlFor="org-description">Description</FieldLabel>
+                <Input
+                  id="org-description"
+                  placeholder="Optional"
+                  {...field}
+                  value={field.value ?? ""}
+                />
+                {fieldState.error && <FieldError>{fieldState.error.message}</FieldError>}
+              </Field>
+            )}
+          />
+        </FieldGroup>
+      </FormDialog>
     );
   }
 );

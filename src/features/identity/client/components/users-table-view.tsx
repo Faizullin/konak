@@ -25,6 +25,7 @@ import {
   type ListUsersInput,
 } from "@/features/identity";
 import type { GeneralRouterOutputs } from "@/server/types";
+import { handleError } from "@/lib/errors";
 import { trpc } from "@/utils/trpc";
 
 type UserRow = GeneralRouterOutputs["user"]["adminList"]["items"][number];
@@ -75,7 +76,7 @@ export function UsersTableView() {
     // The last-admin refusal arrives here as a BAD_REQUEST. Surfacing the
     // server's message verbatim is the whole error UI: the rule lives in one
     // place and this never has to restate it.
-    onError: (e) => toast.error(e.message),
+    onError: (e) => handleError(e),
   });
 
   const columns = useMemo<ColumnDef<UserRow>[]>(

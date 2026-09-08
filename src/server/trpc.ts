@@ -5,6 +5,7 @@ import { ZodError } from "zod";
 import { userCan } from "@/features/identity";
 import { auth } from "@/server/auth";
 import prisma from "./db";
+import { FieldErrorCause } from "./errors";
 
 export const createTRPCContext = async () => {
   const session = await auth.api.getSession({ headers: await headers() });
@@ -22,7 +23,11 @@ const t = initTRPC.context<typeof createTRPCContext>().create({
       ...shape,
       data: {
         ...shape.data,
+        // Which field failed, when the server knows. Zod fills the first for
+        // schema failures; `fieldError()` fills the second for the domain
+        // rules Zod cannot express. Both are read by `lib/errors.ts`.
         zodError: error.cause instanceof ZodError ? error.cause.flatten() : null,
+        field: error.cause instanceof FieldErrorCause ? error.cause.field : null,
       },
     };
   },

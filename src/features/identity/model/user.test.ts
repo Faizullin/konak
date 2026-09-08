@@ -1,7 +1,15 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { canListUsers, canSetUserRole, USER_ROLE_VALUES, UserRole, userCan } from "./user";
+import {
+  canListUsers,
+  canSetUserRole,
+  couldRemoveLastAdmin,
+  isLastAdmin,
+  USER_ROLE_VALUES,
+  UserRole,
+  userCan,
+} from "./user";
 
 /**
  * The install-wide counterpart to `organizations/model/organization.test.ts`.
@@ -49,4 +57,49 @@ test("every role in UserRole has an entry in the grant table", () => {
   for (const role of USER_ROLE_VALUES) {
     assert.equal(typeof canListUsers(role), "boolean", `${role} has no grants`);
   }
+});
+
+/**
+ * The last-admin guard. `user.updateRole` is reachable only through
+ * `adminProcedure`, and demoting the final admin is what removes that route —
+ * so this is the one branch whose failure cannot be undone from inside the app.
+ *
+ * The rule is split from its two queries precisely so it can be tested like
+ * this, with no database and no harness. `router.ts` keeps the queries and the
+ * throw; the decision is here.
+ */
+
+test("demoting an admin is allowed while another admin remains", () => {
+  assert.equal(couldRemoveLastAdmin(UserRole.ADMIN, UserRole.USER), true);
+  assert.equal(isLastAdmin(1), false);
+});
+
+test("demoting the last admin is refused", () => {
+  // `otherAdminCount` excludes the target, so zero is the lockout.
+  assert.equal(couldRemoveLastAdmin(UserRole.ADMIN, UserRole.USER), true);
+  assert.equal(isLastAdmin(0), true);
+});
+
+test("demoting a non-admin asks no question about admin counts", () => {
+  // The count is a second round-trip. Answering `false` here is what keeps the
+  // router from making it, so this is a cost guarantee as much as a rule.
+  assert.equal(couldRemoveLastAdmin(UserRole.USER, UserRole.MODERATOR), false);
+  assert.equal(couldRemoveLastAdmin(UserRole.MODERATOR, UserRole.USER), false);
+  // A hand-edited column can hold anything; an unknown role is not an admin.
+  assert.equal(couldRemoveLastAdmin("SUPERUSER", UserRole.USER), false);
+});
+
+test("promoting to admin never reaches the count", () => {
+  // Whatever the target is now, gaining ADMIN cannot remove the last one.
+  for (const role of USER_ROLE_VALUES) {
+    assert.equal(couldRemoveLastAdmin(role, UserRole.ADMIN), false);
+  }
+});
+
+test("the rule knows nothing about who is asking", () => {
+  // Self-demotion is deliberately legal while another admin remains — the
+  // invariant is *last admin*, not *self*. There is no caller argument to pass,
+  // and that absence is the guarantee.
+  assert.equal(couldRemoveLastAdmin.length, 2);
+  assert.equal(isLastAdmin(2), false);
 });

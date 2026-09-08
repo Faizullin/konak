@@ -76,6 +76,23 @@ export function canSetUserRole(role: string): boolean {
 }
 
 /**
+ * Whether this role change could strip the install of its last admin — the only
+ * case worth a `COUNT`. Asking it first means a promotion never costs one.
+ */
+export function couldRemoveLastAdmin(targetRole: string, nextRole: UserRole): boolean {
+  return targetRole === UserRole.ADMIN && nextRole !== UserRole.ADMIN;
+}
+
+/**
+ * `otherAdminCount` excludes the target, so zero means nobody would be left who
+ * can reach `adminProcedure` — and there is no in-app way back. Knows nothing
+ * about the caller: the invariant is *last admin*, not *self*.
+ */
+export function isLastAdmin(otherAdminCount: number): boolean {
+  return otherAdminCount === 0;
+}
+
+/**
  * The shape the API returns for a user. `id` is a Better Auth string, not a
  * uuid — never validate it with `z.uuid()`.
  */

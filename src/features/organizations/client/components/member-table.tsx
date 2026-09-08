@@ -1,11 +1,14 @@
 "use client";
 
+import { zodResolver } from "@hookform/resolvers/zod";
 import { LoaderIcon, UserPlus } from "lucide-react";
-import { useState } from "react";
+import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { confirm } from "@/components/common/confirm-nice-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { FormError } from "@/components/common/form-error";
+import { Field, FieldError } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -23,7 +26,14 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { ORG_ROLE_LABELS, OrgRole, canManageMembers } from "@/features/organizations";
+import {
+  ORG_ROLE_LABELS,
+  OrgRole,
+  addMemberFormSchema,
+  canManageMembers,
+  type AddMemberFormInput,
+} from "@/features/organizations";
+import { handleError, handleFormError } from "@/lib/errors";
 import { trpc } from "@/utils/trpc";
 
 /**
@@ -44,8 +54,13 @@ export function MemberTable({
   currentUserId?: string;
 }) {
   const utils = trpc.useUtils();
-  const [email, setEmail] = useState("");
-  const [role, setRole] = useState<"ADMIN" | "MEMBER">(OrgRole.MEMBER);
+
+  // Bound to the router's own schema, so a typo'd email is refused here with a
+  // message under the field rather than as a toast after a round trip.
+  const form = useForm<AddMemberFormInput>({
+    resolver: zodResolver(addMemberFormSchema),
+    defaultValues: { email: "", role: OrgRole.MEMBER },
+  });
 
   const members = trpc.organization.listMembers.useQuery({ organizationId });
   const canManage = canManageMembers(currentUserRole);
@@ -62,10 +77,12 @@ export function MemberTable({
   const addMember = trpc.organization.addMember.useMutation({
     onSuccess: async () => {
       toast.success("Member added");
-      setEmail("");
+      form.reset();
       await refresh();
     },
-    onError: (e) => toast.error(e.message),
+    // "No account with that email" and "already a member" both name the email
+    // field on the server, so both land under the input the person just typed.
+    onError: (e) => handleFormError(form, e),
   });
 
   const updateRole = trpc.organization.updateMemberRole.useMutation({
@@ -73,7 +90,7 @@ export function MemberTable({
       toast.success("Role updated");
       await refresh();
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => handleError(e),
   });
 
   const removeMember = trpc.organization.removeMember.useMutation({
@@ -81,7 +98,7 @@ export function MemberTable({
       toast.success("Member removed");
       await refresh();
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => handleError(e),
   });
 
   const handleRemove = async (userId: string, name: string) => {
@@ -97,37 +114,50 @@ export function MemberTable({
 
   return (
     <div className="space-y-4">
+      <FormError message={form.formState.errors.root?.message} />
+
       {canManage && (
         <form
-          className="flex flex-wrap items-center gap-2"
-          onSubmit={(e) => {
-            e.preventDefault();
-            addMember.mutate({ organizationId, email, role });
-          }}
+          className="flex flex-wrap items-start gap-2"
+          onSubmit={form.handleSubmit((values) => addMember.mutate({ organizationId, ...values }))}
         >
-          <Input
-            type="email"
-            required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="person@example.com"
-            className="min-w-56 flex-1"
-            aria-label="Email of the person to add"
+          <Controller
+            control={form.control}
+            name="email"
+            render={({ field, fieldState }) => (
+              <Field data-invalid={!!fieldState.error} className="min-w-56 flex-1">
+                <Input
+                  type="email"
+                  placeholder="person@example.com"
+                  aria-label="Email of the person to add"
+                  disabled={addMember.isPending}
+                  {...field}
+                />
+                {fieldState.error && <FieldError>{fieldState.error.message}</FieldError>}
+              </Field>
+            )}
           />
-          <Select
-            items={ORG_ROLE_LABELS}
-            value={role}
-            onValueChange={(v) => setRole(v as "ADMIN" | "MEMBER")}
-          >
-            <SelectTrigger className="w-32">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={OrgRole.MEMBER}>Member</SelectItem>
-              <SelectItem value={OrgRole.ADMIN}>Admin</SelectItem>
-            </SelectContent>
-          </Select>
-          <Button type="submit" disabled={addMember.isPending || !email}>
+          <Controller
+            control={form.control}
+            name="role"
+            render={({ field }) => (
+              <Select
+                items={ORG_ROLE_LABELS}
+                value={field.value}
+                onValueChange={field.onChange}
+                disabled={addMember.isPending}
+              >
+                <SelectTrigger className="w-32">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={OrgRole.MEMBER}>Member</SelectItem>
+                  <SelectItem value={OrgRole.ADMIN}>Admin</SelectItem>
+                </SelectContent>
+              </Select>
+            )}
+          />
+          <Button type="submit" disabled={addMember.isPending}>
             {addMember.isPending ? (
               <LoaderIcon className="size-4 animate-spin" />
             ) : (
@@ -168,6 +198,7 @@ export function MemberTable({
                         through transfer, which changes both sides at once. */}
                     {canManage && !isOwner ? (
                       <Select
+                        items={ORG_ROLE_LABELS}
                         value={member.role}
                         onValueChange={(v) =>
                           updateRole.mutate({

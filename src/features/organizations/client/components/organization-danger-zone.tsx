@@ -7,6 +7,7 @@ import { selectOne } from "@/components/common/select-nice-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { OrgRole } from "@/features/organizations";
+import { handleError } from "@/lib/errors";
 import { trpc } from "@/utils/trpc";
 
 export function OrganizationDangerZone({
@@ -36,7 +37,7 @@ export function OrganizationDangerZone({
       toast.success("Organization deleted");
       await afterLeaving();
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => handleError(e),
   });
 
   const leaveMutation = trpc.organization.leave.useMutation({
@@ -44,7 +45,7 @@ export function OrganizationDangerZone({
       toast.success("You left the organization");
       await afterLeaving();
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => handleError(e),
   });
 
   const transferMutation = trpc.organization.transferOwnership.useMutation({
@@ -58,7 +59,7 @@ export function OrganizationDangerZone({
         utils.organization.search.invalidate(),
       ]);
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => handleError(e),
   });
 
   const members = trpc.organization.listMembers.useQuery({ organizationId }, { enabled: isOwner });

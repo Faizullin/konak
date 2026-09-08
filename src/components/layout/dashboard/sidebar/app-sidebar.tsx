@@ -17,7 +17,7 @@ import { NavUser, type SidebarUser } from "./nav-user";
  * and nothing has to be kept in sync:
  *
  *   /dashboard/*               account nav
- *   /dashboard/orgs/[orgId]/*  that organization's nav
+ *   /dashboard/orgs/[orgSlug]/*  that organization's nav
  *
  * A third level (per-feature nav inside an organization) drops in the same
  * way: read another route param, return another `NavGroup[]`. The frame knows
@@ -31,14 +31,14 @@ export function AppSidebar({
   user,
   ...props
 }: { user: SidebarUser & { role: UserRole } } & React.ComponentProps<typeof Sidebar>) {
-  const params = useParams<{ orgId?: string }>();
+  const params = useParams<{ orgSlug?: string }>();
 
-  const organizationId = params?.orgId ? Number(params.orgId) : undefined;
+  const orgSlug = params?.orgSlug;
 
   const navItems = useMemo(() => {
-    if (organizationId) return organizationNavItems(organizationId);
+    if (orgSlug) return organizationNavItems(orgSlug);
     return filterNavByRole(accountNavItems, user.role);
-  }, [organizationId, user.role]);
+  }, [orgSlug, user.role]);
 
   return (
     <Sidebar collapsible="icon" {...props}>

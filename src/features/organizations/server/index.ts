@@ -5,4 +5,9 @@ import "server-only";
  * a client bundle is a build error, not a runtime surprise.
  */
 export { organizationRouter } from "./router";
-export { assertSlugAvailable, createOrganizationWithOwner, transferOwnership } from "./service";
+export {
+  assertSlugAvailable,
+  createOrganizationWithOwner,
+  organizationBySlug,
+  transferOwnership,
+} from "./service";

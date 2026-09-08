@@ -6,7 +6,12 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ORG_ROLE_LABELS, canEditOrganization, type OrgRole } from "@/features/organizations";
+import {
+  ORG_ROLE_LABELS,
+  canEditOrganization,
+  type OrganizationRouteData,
+  type OrgRole,
+} from "@/features/organizations";
 import { trpc } from "@/utils/trpc";
 import { MemberTable } from "./member-table";
 import { OrganizationDangerZone } from "./organization-danger-zone";
@@ -20,7 +25,10 @@ import { OrganizationFormNiceDialog } from "./organization-form-nice-dialog";
  * `page.tsx` should do.
  */
 
-/** Shared shell: resolves the org, or explains why it cannot. */
+/**
+ * The parts a route cannot know: the caller's role and the member count. Name,
+ * slug and description arrive as props, already resolved server-side.
+ */
 function useOrganization(organizationId: number) {
   return trpc.organization.getById.useQuery({ id: organizationId });
 }
@@ -36,28 +44,29 @@ function PanelError({ message }: { message: string }) {
   );
 }
 
-export function OrganizationOverview({ organizationId }: { organizationId: number }) {
+export function OrganizationOverview({ organization }: { organization: OrganizationRouteData }) {
+  const organizationId = organization.id;
   const { data, isLoading, error } = useOrganization(organizationId);
   const currentUser = trpc.user.getCurrent.useQuery();
 
-  if (isLoading) return <Skeleton className="h-48" />;
   if (error) return <PanelError message={error.message} />;
-  if (!data) return null;
 
-  const canEdit = canEditOrganization(data.currentUserRole as OrgRole);
+  const canEdit = data ? canEditOrganization(data.currentUserRole as OrgRole) : false;
 
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold">{data.name}</h1>
+          <h1 className="text-2xl font-semibold">{organization.name}</h1>
           <p className="text-muted-foreground text-sm">
-            /{data.slug}
-            {data.description ? ` · ${data.description}` : ""}
+            /{organization.slug}
+            {organization.description ? ` · ${organization.description}` : ""}
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Badge variant="secondary">{ORG_ROLE_LABELS[data.currentUserRole as OrgRole]}</Badge>
+          {data && (
+            <Badge variant="secondary">{ORG_ROLE_LABELS[data.currentUserRole as OrgRole]}</Badge>
+          )}
           {canEdit && (
             <Button
               variant="outline"
@@ -73,47 +82,58 @@ export function OrganizationOverview({ organizationId }: { organizationId: numbe
         </div>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription className="flex items-center gap-1.5">
-              <Users className="size-4" />
-              Members
-            </CardDescription>
-            <CardTitle className="text-3xl">{data.memberCount}</CardTitle>
-          </CardHeader>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription className="flex items-center gap-1.5">
-              <Building2 className="size-4" />
-              Created
-            </CardDescription>
-            <CardTitle className="text-3xl">
-              {new Date(data.createdAt).toLocaleDateString()}
-            </CardTitle>
-          </CardHeader>
-        </Card>
-      </div>
+      {isLoading || !data ? (
+        <Skeleton className="h-48" />
+      ) : (
+        <>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Card>
+              <CardHeader className="pb-2">
+                <CardDescription className="flex items-center gap-1.5">
+                  <Users className="size-4" />
+                  Members
+                </CardDescription>
+                <CardTitle className="text-3xl">{data.memberCount}</CardTitle>
+              </CardHeader>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardDescription className="flex items-center gap-1.5">
+                  <Building2 className="size-4" />
+                  Created
+                </CardDescription>
+                <CardTitle className="text-3xl">
+                  {new Date(data.createdAt).toLocaleDateString()}
+                </CardTitle>
+              </CardHeader>
+            </Card>
+          </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Members</CardTitle>
-          <CardDescription>Who has access, and what they can do.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <MemberTable
-            organizationId={organizationId}
-            currentUserRole={data.currentUserRole as OrgRole}
-            currentUserId={currentUser.data?.id}
-          />
-        </CardContent>
-      </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle>Members</CardTitle>
+              <CardDescription>Who has access, and what they can do.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <MemberTable
+                organizationId={organizationId}
+                currentUserRole={data.currentUserRole as OrgRole}
+                currentUserId={currentUser.data?.id}
+              />
+            </CardContent>
+          </Card>
+        </>
+      )}
     </div>
   );
 }
 
-export function OrganizationMembersPanel({ organizationId }: { organizationId: number }) {
+export function OrganizationMembersPanel({
+  organization,
+}: {
+  organization: OrganizationRouteData;
+}) {
+  const organizationId = organization.id;
   const { data, isLoading, error } = useOrganization(organizationId);
   const currentUser = trpc.user.getCurrent.useQuery();
 
@@ -138,7 +158,12 @@ export function OrganizationMembersPanel({ organizationId }: { organizationId: n
   );
 }
 
-export function OrganizationSettingsPanel({ organizationId }: { organizationId: number }) {
+export function OrganizationSettingsPanel({
+  organization,
+}: {
+  organization: OrganizationRouteData;
+}) {
+  const organizationId = organization.id;
   const { data, isLoading, error } = useOrganization(organizationId);
   const currentUser = trpc.user.getCurrent.useQuery();
 
