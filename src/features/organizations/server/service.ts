@@ -2,7 +2,14 @@ import "server-only";
 import { TRPCError } from "@trpc/server";
 import { fieldError } from "@/server/errors";
 import prisma from "@/server/db";
-import { ORGANIZATION_ROUTE_SELECT, OrgRole, type OrganizationRouteData } from "../model";
+import {
+  ORGANIZATION_ROUTE_SELECT,
+  OrgRole,
+  isOrgModuleEnabled,
+  orgModule,
+  type OrgModuleId,
+  type OrganizationRouteData,
+} from "../model";
 
 type OrgDb = Pick<typeof prisma, "organization" | "organizationMember">;
 
@@ -91,4 +98,25 @@ export async function organizationBySlug(slug: string): Promise<OrganizationRout
     where: { slug },
     select: ORGANIZATION_ROUTE_SELECT,
   });
+}
+
+/**
+ * Refuses when an organization has this module switched off.
+ *
+ * The nav hides a disabled module and the route 404s it, but **this is the
+ * enforcement** — both of those are courtesies, exactly as with roles. A caller
+ * reaching tRPC directly gets the same answer.
+ */
+export async function requireOrgModule(organizationId: number, moduleId: OrgModuleId) {
+  const toggles = await prisma.organizationModule.findMany({
+    where: { organizationId },
+    select: { moduleId: true, enabled: true },
+  });
+
+  if (!isOrgModuleEnabled(moduleId, toggles)) {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: `${orgModule(moduleId).label} is not enabled for this organization`,
+    });
+  }
 }

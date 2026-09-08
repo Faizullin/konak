@@ -5,9 +5,10 @@ is planned. A plan carries no status and no checkboxes — when something ships 
 leaves here, what it taught moves into a guide, and the fact of it goes into
 `../history.md`.
 
-| Plan | What it adds |
+| Plan | What it is |
 |---|---|
-| [hotel-pms.md](hotel-pms.md) | the product: reservations, distribution, rates, compliance |
+| [roadmap.md](roadmap.md) | the order to build in, phase by phase — **start here** |
+| [hotel-pms.md](hotel-pms.md) | what the product is: domain, modules, decisions |
 
 Files prefixed `v1_` are **not plans**. They are earlier ones recovered from
 git history, kept only because something in them had not shipped; each says at

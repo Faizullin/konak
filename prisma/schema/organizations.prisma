@@ -24,6 +24,7 @@ model Organization {
   outboxTasks            OutboxTask[]
   properties             Property[]
   numberSeries           NumberSeries[]
+  organizationModules    OrganizationModule[]
 
   @@index([ownerId])
   @@index([slug])
@@ -46,4 +47,25 @@ model OrganizationMember {
   @@index([organizationId])
   @@index([userId])
   @@map("organization_members")
+}
+
+// Which modules an organization has switched on.
+//
+// A row is only needed to *disagree* with the module's default, so an empty
+// table means every module behaves as declared. Core modules — overview,
+// members, settings — have no off switch: an organization without its own
+// settings screen is not a product decision, it is a broken install.
+model OrganizationModule {
+  id             Int      @id @default(autoincrement())
+  organizationId Int
+  moduleId       String
+  enabled        Boolean
+  updatedAt      DateTime @updatedAt
+  updatedById    String?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, moduleId])
+  @@index([organizationId, enabled])
+  @@map("organization_modules")
 }

@@ -4,46 +4,18 @@ An all-in-one property management system: reservations, distribution, rates,
 guests, housekeeping, billing, compliance, locks and analytics, run from one
 dashboard.
 
-This is the product. Everything below is meant to be a module under one
-contract — and that contract does not exist yet, which is the first item.
+This is what the product is: the domain, the decisions that are expensive to
+reverse, and what each module contains. **The order to build it in is
+[roadmap.md](roadmap.md)** — this file carries no sequencing, so the two cannot
+drift apart.
 
 ## Prerequisites no module can be finished without
 
 | Needed | By | Why it cannot be deferred |
 |---|---|---|
-| Postgres | reservations | SQLite cannot express an overlap constraint, and this is a concurrent, money-handling system. |
 | A job queue draining `OutboxTask` | channels, locks, fiscal, registration | Every external system is slow and fails. Retries, idempotency and dead letters are not optional. |
 | Real-time push | grid, housekeeping | A receptionist and a housekeeper must not see stale state; there is no subscription transport. |
 | Field-level encryption | passports, payment references | `IdentityDocument.numberEncrypted` is named for an obligation the code does not meet. |
-
-## The module contract, which is asserted and not built
-
-Ten modules is exactly the case a contract exists for, and every part of it is
-still hand-wired:
-
-| Claimed | Actually |
-|---|---|
-| a module declares its own permissions | `directory`, `identity` and `organizations` each call `createAccessControl` separately; nothing merges them |
-| a module adds nothing to the core | `src/server/root.ts` composes three routers by hand — `directory` added a line |
-| a module can be off for an organization | there is no enablement table |
-| the registry declares a module | `ORG_FEATURE_REGISTRY` carries `label`, `icon`, `segment` — presentation only |
-
-Four changes to core, once, for every module after:
-
-1. **`OrgModule`** in `organizations/model/registry.ts`, widening today's
-   `OrgFeatureDefinition` with `statements` and `grants`. The built-ins become
-   manifests too, so there is one kind of thing rather than two.
-2. **`root.ts` composes from the registry** instead of by hand. The only file
-   where "modules exist" is visible.
-3. **Statements merge** before `createAccessControl`. Granting a verb a module
-   never declared must stay a compile error — that property is load-bearing
-   today and cannot be lost in the merge.
-4. **`OrganizationModule(organizationId, moduleId, enabled)`**, read by the nav,
-   the route guard and the procedures. **The procedure is the enforcement** — a
-   hidden nav item is a courtesy, exactly as with roles.
-
-It goes first because the alternative is doing it after the reservation,
-rates and platform routers exist, when it is a much wider edit.
 
 ## The modelling decisions that are expensive to reverse
 
@@ -143,25 +115,6 @@ encryption, a retention policy, an access audit trail, and a deliberate answer
 to "who on staff may read a passport number". None of that exists today, and it
 is not something to retrofit after launch.
 
-## Phases
-
-The whole thing is a multi-year product. What matters is the first coherent
-slice a real property could run on.
-
-| # | Scope | Ends with |
-|---|---|---|
-| 2 | Reservation, rate and availability procedures, with the overlap check | no double-booking |
-| 3 | The reservation grid | a receptionist can work |
-| 4 | Guest CRM and housekeeping screens | a full stay cycle, in-house |
-| 5 | Folio and payment screens | money, without the legal adapter |
-| 6 | Booking engine and widget | direct sales, public identity story |
-| 7 | Channel manager, one channel | distribution proven once |
-| 8 | Analytics | |
-| 9 | Fiscal, registration, locks — one plan each | jurisdiction by jurisdiction |
-
-**Phases 2 and 3 are the spine.** Everything after is additive; nothing
-before is optional.
-
 ## Done when
 
 - A room cannot be sold twice, refused by a database constraint rather than by
@@ -182,18 +135,16 @@ cost is named.
    an `OrganizationMember`. The same mechanism issues door PINs.
 3. **Multi-currency**, `Currency` and `ExchangeRate` as tables, money as integer
    minor units.
-4. **SQLite for development, Postgres before go-live.** The overlap invariant
-   needs an exclusion constraint SQLite cannot express; until then it is a check
-   inside a transaction with a real race window.
+4. **Postgres, not SQLite.** The overlap invariant is an exclusion constraint
+   SQLite cannot express, and this is concurrent and handles money.
 5. **Buy channel management, do not build it.** One wholesale API reaches 60+
    OTAs behind a single integration and a single certification; direct
    connections mean repeating certification per channel forever.
 6. **One jurisdiction first, behind an adapter.** Fiscal and registration
    modules are country-locked. Design for one country; generalise when a second
    is paid for, never before.
-7. **The booking widget is deferred to Phase 7**, keeping phases 0–3 entirely
-   behind existing auth. It is a second identity story and a public attack
-   surface.
+7. **The booking widget comes late.** It is a second identity story and a
+   public attack surface, so everything before it stays behind existing auth.
 
 ## Smaller, once the above exists
 

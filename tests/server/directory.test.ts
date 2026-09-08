@@ -191,3 +191,68 @@ describe("important actions", () => {
     assert.ok(!after.items.some((p) => p.id === person.id));
   });
 });
+
+describe("module enablement", () => {
+  test("a disabled module is refused by the procedure, not merely hidden", async () => {
+    const { requireOrgModule } = await import("@/features/organizations/server");
+    const where = {
+      organizationId_moduleId: { organizationId: fx.org.id, moduleId: "DIRECTORY" },
+    };
+
+    // The fixture switched it on, the way a tenant would.
+    await requireOrgModule(fx.org.id, "DIRECTORY");
+    await callerFor(fx.owner).directory.listPeople({
+      organizationId: fx.org.id,
+      pagination: {},
+    });
+
+    await prisma.organizationModule.update({ where, data: { enabled: false } });
+    try {
+      // Not merely hidden: the procedure itself refuses.
+      await assert.rejects(
+        () => requireOrgModule(fx.org.id, "DIRECTORY"),
+        (e) => code(e) === "FORBIDDEN"
+      );
+      await assert.rejects(
+        () =>
+          callerFor(fx.owner).directory.listPeople({
+            organizationId: fx.org.id,
+            pagination: {},
+          }),
+        (e) => code(e) === "FORBIDDEN"
+      );
+    } finally {
+      await prisma.organizationModule.update({ where, data: { enabled: true } });
+    }
+  });
+
+  test("a module with no row at all follows its default", async () => {
+    // The other tenant never switched it on, and DIRECTORY is off by default.
+    const { requireOrgModule } = await import("@/features/organizations/server");
+    await assert.rejects(
+      () => requireOrgModule(fx.otherOrg.id, "DIRECTORY"),
+      (e) => code(e) === "FORBIDDEN"
+    );
+  });
+
+  test("a core module cannot be switched off by a stray row", async () => {
+    const { requireOrgModule } = await import("@/features/organizations/server");
+    await prisma.organizationModule.create({
+      data: { organizationId: fx.org.id, moduleId: "SETTINGS", enabled: false },
+    });
+    await requireOrgModule(fx.org.id, "SETTINGS");
+  });
+
+  test("moduleAccess reports the caller's role and the organization's toggles", async () => {
+    const access = await callerFor(fx.member).organization.moduleAccess({ slug: fx.org.slug });
+    assert.equal(access.role, "MEMBER");
+    assert.ok(access.toggles.some((t) => t.moduleId === "DIRECTORY"));
+  });
+
+  test("moduleAccess refuses a non-member", async () => {
+    await assert.rejects(
+      () => callerFor(fx.outsider).organization.moduleAccess({ slug: fx.org.slug }),
+      (e) => code(e) === "FORBIDDEN"
+    );
+  });
+});

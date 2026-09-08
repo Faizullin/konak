@@ -1,13 +1,14 @@
 import {
   Building2,
   ChevronLeft,
+  Contact,
   LayoutDashboard,
   Settings,
   Users,
   type LucideIcon,
 } from "lucide-react";
 import { UserRole } from "@/features/identity";
-import { ORG_FEATURE_REGISTRY } from "@/features/organizations";
+import { orgModule, visibleOrgModules, type ModuleToggle } from "@/features/organizations";
 
 /**
  * Sidebar navigation, as data.
@@ -69,19 +70,29 @@ export const accountNavItems: NavGroup[] = [
  * in each nav component.
  */
 const ORG_ICONS: Record<string, LucideIcon> = {
+  Contact,
   LayoutDashboard,
   Users,
   Settings,
 };
 
-export function organizationNavItems(orgSlug: string): NavGroup[] {
+export function organizationNavItems(
+  orgSlug: string,
+  role: string,
+  toggles: ModuleToggle[] = []
+): NavGroup[] {
   const base = `/dashboard/orgs/${orgSlug}`;
 
-  const dynamicItems = Object.values(ORG_FEATURE_REGISTRY).map((feature) => ({
-    title: feature.label,
-    url: feature.segment ? `${base}/${feature.segment}` : base,
-    icon: ORG_ICONS[feature.icon],
-  }));
+  // Only modules this organization has on and this role may see. Hiding the
+  // entry is a courtesy — the procedure and the route both re-check.
+  const dynamicItems = visibleOrgModules(role, toggles).map((id) => {
+    const definition = orgModule(id);
+    return {
+      title: definition.label,
+      url: definition.segment ? `${base}/${definition.segment}` : base,
+      icon: ORG_ICONS[definition.icon],
+    };
+  });
 
   return [
     {

@@ -9,5 +9,6 @@ export {
   assertSlugAvailable,
   createOrganizationWithOwner,
   organizationBySlug,
+  requireOrgModule,
   transferOwnership,
 } from "./service";

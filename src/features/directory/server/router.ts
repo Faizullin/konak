@@ -3,6 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import type { Prisma } from "@/generated/prisma/client";
 import { requireOrgMember } from "@/server/auth";
+import { requireOrgModule } from "@/features/organizations/server";
 import { fieldError } from "@/server/errors";
 import { createTRPCRouter, protectedProcedure } from "@/server/trpc";
 import {
@@ -51,6 +52,7 @@ function archiveFilter(includeArchived: boolean | undefined) {
 
 export const directoryRouter = createTRPCRouter({
   listPeople: protectedProcedure.input(listPeopleSchema).query(async ({ ctx, input }) => {
+    await requireOrgModule(input.organizationId, "DIRECTORY");
     const { role } = await requireOrgMember(ctx, input.organizationId);
     if (!canReadDirectory(role)) {
       throw new TRPCError({ code: "FORBIDDEN", message: "No access to the directory" });

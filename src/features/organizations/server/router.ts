@@ -144,6 +144,31 @@ export const organizationRouter = createTRPCRouter({
       return organizations.map((o) => ({ id: o.id, name: o.name, slug: o.slug }));
     }),
 
+  /**
+   * What the sidebar needs to draw an organization's nav: the caller's role in
+   * it, and which modules it has switched on. One query rather than two,
+   * because the shell asks on every navigation.
+   */
+  moduleAccess: protectedProcedure
+    .input(z.object({ slug: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const organization = await ctx.db.organization.findUnique({
+        where: { slug: input.slug },
+        select: { id: true },
+      });
+      if (!organization) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Organization not found" });
+      }
+
+      const { role } = await requireOrgMember(ctx, organization.id);
+      const toggles = await ctx.db.organizationModule.findMany({
+        where: { organizationId: organization.id },
+        select: { moduleId: true, enabled: true },
+      });
+
+      return { organizationId: organization.id, role, toggles };
+    }),
+
   getById: protectedProcedure.input(z.object({ id: z.number() })).query(async ({ ctx, input }) => {
     const { role } = await requireOrgMember(ctx, input.id);
 

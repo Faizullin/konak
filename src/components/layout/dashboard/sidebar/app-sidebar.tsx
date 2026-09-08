@@ -6,6 +6,7 @@ import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader } from "@/compone
 import { accountNavItems, filterNavByRole, organizationNavItems } from "@/config/nav-items";
 import { UserRole } from "@/features/identity";
 import { OrganizationSwitcher } from "@/features/organizations/client/components/organization-switcher";
+import { trpc } from "@/utils/trpc";
 import { NavMain } from "./nav-main";
 import { NavUser, type SidebarUser } from "./nav-user";
 
@@ -35,10 +36,21 @@ export function AppSidebar({
 
   const orgSlug = params?.orgSlug;
 
+  // The organization's own nav depends on two things a route cannot know: the
+  // caller's role in it, and which modules it has on. The shell renders on
+  // every navigation, so this is cached like the switcher's own query.
+  const access = trpc.organization.moduleAccess.useQuery(
+    { slug: orgSlug ?? "" },
+    { enabled: !!orgSlug, staleTime: 60_000 }
+  );
+
   const navItems = useMemo(() => {
-    if (orgSlug) return organizationNavItems(orgSlug);
-    return filterNavByRole(accountNavItems, user.role);
-  }, [orgSlug, user.role]);
+    if (!orgSlug) return filterNavByRole(accountNavItems, user.role);
+    // Nothing until the answer arrives: showing a module and withdrawing it is
+    // worse than a moment with only the back link.
+    if (!access.data) return organizationNavItems(orgSlug, "", []);
+    return organizationNavItems(orgSlug, access.data.role, access.data.toggles);
+  }, [orgSlug, user.role, access.data]);
 
   return (
     <Sidebar collapsible="icon" {...props}>

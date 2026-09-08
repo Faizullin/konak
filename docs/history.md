@@ -114,3 +114,28 @@ weeks, and only reading a superseded predecessor surfaced it.
 
 Recovered plans are kept with a `v1_` prefix and a header saying what survives.
 They are not plans; nothing is worked from them.
+
+## 2026-09-09 — the module contract
+
+An organization can now switch a module off. `ORG_MODULE_REGISTRY` declares
+each module once — label, icon, segment, who may see it, whether it is core —
+and the nav, the route and the procedure all read that declaration.
+`OrganizationModule` holds the toggles, and a row exists only to disagree with
+a default, so an empty table means every module behaves as declared. Core
+modules have no off switch. `DIRECTORY` is the first non-core module, off by
+default, so nothing links to a route that does not exist.
+
+Two of the four changes the old plan proposed were **not** made, and the
+reasons are worth keeping. Merging every module's statements into one
+`createAccessControl` would make the organizations feature import its modules —
+a core feature depending on the things built on it. Composing `root.ts` from
+the registry cannot work as described, because routers are `server-only` and
+the registry is isomorphic; it would need a second server-side map, one line
+per module, replacing one line per module.
+
+**Learned:** the lint boundaries added hours earlier caught their first real
+thing — `module` is a reserved variable name in Next, in two files. That is the
+class of mistake `ignoreDuringBuilds: true` had been hiding.
+
+`todo.md` and a new `plans/roadmap.md` now separate what the product is from
+the order to build it, so the two cannot drift.
