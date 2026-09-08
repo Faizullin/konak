@@ -1,7 +1,7 @@
 "use client";
 
 import type { ColumnDef } from "@tanstack/react-table";
-import { Building2, Mail, Phone } from "lucide-react";
+import { Building2, Mail, Phone, Plus } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { useMemo } from "react";
 import { DataTable } from "@/components/data-table/data-table";
@@ -10,9 +10,12 @@ import { DataTableSkeleton } from "@/components/data-table/data-table-skeleton";
 import { DataTableToolbar } from "@/components/data-table/data-table-toolbar";
 import { useDataTable } from "@/components/data-table/use-data-table";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { personDisplayName, type ListPeopleInput } from "@/features/directory";
 import type { GeneralRouterOutputs } from "@/server/types";
+import { useDialogControl } from "@/hooks/use-dialog-control";
 import { trpc } from "@/utils/trpc";
+import { PersonFormDialog } from "./person-form-dialog";
 
 type PersonRow = GeneralRouterOutputs["directory"]["listPeople"]["items"][number];
 
@@ -27,6 +30,9 @@ const SORTABLE = ["lastName", "firstName", "createdAt"];
  */
 export function PeopleTableView({ organizationId }: { organizationId: number }) {
   const [{ page, perPage, sort, search }] = usePeopleTableParams();
+  // One component opens this dialog and nobody else needs to, so the state
+  // lives here rather than in the NiceModal registry.
+  const create = useDialogControl();
 
   const input = useMemo<ListPeopleInput>(
     () => ({
@@ -127,9 +133,22 @@ export function PeopleTableView({ organizationId }: { organizationId: number }) 
   }
 
   return (
-    <DataTable table={table}>
-      <DataTableToolbar table={table} />
-    </DataTable>
+    <>
+      <DataTable table={table}>
+        <DataTableToolbar table={table}>
+          <Button size="sm" onClick={() => create.show()}>
+            <Plus className="size-4" />
+            New person
+          </Button>
+        </DataTableToolbar>
+      </DataTable>
+
+      <PersonFormDialog
+        organizationId={organizationId}
+        open={create.isVisible}
+        onOpenChange={(open) => !open && create.hide()}
+      />
+    </>
   );
 }
 

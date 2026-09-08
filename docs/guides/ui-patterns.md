@@ -327,9 +327,8 @@ const control = useDialogControl<Member>();
 Never a raw `Dialog` with a `useState(false)` beside it: that is this hook,
 written out longhand and without the `data` slot.
 
-*Nothing in the template uses tier 3 yet — every dialog here is opened from
-more than one place. It is the shape to reach for when the first single-owner
-dialog appears, not a gap to fill.*
+`people-table-view.tsx` is the worked example: it owns the "new person" dialog,
+nobody else opens it, and the state lives beside the button that raises it.
 
 ### `BaseDialog` and `FormDialog`
 

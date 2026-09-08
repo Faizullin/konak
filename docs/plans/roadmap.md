@@ -19,22 +19,6 @@ Two rules hold across every phase:
 
 ---
 
-## Phase 2 — The domain speaks
-
-Routers for `reservations`, `rates` and `platform`, whose `model/` layers are
-tested and which nothing calls.
-
-- Availability for a room type over a date range, derived — never a stored flag.
-- Create, move and cancel a reservation, with the overlap constraint relied on
-  rather than re-implemented.
-- Quote a stay: nightly price, occupancy extras, restrictions.
-- Hold a slot while a booking is being made, and release it on expiry.
-- Activities, tags and attachments through `platform`.
-
-**Done when** a reservation can be created, moved and cancelled through the API;
-a second one overlapping it is refused; and a quote for a stay matches the rate
-calendar by hand.
-
 ## Phase 3 — Design direction
 
 Before the grid, not after it. The grid is the largest piece of UI in the

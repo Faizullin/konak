@@ -75,14 +75,6 @@ export async function createFixture() {
     },
   });
 
-  // DIRECTORY is off by default, so an organization that uses it says so. This
-  // is the fixture doing what a real tenant does, not a workaround.
-  await prisma.organizationModule.create({
-    data: { organizationId: org.id, moduleId: "DIRECTORY", enabled: true },
-  });
-
-  // A second tenant, so "cannot read another organization" is a real assertion
-  // rather than a query against an empty table.
   const otherOrg = await prisma.organization.create({
     data: {
       name: `Other ${tag}`,
@@ -92,6 +84,18 @@ export async function createFixture() {
     },
   });
 
+  // DIRECTORY is off by default, so an organization that uses it says so. This
+  // is the fixture doing what a real tenant does, not a workaround.
+  await prisma.organizationModule.createMany({
+    data: [org.id, otherOrg.id].map((organizationId) => ({
+      organizationId,
+      moduleId: "DIRECTORY",
+      enabled: true,
+    })),
+  });
+
+  // A second tenant, so "cannot read another organization" is a real assertion
+  // rather than a query against an empty table.
   return {
     tag,
     org,

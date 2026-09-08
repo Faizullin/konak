@@ -139,3 +139,35 @@ class of mistake `ignoreDuringBuilds: true` had been hiding.
 
 `todo.md` and a new `plans/roadmap.md` now separate what the product is from
 the order to build it, so the two cannot drift.
+
+## 2026-09-09 — Phase 2, the domain speaks
+
+Routers for `reservations`, `rates` and `platform`, whose `model/` layers were
+tested and uncalled. Availability is derived per night from inventory minus
+blocks, confirmed stays and live holds — never a stored flag, because a cached
+count drifts the first time a channel cancels quietly and a wrong count is an
+overbooking.
+
+Booking is priced by `quoteStay`, so `totalMinor` stopped being zero. A rate
+that refuses — closed, minimum stay, no price for a night — refuses the booking
+with the reason on the field. References come from `NumberSeries`, consumed
+inside the transaction that uses them.
+
+Holds landed with the rest: a database constraint refuses the second *writer*,
+a hold stops the second guest reaching payment, and `releaseAt` gives the room
+back with no job to run. Re-using a key extends the hold rather than taking a
+second room.
+
+Attachment storage keys are generated server-side and never accepted from a
+caller — the only way "random, not derived from an id" can actually be
+guaranteed.
+
+**Learned:** three test failures, and only one was a bug in the code. One was a
+fixture typo the foreign key caught; one was a test that could never reach the
+exclusion constraint because availability refused first, on nights earlier
+tests had spent; one was `onDelete: Restrict` between rooms and room types
+blocking a cascade, which is the schema working. The real bug was mine: the
+module guard sat *before* the membership check, so an outsider probing another
+tenant learned which modules it runs.
+
+46 integration tests, 78 unit.

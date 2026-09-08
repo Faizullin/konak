@@ -1,9 +1,9 @@
 # Handoff
 
-**Where it is.** Phase 1 is done — the database. 45 models across 13 domain
-files on Postgres, two migrations, seeded. `identity`, `organizations` and
-`directory` have routers; `platform`, `reservations` and `rates` are `model/`
-only: the rules the database cannot hold, tested without one.
+**Where it is.** Phases 1 and 2 are done — the database and the domain. 46
+models on Postgres; six features, all with routers. Availability, booking,
+quoting, holds, activities, tags and attachments all work through the API.
+There are no screens for them yet.
 
 **Start the database first.** `docker compose -f docker/compose/db.yml up -d`
 

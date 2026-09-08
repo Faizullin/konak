@@ -248,6 +248,7 @@ a question you would otherwise open the file to settle:
 |---|---|---|
 | `*NiceDialog` / `*-nice-dialog.tsx` | built with `NiceModal.create`, opened by `NiceModal.show` from anywhere | `confirm-nice-dialog.tsx` |
 | `*Form` / `*-form.tsx` | `useForm` + `zodResolver` over a schema from `model/` | `sign-up-form.tsx` |
+| `*FormDialog` / `*-form-dialog.tsx` | a form in a dialog whose parent owns `open` — `useDialogControl`, not NiceModal | `person-form-dialog.tsx` |
 | `*TableView` / `*-table-view.tsx` | the `@/components/data-table` stack — sortable, filterable, paginated | `users-table-view.tsx` |
 | `*Table` / `*-table.tsx` | a plain `@/components/ui/table`, few rows, no toolbar | `member-table.tsx` |
 

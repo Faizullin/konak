@@ -5,20 +5,18 @@ boxes. A finished item leaves here; the fact of it goes to `history.md`.
 
 Where this sits in the whole build: `plans/roadmap.md`.
 
-## Directory screens
-`DIRECTORY` is registered as a module and off by default because it has no
-route. Its router exists and is tested. This is what turns the first non-core
-module from declared into usable.
-
-## Reservation and availability procedures
-`reservations`, `rates` and `platform` have tested `model/` layers and no
-`server/`. Availability, quoting, create/move/cancel — the invariants exist and
-nothing calls them.
+## Design direction
+The next phase, and it comes before the grid on purpose. Density, keyboard,
+colour-as-data and dark mode decided once — otherwise they get decided by
+accident inside the largest piece of UI in the product.
 
 ## The reservation grid
-Rooms down, dates across. Not the DataTable stack; a virtualised two-axis
-timeline. The largest piece of UI in the product, and the phase after this one
-depends on it.
+Rooms down, dates across. Its procedures exist now: availability, create,
+setStatus, assignRoom, quote.
+
+## Room and rate-plan management
+Room types, rooms and plans are seeded and readable but have no screens, so a
+property can only be set up through SQL.
 
 ## A worker draining OutboxTask
 The table is the intent; nothing acts on it. Needed before anything talks to an

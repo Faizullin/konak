@@ -52,8 +52,8 @@ function archiveFilter(includeArchived: boolean | undefined) {
 
 export const directoryRouter = createTRPCRouter({
   listPeople: protectedProcedure.input(listPeopleSchema).query(async ({ ctx, input }) => {
-    await requireOrgModule(input.organizationId, "DIRECTORY");
     const { role } = await requireOrgMember(ctx, input.organizationId);
+    await requireOrgModule(input.organizationId, "DIRECTORY");
     if (!canReadDirectory(role)) {
       throw new TRPCError({ code: "FORBIDDEN", message: "No access to the directory" });
     }
@@ -92,6 +92,7 @@ export const directoryRouter = createTRPCRouter({
     .input(z.object({ organizationId: z.number(), id: z.number() }))
     .query(async ({ ctx, input }) => {
       const { role } = await requireOrgMember(ctx, input.organizationId);
+      await requireOrgModule(input.organizationId, "DIRECTORY");
       if (!canReadDirectory(role)) {
         throw new TRPCError({ code: "FORBIDDEN", message: "No access to the directory" });
       }
@@ -110,6 +111,7 @@ export const directoryRouter = createTRPCRouter({
 
   createPerson: protectedProcedure.input(createPersonSchema).mutation(async ({ ctx, input }) => {
     const { user, role } = await requireOrgMember(ctx, input.organizationId);
+    await requireOrgModule(input.organizationId, "DIRECTORY");
     if (!canManagePeople(role)) {
       throw new TRPCError({ code: "FORBIDDEN", message: "You cannot add people" });
     }
@@ -149,6 +151,7 @@ export const directoryRouter = createTRPCRouter({
     .input(updatePersonSchema.extend({ organizationId: z.number() }))
     .mutation(async ({ ctx, input }) => {
       const { user, role } = await requireOrgMember(ctx, input.organizationId);
+      await requireOrgModule(input.organizationId, "DIRECTORY");
       if (!canManagePeople(role)) {
         throw new TRPCError({ code: "FORBIDDEN", message: "You cannot edit people" });
       }
@@ -190,6 +193,7 @@ export const directoryRouter = createTRPCRouter({
     .input(z.object({ organizationId: z.number(), id: z.number(), archived: z.boolean() }))
     .mutation(async ({ ctx, input }) => {
       const { user, role } = await requireOrgMember(ctx, input.organizationId);
+      await requireOrgModule(input.organizationId, "DIRECTORY");
       if (!canArchivePeople(role)) {
         throw new TRPCError({ code: "FORBIDDEN", message: "Only managers can archive people" });
       }
@@ -210,6 +214,7 @@ export const directoryRouter = createTRPCRouter({
 
   listCompanies: protectedProcedure.input(listCompaniesSchema).query(async ({ ctx, input }) => {
     const { role } = await requireOrgMember(ctx, input.organizationId);
+    await requireOrgModule(input.organizationId, "DIRECTORY");
     if (!canReadDirectory(role)) {
       throw new TRPCError({ code: "FORBIDDEN", message: "No access to the directory" });
     }
@@ -237,6 +242,7 @@ export const directoryRouter = createTRPCRouter({
 
   createCompany: protectedProcedure.input(createCompanySchema).mutation(async ({ ctx, input }) => {
     const { user, role } = await requireOrgMember(ctx, input.organizationId);
+    await requireOrgModule(input.organizationId, "DIRECTORY");
     if (!canManageCompanies(role)) {
       throw new TRPCError({ code: "FORBIDDEN", message: "You cannot add companies" });
     }
@@ -273,6 +279,7 @@ export const directoryRouter = createTRPCRouter({
     .input(updateCompanySchema.extend({ organizationId: z.number() }))
     .mutation(async ({ ctx, input }) => {
       const { user, role } = await requireOrgMember(ctx, input.organizationId);
+      await requireOrgModule(input.organizationId, "DIRECTORY");
       if (!canManageCompanies(role)) {
         throw new TRPCError({ code: "FORBIDDEN", message: "You cannot edit companies" });
       }
@@ -303,6 +310,7 @@ export const directoryRouter = createTRPCRouter({
     .input(linkPersonSchema.extend({ organizationId: z.number() }))
     .mutation(async ({ ctx, input }) => {
       const { role } = await requireOrgMember(ctx, input.organizationId);
+      await requireOrgModule(input.organizationId, "DIRECTORY");
       if (!canManagePeople(role)) {
         throw new TRPCError({ code: "FORBIDDEN", message: "You cannot change directory links" });
       }

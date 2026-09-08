@@ -226,12 +226,55 @@ describe("module enablement", () => {
     }
   });
 
+  test("a disabled module refuses writes, not only reads", async () => {
+    // The first version of this guard was on the list procedure alone, which
+    // would have left a switched-off module writable.
+    const where = {
+      organizationId_moduleId: { organizationId: fx.org.id, moduleId: "DIRECTORY" },
+    };
+    await prisma.organizationModule.update({ where, data: { enabled: false } });
+    try {
+      await assert.rejects(
+        () =>
+          callerFor(fx.owner).directory.createPerson({
+            organizationId: fx.org.id,
+            firstName: "Should",
+            lastName: "Refuse",
+          }),
+        (e) => code(e) === "FORBIDDEN"
+      );
+    } finally {
+      await prisma.organizationModule.update({ where, data: { enabled: true } });
+    }
+  });
+
   test("a module with no row at all follows its default", async () => {
-    // The other tenant never switched it on, and DIRECTORY is off by default.
+    // A tenant that never said anything about the module: DIRECTORY is off by
+    // default, so absence of a row is a refusal, not a permission.
     const { requireOrgModule } = await import("@/features/organizations/server");
+    const bare = await prisma.organization.create({
+      data: { name: `Bare ${fx.tag}`, slug: `bare-${fx.tag}`, ownerId: fx.owner.id },
+    });
+    try {
+      await assert.rejects(
+        () => requireOrgModule(bare.id, "DIRECTORY"),
+        (e) => code(e) === "FORBIDDEN"
+      );
+    } finally {
+      await prisma.organization.delete({ where: { id: bare.id } });
+    }
+  });
+
+  test("a non-member is refused before the module is consulted", async () => {
+    // Otherwise an outsider probing another tenant learns which modules it
+    // runs — configuration disclosed to someone with no membership at all.
     await assert.rejects(
-      () => requireOrgModule(fx.otherOrg.id, "DIRECTORY"),
-      (e) => code(e) === "FORBIDDEN"
+      () =>
+        callerFor(fx.outsider).directory.listPeople({
+          organizationId: fx.org.id,
+          pagination: {},
+        }),
+      (e) => code(e) === "FORBIDDEN" && !String((e as Error).message).includes("not enabled")
     );
   });
 
