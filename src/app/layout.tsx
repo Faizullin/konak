@@ -3,7 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import { NuqsAdapter } from "nuqs/adapters/next/app";
 import Providers from "@/components/layout/providers";
 
-import "./app.css";
+import "@/styles/index.scss";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",

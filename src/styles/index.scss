@@ -1,0 +1,15 @@
+// The application stylesheet. `layout.tsx` imports this and nothing else.
+//
+// Order is the whole point:
+//
+//   1. `globals.css` — **shadcn's**. `npx shadcn@latest add` writes and
+//      rewrites it, so nothing of ours goes in there; it is left exactly as the
+//      CLI generates it, and `components.json` still points at it.
+//   2. everything after — ours, so it wins on equal specificity.
+//
+// This file is `.scss` so variables, nesting and mixins are available the day a
+// screen needs them, without a build change at that moment. Plain CSS stays
+// plain CSS: use SCSS where it earns its place, not by default.
+
+@import "./globals.css";
+@import "./overrides.css";

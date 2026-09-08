@@ -201,3 +201,25 @@ beyond the directory dialog.
 **Indexes** already covered every new query shape: availability reads room
 types, stays and holds through composite indexes that lead with the id, and the
 rate calendar through its unique key.
+
+## 2026-09-09 — where styles live
+
+`src/styles/` now holds everything of ours, imported after shadcn's
+`app/globals.css` so it wins on equal specificity. That file is left exactly as
+the CLI writes it — `shadcn add` rewrites it, so anything of ours placed there
+was always going to be lost.
+
+The entry is `.scss`, so variables, nesting and mixins are available the day a
+screen needs them rather than being a build change at that moment. Sass was
+tested against the Tailwind entry before being adopted, not assumed to work.
+
+Deliberately not a design phase. The product keeps shadcn's default admin
+dashboard; density, colour-as-data, keyboard rules and motion are the last
+phase, where they cost least to change.
+
+**Learned:** the first check said the vendored-style overrides had been dropped
+by the sass pass. They had not — the emitted CSS is minified onto one line, so
+`grep -c` counted lines rather than occurrences. Counted properly the output is
+identical to the CSS entry: fourteen `data-orientation=` selectors and no stale
+`[data-horizontal]`. A measurement that disagrees with expectation is worth
+re-measuring before acting on.

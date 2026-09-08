@@ -37,6 +37,7 @@ src/
 ├── config/       nav-items.ts — the sidebar, as data
 ├── hooks/        generic hooks only
 ├── lib/          REPLACEABLE ADAPTERS
+├── styles/       every stylesheet — shadcn's `globals.css`, and ours after it
 ├── store/        client providers (nice-modal)
 └── utils/ generated/
 ```
@@ -240,6 +241,28 @@ tests, which is also the only way to test them without a database:
   and a rate plan — all property-scoped, and nothing stops them disagreeing.
 - **Unguessable storage keys.** A passport scan at a path built from integers is
   readable by anyone who can count.
+
+## Styles
+
+Two owners, and the split is what keeps `shadcn add` safe to run:
+
+| File | Owner | Rule |
+|---|---|---|
+| `src/styles/globals.css` | **shadcn** | The CLI writes and rewrites it. Never edit it; `components.json` points here. |
+| `src/styles/index.scss` | ours | The only stylesheet `layout.tsx` imports. Pulls in `globals.css` first, then ours. |
+| `src/styles/overrides.css` | ours | Fixes to vendored styles — survives both `shadcn add` and `--overwrite`. |
+
+Ours is imported **after** shadcn's, so it wins on equal specificity without
+`!important`.
+
+The entry is `.scss` so variables, nesting and mixins are available the day a
+screen needs them, rather than being a build change at that moment. That is not
+an instruction to write SCSS: plain CSS stays plain CSS, and Tailwind utilities
+stay the first choice. Sass is there for the cases utilities genuinely cannot
+express.
+
+New files go in `src/styles/` and are imported from `index.scss` in order.
+There are no empty placeholders — a file appears when it has something in it.
 
 ## Naming
 

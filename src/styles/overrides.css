@@ -1,11 +1,9 @@
-/* Application stylesheet.
+/* Fixes to vendored styles.
  *
- * `globals.css` is owned by shadcn — `npx shadcn@latest` writes and rewrites it,
- * so anything of ours placed there is lost on the next `add`. This file imports
- * it and holds everything the CLI must never see. `layout.tsx` imports this,
- * not `globals.css`.
+ * Anything here corrects a component we did not write. It lives outside
+ * `app/globals.css` because `npx shadcn@latest add` rewrites that file, and
+ * outside `components/ui/*` because `--overwrite` rewrites those.
  */
-@import "./globals.css";
 
 /* Base UI emits `data-orientation="horizontal" | "vertical"` — a state value
  * becomes `data-<key>="<value>"`. The shadcn base-vega registry, however, styles
@@ -13,8 +11,7 @@
  * compiles to `[data-horizontal]` — an attribute Base UI never sets. The result is
  * dead CSS: a separator with no height, a slider track with no size.
  *
- * Redefining the two variants fixes every affected component at once, and unlike
- * editing `components/ui/*` it survives `shadcn add --overwrite`.
+ * Redefining the two variants fixes every affected component at once.
  * Remove once the registry emits `data-[orientation=…]` itself.
  */
 @custom-variant data-horizontal (&[data-orientation="horizontal"]);

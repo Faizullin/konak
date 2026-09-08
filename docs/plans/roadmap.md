@@ -19,49 +19,51 @@ Two rules hold across every phase:
 
 ---
 
-## Phase 3 — Design direction
-
-Before the grid, not after it. The grid is the largest piece of UI in the
-product and the hardest to rework, so the decisions below have to exist before
-it is drawn — otherwise they are made by accident, inside it, and inherited by
-everything after.
-
-This is not a visual refresh. It is the set of answers a receptionist's
-eight-hour day depends on:
-
-- **Density.** A property manager reads a screen with forty rooms on it. The
-  default component sizing is built for marketing pages, and a comfortable
-  table is the wrong table here.
-- **Keyboard first.** Check-in is repetitive and done under pressure. Which
-  actions have keys, what focus does after a dialog closes, whether a grid cell
-  is reachable without a mouse.
-- **Error legibility.** `lib/errors.ts` decides *where* a failure appears; this
-  decides whether it is readable at a glance while someone is waiting at the
-  desk.
-- **Colour as data.** The grid encodes reservation state in colour. It needs a
-  scale that survives dark mode and does not rely on hue alone, because some of
-  the people using it will not see the difference.
-- **Dark mode and contrast.** `next-themes` is installed and nothing has been
-  designed for it. Front desks run dim at night.
-- **Responsive floor.** Housekeeping is a phone held one-handed; the grid is a
-  desktop. Decide which screens are which, rather than making everything bend.
-
-**Done when** `docs/guides/ui-patterns.md` states the density scale, the
-keyboard rules and the state palette, and one existing screen has been rebuilt
-against them as the reference — not a mockup, a shipped screen.
-
 ## Phase 4 — The front desk
 
-The reservation grid, and the day a receptionist actually works.
+The reservation grid, and the day a receptionist actually works. Everything
+underneath it exists: `availability`, `create`, `setStatus`, `assignRoom`,
+`quote`. This is the first screen with nothing missing beneath it.
 
-- Rooms down, dates across, one month visible, drag to move and resize to
-  extend. Not the `DataTable` stack — a virtualised two-axis timeline with its
-  own range-query shape.
-- Arrivals and departures for a date; assign a room; check in and out.
-- A refused drag says why.
+### The grid
+
+Rooms down the vertical axis, dates across the horizontal, one month visible.
+**Not the `DataTable` stack** — that is paginated rows over one axis, and this
+is a fixed two-axis surface where both axes scroll and the cells are spans, not
+rows. It wants its own component and its own data contract.
+
+- One query for a window: rooms, the stays that touch it, and the availability
+  per type per night. Not one query per room.
+- Drag to move a stay between rooms and dates; resize an edge to extend it. Both
+  land on `assignRoom` and a date change, and both can be refused.
+- **A refused drag says why, in place.** The room is taken; the type is wrong;
+  the night is closed. The exclusion constraint already produces the first as a
+  field error.
+- Colour by state, and the palette is temporary — Phase 12 replaces it.
+- Optimistic movement with a revert, because a drag that waits for a round trip
+  feels broken. The server stays the authority.
+
+### The day's work
+
+- **Arrivals and departures** for a date, and a walk-in that books and checks in
+  in one action.
+- **Assignment** — an unassigned stay is normal for a future booking; assigning
+  is a check-in step, not a booking step.
+- **Check in and out**, driving the status machine, which drives housekeeping.
+
+### Decide during this phase, not before
+
+- **Real-time.** Two receptionists on one grid go stale. Cheapest to add here,
+  where the need is visible, rather than designed in advance.
+- **A denormalised read model.** A month for sixty rooms crosses reservations,
+  stays, rooms and rate calendar. Decide against a real query plan, not a
+  feeling.
+- **Virtualisation.** Sixty rooms by thirty-one days is 1,860 cells. Measure
+  before reaching for a windowing library.
 
 **Done when** a receptionist can run a day — arrivals, assignment, check-in,
-check-out — without touching SQL.
+check-out — without touching SQL, and a drag that would overlap is refused with
+the reason shown.
 
 ## Phase 5 — Guests and housekeeping
 
@@ -143,6 +145,22 @@ redirect to sign-in.
 
 Do not confuse this with the legal pages in Phase 8. Those are a condition of
 collecting guest data; this is a shop window.
+
+## Phase 12 — Visual design and motion
+
+Last on purpose. Until here the product wears shadcn's defaults, which are
+good enough to run a hotel and cheap to replace.
+
+- A density scale for screens read all day — a forty-room grid is not a
+  marketing page.
+- Colour as data: reservation state needs a scale that survives dark mode and
+  does not rely on hue alone.
+- Keyboard rules for the repetitive work: check-in, assignment, search.
+- Motion, last of all, and only where it explains something — a row moving, a
+  panel opening. Animation that decorates is animation that delays.
+
+**Done when** the rules are in `ui-patterns.md` and one shipped screen has been
+rebuilt against them — a reference, not a mockup.
 
 ---
 
