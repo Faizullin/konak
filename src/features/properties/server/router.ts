@@ -275,7 +275,7 @@ export const propertyRouter = createTRPCRouter({
             PropertyError.ROOM_TYPE_HAS_ROOMS,
             `Archive the ${live} room${live === 1 ? "" : "s"} on this type first`,
             "id"
-          );
+          ).with({ count: live });
         }
       }
 

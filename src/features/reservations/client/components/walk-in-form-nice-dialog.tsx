@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/select";
 import { isRoomSellable, ROOM_STATUS_LABELS, type RoomStatus } from "@/features/properties";
 import { walkInFormSchema, type WalkInFormInput } from "@/features/reservations";
-import { handleFormError } from "@/lib/errors";
+import { useErrorHandlers } from "@/lib/errors";
 import { trpc } from "@/utils/trpc";
 
 /**
@@ -49,6 +49,7 @@ const EMPTY: WalkInFormInput = {
 
 export const WalkInFormNiceDialog = NiceModal.create(
   ({ propertyId }: WalkInFormNiceDialogProps) => {
+    const { handleFormError } = useErrorHandlers();
     const modal = useModal();
     const utils = trpc.useUtils();
 

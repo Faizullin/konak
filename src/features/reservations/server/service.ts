@@ -188,7 +188,7 @@ export async function nextSeriesNumber(
     throw new PreconditionError(
       ReservationError.SERIES_MISSING,
       `No ${args.kind} number series for this property`
-    );
+    ).with({ kind: args.kind });
   }
 
   // A yearly series restarts when the period changes; the update is what makes
@@ -274,7 +274,7 @@ export async function frontDeskGrid(args: {
     throw new InvalidError(
       ReservationError.GRID_WINDOW_INVALID,
       `A grid window is between one and ${GRID_MAX_NIGHTS} nights`
-    );
+    ).with({ max: GRID_MAX_NIGHTS });
   }
 
   const from = window.from;

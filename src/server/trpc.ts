@@ -31,6 +31,9 @@ const t = initTRPC.context<typeof createTRPCContext>().create({
         // The stable half of a refusal. A message can be reworded or
         // translated; this is what a test and a translation file key on.
         domainCode: error.cause instanceof DomainError ? error.cause.code : null,
+        // What a translation of that code needs, for the refusals whose English
+        // interpolated a runtime value.
+        domainValues: error.cause instanceof DomainError ? (error.cause.values ?? null) : null,
       },
     };
   },

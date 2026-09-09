@@ -6,10 +6,10 @@ boxes. A finished item leaves here; the fact of it goes to `history.md`.
 Where this sits in the whole build: `plans/roadmap.md`.
 
 ## Internationalisation
-Every string is inline English. The library is chosen and the reading is done —
-`plans/internationalisation.md` has the choice (`next-intl`, no locale routing),
-what Next 16 changed, and the five steps in order. The first two are
-configuration; steps three and four are the work.
+`next-intl` is wired in no-routing mode and the two auth screens read from
+`messages/en/`, which proved the setup without changing a word on screen. What
+is still English: the 77 domain codes' messages, the 171 Zod messages, and every
+dashboard string. `plans/internationalisation.md` has the order.
 
 ## Visual design and motion
 Last, once the product works. Density, colour-as-data, keyboard rules, and

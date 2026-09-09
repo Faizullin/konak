@@ -7,7 +7,7 @@ import { selectOne } from "@/components/common/select-nice-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { OrgRole } from "@/features/organizations";
-import { handleError } from "@/lib/errors";
+import { useErrorHandlers } from "@/lib/errors";
 import { trpc } from "@/utils/trpc";
 
 export function OrganizationDangerZone({
@@ -19,6 +19,7 @@ export function OrganizationDangerZone({
   currentUserRole: OrgRole;
   currentUserId?: string;
 }) {
+  const { handleError } = useErrorHandlers();
   const router = useRouter();
   const utils = trpc.useUtils();
   const isOwner = currentUserRole === OrgRole.OWNER;

@@ -16,7 +16,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { MEAL_PLAN_LABELS, ratePlanFormSchema, type RatePlanFormInput } from "@/features/rates";
-import { handleFormError } from "@/lib/errors";
+import { useErrorHandlers } from "@/lib/errors";
 import { trpc } from "@/utils/trpc";
 
 /**
@@ -38,6 +38,7 @@ const EVERY_TYPE = "ALL";
 
 export const RatePlanFormNiceDialog = NiceModal.create(
   ({ propertyId, currencyCode, planId }: RatePlanFormNiceDialogProps) => {
+    const { handleFormError } = useErrorHandlers();
     const isEdit = planId !== undefined;
     const modal = useModal();
     const utils = trpc.useUtils();

@@ -8,7 +8,7 @@ import { confirm } from "@/components/common/confirm-nice-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { handleError } from "@/lib/errors";
+import { useErrorHandlers } from "@/lib/errors";
 import { cn } from "@/lib/utils";
 import {
   DAY_ROLE_LABELS,
@@ -163,6 +163,7 @@ function DayList({
 }
 
 export function FrontDeskDay({ propertyId, timezone }: { propertyId: number; timezone: string }) {
+  const { handleError } = useErrorHandlers();
   const today = useMemo(() => todayAt(timezone), [timezone]);
   const [day, setDay] = useState(today);
   const [refusal, setRefusal] = useState<string | null>(null);

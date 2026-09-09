@@ -25,7 +25,7 @@ import {
   type ListUsersInput,
 } from "@/features/identity";
 import type { GeneralRouterOutputs } from "@/server/types";
-import { handleError } from "@/lib/errors";
+import { useErrorHandlers } from "@/lib/errors";
 import { trpc } from "@/utils/trpc";
 
 type UserRow = GeneralRouterOutputs["user"]["adminList"]["items"][number];
@@ -46,6 +46,7 @@ const ROLE_ICONS: Record<UserRole, typeof User> = {
  * merely declines to draw a door nobody may open.
  */
 export function UsersTableView() {
+  const { handleError } = useErrorHandlers();
   const utils = trpc.useUtils();
   const [{ page, perPage, sort, name, email, role }] = useUserTableParams();
 

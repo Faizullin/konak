@@ -1,6 +1,8 @@
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { ReactNode } from "react";
+import { NextIntlClientProvider } from "next-intl";
+import { getLocale, getMessages } from "next-intl/server";
 import { AppSidebar } from "@/components/layout/dashboard/sidebar/app-sidebar";
 import { Separator } from "@/components/ui/separator";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
@@ -18,6 +20,11 @@ import { auth } from "@/server/auth";
  * The sidebar's open/closed state is read from a cookie on the server, so the
  * first paint matches what the person left it as instead of flashing open and
  * snapping shut.
+ *
+ * The provider carries only `errors`, which is what every screen beneath needs
+ * to say why a mutation was refused. A namespace is added here when a screen
+ * under it renders one — mounting them all would put every string in every
+ * bundle, and the shared chunk is where that would show.
  */
 export default async function DashboardLayout({ children }: Readonly<{ children: ReactNode }>) {
   const session = await auth.api.getSession({ headers: await headers() });
@@ -35,16 +42,20 @@ export default async function DashboardLayout({ children }: Readonly<{ children:
     role: (session.user.role as UserRole) ?? UserRole.USER,
   };
 
+  const [locale, messages] = await Promise.all([getLocale(), getMessages()]);
+
   return (
-    <SidebarProvider defaultOpen={defaultOpen}>
-      <AppSidebar user={user} />
-      <SidebarInset>
-        <header className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
-          <SidebarTrigger className="-ml-1" />
-          <Separator orientation="vertical" className="mr-2 h-4" />
-        </header>
-        <div className="mx-auto w-full max-w-5xl flex-1 p-6">{children}</div>
-      </SidebarInset>
-    </SidebarProvider>
+    <NextIntlClientProvider locale={locale} messages={{ errors: messages.errors }}>
+      <SidebarProvider defaultOpen={defaultOpen}>
+        <AppSidebar user={user} />
+        <SidebarInset>
+          <header className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
+            <SidebarTrigger className="-ml-1" />
+            <Separator orientation="vertical" className="mr-2 h-4" />
+          </header>
+          <div className="mx-auto w-full max-w-5xl flex-1 p-6">{children}</div>
+        </SidebarInset>
+      </SidebarProvider>
+    </NextIntlClientProvider>
   );
 }

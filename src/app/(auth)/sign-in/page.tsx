@@ -1,4 +1,5 @@
 import { SignInForm } from "@/features/identity/client/components/sign-in-form";
+import { getTranslations } from "next-intl/server";
 import { configuredSocialProviders } from "@/server/auth";
 
 /**
@@ -9,12 +10,14 @@ import { configuredSocialProviders } from "@/server/auth";
  * down; a client component cannot read those env vars. The session guard and
  * the card around this live in `(auth)/layout.tsx`.
  */
-export default function SignInPage() {
+export default async function SignInPage() {
+  const t = await getTranslations("auth.signIn");
+
   return (
     <>
       <div className="space-y-2 text-center">
-        <h1 className="text-3xl font-bold">Welcome back</h1>
-        <p className="text-muted-foreground">Sign in to your account to continue</p>
+        <h1 className="text-3xl font-bold">{t("title")}</h1>
+        <p className="text-muted-foreground">{t("subtitle")}</p>
       </div>
       <SignInForm providers={configuredSocialProviders} />
     </>

@@ -6,7 +6,7 @@ import { useMemo, useRef, useState, type ReactNode } from "react";
 import { confirm } from "@/components/common/confirm-nice-dialog";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { handleError } from "@/lib/errors";
+import { useErrorHandlers } from "@/lib/errors";
 import { cn } from "@/lib/utils";
 import { ROOM_STATUS_LABELS, RoomStatus } from "@/features/properties";
 import {
@@ -477,6 +477,7 @@ export function ReservationGrid({
   propertyId: number;
   timezone: string;
 }) {
+  const { handleError } = useErrorHandlers();
   const [anchor, setAnchor] = useState(() => monthWindowOf(new Date()).from);
   const [refusal, setRefusal] = useState<string | null>(null);
   const [dragging, setDragging] = useState<{ id: number; grabNight: number } | null>(null);

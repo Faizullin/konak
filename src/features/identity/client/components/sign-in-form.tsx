@@ -6,12 +6,13 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Controller, useForm } from "react-hook-form";
 import { FormError } from "@/components/common/form-error";
+import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { signInSchema, type SignInInput } from "@/features/identity";
 import { authClient } from "@/lib/auth-client";
-import { handleFormError } from "@/lib/errors";
+import { useErrorHandlers } from "@/lib/errors";
 import { OAuthButtons, type OAuthProvider } from "./oauth-buttons";
 
 /**
@@ -21,6 +22,8 @@ import { OAuthButtons, type OAuthProvider } from "./oauth-buttons";
  * form can be dropped into a dialog later without moving anything.
  */
 export function SignInForm({ providers = [] }: { providers?: OAuthProvider[] }) {
+  const { handleFormError } = useErrorHandlers();
+  const t = useTranslations("auth");
   const router = useRouter();
 
   const form = useForm<SignInInput>({
@@ -61,12 +64,12 @@ export function SignInForm({ providers = [] }: { providers?: OAuthProvider[] }) 
             name="email"
             render={({ field, fieldState }) => (
               <Field data-invalid={!!fieldState.error}>
-                <FieldLabel htmlFor="sign-in-email">Email</FieldLabel>
+                <FieldLabel htmlFor="sign-in-email">{t("fields.email")}</FieldLabel>
                 <Input
                   id="sign-in-email"
                   type="email"
                   autoComplete="email"
-                  placeholder="you@example.com"
+                  placeholder={t("fields.emailPlaceholder")}
                   disabled={isPending}
                   {...field}
                 />
@@ -80,7 +83,7 @@ export function SignInForm({ providers = [] }: { providers?: OAuthProvider[] }) 
             name="password"
             render={({ field, fieldState }) => (
               <Field data-invalid={!!fieldState.error}>
-                <FieldLabel htmlFor="sign-in-password">Password</FieldLabel>
+                <FieldLabel htmlFor="sign-in-password">{t("fields.password")}</FieldLabel>
                 <Input
                   id="sign-in-password"
                   type="password"
@@ -96,14 +99,14 @@ export function SignInForm({ providers = [] }: { providers?: OAuthProvider[] }) 
 
         <Button type="submit" className="w-full" disabled={isPending}>
           {isPending && <LoaderIcon className="size-4 animate-spin" />}
-          Sign in
+          {t("signIn.submit")}
         </Button>
       </form>
 
       <p className="text-muted-foreground text-center text-sm">
-        Don&apos;t have an account?{" "}
+        {t("signIn.noAccount")}{" "}
         <Button nativeButton={false} variant="link" size="xs" render={<Link href="/sign-up" />}>
-          Create one
+          {t("signIn.createOne")}
         </Button>
       </p>
     </div>

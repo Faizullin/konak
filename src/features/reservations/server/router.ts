@@ -132,7 +132,7 @@ export const reservationRouter = createTRPCRouter({
         ReservationError.STAY_SOLD_OUT,
         `No rooms of that type free on ${soldOut.date.toISOString().slice(0, 10)}`,
         "checkIn"
-      );
+      ).with({ date: soldOut.date.toISOString().slice(0, 10) });
     }
 
     // A rate plan makes the booking priced; without one it is a held room with
@@ -250,10 +250,10 @@ export const reservationRouter = createTRPCRouter({
       const short = nights.find((night) => night.available < input.quantity);
       if (short) {
         throw new ConflictError(
-          ReservationError.STAY_SOLD_OUT,
+          ReservationError.HOLD_SHORT,
           `Only ${short.available} free on ${short.date.toISOString().slice(0, 10)}`,
           "checkIn"
-        );
+        ).with({ available: short.available, date: short.date.toISOString().slice(0, 10) });
       }
     }
 
@@ -428,7 +428,7 @@ export const reservationRouter = createTRPCRouter({
         ReservationError.ROOM_NOT_SELLABLE,
         `That room is ${label.toLowerCase()} and cannot be sold`,
         "roomId"
-      );
+      ).with({ status: label.toLowerCase() });
     }
     if (input.adults + input.children > room.roomType.maxOccupancy) {
       throw new InvalidError(
@@ -450,7 +450,7 @@ export const reservationRouter = createTRPCRouter({
         ReservationError.STAY_SOLD_OUT,
         `No rooms of that type free on ${soldOut.date.toISOString().slice(0, 10)}`,
         "nights"
-      );
+      ).with({ date: soldOut.date.toISOString().slice(0, 10) });
     }
 
     let currencyCode = property.currencyCode;
@@ -628,7 +628,7 @@ export const reservationRouter = createTRPCRouter({
           ReservationError.STAY_SOLD_OUT,
           `No rooms of that type free on ${soldOut.date.toISOString().slice(0, 10)}`,
           "checkIn"
-        );
+        ).with({ date: soldOut.date.toISOString().slice(0, 10) });
       }
     }
 

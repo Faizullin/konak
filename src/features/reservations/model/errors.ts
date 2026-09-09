@@ -21,6 +21,8 @@ export const ReservationError = {
   STAY_OVER_OCCUPANCY: "stay.over_occupancy",
   /** No room of that type free on some night in the range. */
   STAY_SOLD_OUT: "stay.sold_out",
+  /** A hold asked for more rooms than are free that night. */
+  HOLD_SHORT: "hold.short",
   /** The rate plan quoted nothing, or refused these dates. */
   STAY_NO_PRICE: "stay.no_price",
   /** `refuseStayMove` said no. */

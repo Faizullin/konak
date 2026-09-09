@@ -8,7 +8,7 @@ import { FormDialog } from "@/components/common/form-dialog";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { personFormSchema, type PersonFormInput } from "@/features/directory";
-import { handleFormError } from "@/lib/errors";
+import { useErrorHandlers } from "@/lib/errors";
 import { trpc } from "@/utils/trpc";
 
 /**
@@ -27,6 +27,7 @@ export function PersonFormDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  const { handleFormError } = useErrorHandlers();
   const utils = trpc.useUtils();
 
   const form = useForm<PersonFormInput>({

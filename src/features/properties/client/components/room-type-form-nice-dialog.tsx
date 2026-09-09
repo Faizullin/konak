@@ -9,7 +9,7 @@ import { FormDialog } from "@/components/common/form-dialog";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { roomTypeFormSchema, type RoomTypeFormInput } from "@/features/properties";
-import { handleFormError } from "@/lib/errors";
+import { useErrorHandlers } from "@/lib/errors";
 import { trpc } from "@/utils/trpc";
 
 /**
@@ -47,6 +47,7 @@ const NUMBERS = [
 
 export const RoomTypeFormNiceDialog = NiceModal.create(
   ({ propertyId, roomTypeId }: RoomTypeFormNiceDialogProps) => {
+    const { handleFormError } = useErrorHandlers();
     const isEdit = roomTypeId !== undefined;
     const modal = useModal();
     const utils = trpc.useUtils();

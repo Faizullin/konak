@@ -818,3 +818,108 @@ Also corrected while nearby: `local-development.md` still documented
 features when there are seven.
 
 140 unit tests, 114 integration.
+
+## 2026-09-10 — next-intl, wired and proved on two screens
+
+The plan's configuration step. Nothing on screen changed, which was the point:
+the two auth pages now read their English from `messages/en/auth.json` and
+render byte-identical output.
+
+**No locale in the URL.** The language comes from a cookie, resolved in
+`lib/i18n.ts`. Locale-prefixed routing is every library's default and every
+library implements it with a proxy — adopting one would have reversed the
+decision at `architecture.md` that there is no middleware, for a reason
+unrelated to access control, and changed every slug-keyed link in the product.
+
+**The provider goes where the client tree is.** `(auth)/layout.tsx` mounts
+`NextIntlClientProvider` with `{ auth: messages.auth }` and nothing else, rather
+than the root layout mounting everything. **That decision is measurable**: the
+two auth routes grew 39 kB each and the shared chunk did not move at all —
+783,927 bytes before and after. A root provider would have put every string in
+every bundle, including the dashboard's.
+
+**`lib/`, not next-intl's default `i18n/`.** The architecture's own test —
+"could it be swapped for another vendor without changing a business rule" —
+puts a translation adapter in `lib/`, and the plugin takes a path. The locale
+*list* is `config/locales.ts` instead, beside `nav-items.ts`, because a client
+component needs it and `lib/i18n.ts` reads `next/headers`.
+
+**Typed keys, verified rather than assumed.** `declare module "next-intl"`
+augments `AppConfig` with the shape of the JSON, so keys autocomplete and a typo
+fails `tsc`. The first attempt used the older `interface IntlMessages extends
+Messages {}` and tripped `no-empty-object-type`; the v4 augmentation is not a
+workaround for the lint rule, it is the current API. Proved by mistyping a key
+and watching the compile fail.
+
+**What is still English**, and named so it is not mistaken for done: the 77
+domain codes' messages, the 171 Zod messages, and every dashboard string. The
+plan has them in order, and the first two are where the work is.
+
+140 unit tests, 114 integration.
+
+## 2026-09-10 — refusals worded by their code
+
+The larger half of the translation surface. 70 of the 75 domain codes now have a
+message in `messages/en/errors.json`, and the client words a refusal from the
+code rather than from the sentence the server sent.
+
+**The open question is decided: the client resolves, the server stays
+locale-free.** Nothing was added to `createTRPCContext`, because nothing would
+have used it — every refusal today is rendered in a browser. That changes the
+moment something a person reads leaves the browser: an email, a fiscal filing, a
+channel-manager error. Phases 7 and 9 both have that shape, and both will want
+the *recipient's* locale rather than the caller's, which is a different question
+than the one this answers.
+
+**Six refusals interpolate a runtime value** — how many rooms are free, which
+night, which module. A code alone cannot reproduce those, so `DomainError.with({…})`
+attaches them and the translation formats them with ICU. A method rather than a
+fifth constructor argument: `field` is already positional in three subclasses,
+and a fifth slot would be unreadable at the nine sites that need it.
+
+**Two codes were carrying two different sentences.** `stay.sold_out` was thrown
+both for "no rooms free" and for a hold asking for more than are available; the
+second is now `hold.short`, which is what it always was. `room.taken` and
+`person.email_taken` each had two wordings that meant the same thing, and one
+wins — a code is an identity, so two sentences behind it was the drift the codes
+exist to prevent.
+
+### The surface this did not cover, and the test that says so
+
+**Five refusals get their sentence from a rule in `model/`.**
+`refuseStatusChange`, `refuseStayMove`, `refuseOccupancy`,
+`refuseCancellationTerms` and the rate `refusalMessage` all return the words,
+and *which* words depends on why — "a confirmed reservation cannot become
+checked out" and "assign a room first" are the same code. One key cannot
+reproduce that.
+
+They keep the server's English, which still renders. `error-messages.test.ts`
+pins the list both ways: a code missing a message fails, **and a code on that
+list gaining a message fails too** — because a key would win over the rule's
+specific sentence and quietly replace it with a generic one.
+
+That test is also the key-parity check the plan wanted in the gate: every code
+has a message, every message has a code, no empty strings, no unbalanced ICU
+braces.
+
+### The provider, and what it cost
+
+`(app)/dashboard/layout.tsx` had no provider at all; it has one now, carrying
+`errors` and nothing else. That is what makes `useErrorHandlers` work anywhere
+under `/dashboard`.
+
+**Shared JS went 765.6 → 804.9 kB, and the attribution is exact:** sign-in's own
+chunk dropped 39.0 kB in the same build while its first load did not move at
+all. The same bytes were reclassified — next-intl's runtime was on two auth
+routes, and now that the dashboard needs it too it is shared by everything. The
+floor is re-recorded at 824,258 bytes. `/dashboard` grew by exactly that amount.
+
+**`useErrorHandlers` replaced 27 bare calls across 16 files.** `handleError` and
+`handleFormError` stay exported and pure — their tests pass a translator
+directly and need no provider — and the hook is what binds them to the language.
+React's `rules-of-hooks` was the safety net for the mechanical edit: the first
+pass inserted the hook inside a props type in four files, and the second pass
+put it after the component's body-opening brace. One file has two components and
+needed the hook twice, which `tsc` caught.
+
+149 unit tests, 114 integration.

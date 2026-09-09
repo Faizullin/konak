@@ -26,7 +26,7 @@ src/
 │   ├── (app)/    /dashboard/* — the session guard + sidebar shell
 │   └── api/      route handlers (tRPC transport, Better Auth catch-all)
 ├── features/     THE DOMAIN — vertical slices, each complete
-│   └── <name>/       identity · organizations · directory
+│   └── <name>/       identity · organizations · directory · properties
 │                      platform · rates · reservations
 │       ├── server/   router, services, db access        ("server-only")
 │       ├── client/   "use client" components and hooks
@@ -34,9 +34,9 @@ src/
 │       └── index.ts  re-exports model/ ONLY
 ├── server/       FRAMEWORK — trpc, root, db, auth, errors, provider
 ├── components/   SHARED UI — ui (shadcn), common (ours), data-table, layout (the shell)
-├── config/       nav-items.ts — the sidebar, as data
+├── config/       data, not behaviour — nav-items.ts, locales.ts
 ├── hooks/        generic hooks only
-├── lib/          REPLACEABLE ADAPTERS
+├── lib/          REPLACEABLE ADAPTERS — utils, auth-client, errors, i18n
 ├── styles/       every stylesheet — shadcn's `globals.css`, and ours after it
 ├── store/        client providers (nice-modal)
 └── utils/ generated/
@@ -44,7 +44,10 @@ src/
 
 `scripts/` sits beside `src/`, not inside it: a `.mts` file run by `tsx` is not
 part of the app's module graph, and putting one under `src/` would put it in
-`tsc`'s and Next's. Two live there: `outbox-worker.mts`, which needs `--conditions=react-server`
+`tsc`'s and Next's. `messages/` sits beside it, for the same reason: one JSON file per namespace
+per locale, merged by `messages/<locale>/index.ts`. Content, not code.
+
+Two live in `scripts/`: `outbox-worker.mts`, which needs `--conditions=react-server`
 because it reaches a feature's `server/` — see
 [local-development.md](local-development.md#running-scripts-that-import-feature-code)
 — and `bundle.mts`, which reads build output and needs nothing.
@@ -329,8 +332,15 @@ screen branches on it without either depending on prose.
 
 **The mapping happens once**, in `mapDomainErrors` in `trpc.ts`. Every procedure
 is built from a base that applies it, so no route can skip it. `errorFormatter`
-then copies the code onto `data.domainCode` and the field onto `data.field`, and
-`lib/errors.ts` reads both by shape into `AppError`.
+then copies the code onto `data.domainCode`, the field onto `data.field` and any
+interpolated values onto `data.domainValues`, and `lib/errors.ts` reads all
+three by shape into `AppError`.
+
+**The code is what the client words the refusal from.** `messages/en/errors.json`
+is keyed by it; `useErrorHandlers` resolves it and falls back to the server's
+English when there is no key. Six refusals interpolate a runtime value — how
+many rooms are free, which night — so `DomainError.with({ … })` attaches them
+and the translation formats them.
 
 **Codes are declared per feature, in `model/`** — `reservations/model/errors.ts`
 is the worked example. Not in `errors.ts`: that file is reached by `auth.ts` and

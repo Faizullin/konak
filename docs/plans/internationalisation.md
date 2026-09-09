@@ -170,24 +170,28 @@ no-routing mode is configured identically on 15.5.9 and on 16.x. Only
 `next-i18next`'s root-params mode is version-dependent, and that is the option
 being declined.
 
-So the two entries are independent, and the upgrade is worth doing first for its
-own reasons rather than as a prerequisite:
+The upgrade shipped, and so did the wiring — `history.md` has both. What is left
+is the part that was always the work:
 
-1. **Upgrade to Next 16, and replace the bundle measurement in the same
-   change.** The gate loses its instrument otherwise. Codemod, then the
-   `.next/app-build-manifest.json` byte-sum recorded as the new floor.
-2. **Install `next-intl` in no-routing mode**, one locale (`en`), no visible
-   change. Extraction first, translation second — a second locale that arrives
-   before the strings are extracted proves nothing.
-3. **Route the server half through the codes.** `AppError.domainCode` reaches
-   the client already; a message becomes a lookup on it, and the English
-   sentences in the routers become the fallback rather than the source. The
-   locale itself enters through `createTRPCContext`, beside `db` and `session`.
-4. **Turn the 171 Zod messages into keys**, which is the same move one layer
+1. **Turn the 171 Zod messages into keys**, which is the same move one layer
    down and the only part that touches every feature's `model/`.
-5. **Then a second locale**, which is the first point at which any of this is
+2. **The rest of the client strings** — the dashboard, the grid, the dialogs.
+   Mechanical once the first two settle the shape, and each route mounts the
+   provider with the namespaces it renders.
+3. **Then a second locale**, which is the first point at which any of this is
    testable by reading a screen — and the point at which a parity check and a
    translation dashboard start earning their keep.
 
-Steps 3 and 4 are where the work actually is. Steps 1 and 2 are configuration,
-and step 5 is what proves the first four.
+**The server half shipped** — `history.md` has it, and it settled the question
+this plan left open: the **client** resolves a code, and the server stays
+locale-free. Nothing was added to `createTRPCContext`, because nothing would
+have used it. That changes when something a person reads leaves the browser — an
+email, a fiscal filing, a channel error — which is Phase 7 and Phase 9, not now.
+
+It also found a surface this plan had not named: **five refusals whose sentence
+is computed by a rule in `model/`**. `refuseStatusChange` and its siblings return
+the words, and which words depends on why, so a single key cannot reproduce
+them. They keep the server's English until those rules return codes too, and a
+test pins the list so the debt stays visible.
+
+Step 1 is where the work still is; step 3 is what proves it.

@@ -21,7 +21,7 @@ import {
   RoomStatus,
   type RoomFormInput,
 } from "@/features/properties";
-import { handleFormError } from "@/lib/errors";
+import { useErrorHandlers } from "@/lib/errors";
 import { trpc } from "@/utils/trpc";
 
 /**
@@ -41,6 +41,7 @@ export interface RoomFormNiceDialogProps {
 
 export const RoomFormNiceDialog = NiceModal.create(
   ({ propertyId, roomId, roomTypeId }: RoomFormNiceDialogProps) => {
+    const { handleFormError } = useErrorHandlers();
     const isEdit = roomId !== undefined;
     const modal = useModal();
     const utils = trpc.useUtils();

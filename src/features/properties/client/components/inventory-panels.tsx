@@ -16,7 +16,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { handleError } from "@/lib/errors";
+import { useErrorHandlers } from "@/lib/errors";
 import { OrgRole } from "@/features/organizations";
 import {
   canArchiveRoomTypes,
@@ -66,6 +66,7 @@ export function RoomTypesPanel({
   propertyId: number;
   organizationId: number;
 }) {
+  const { handleError } = useErrorHandlers();
   const [includeArchived, setIncludeArchived] = useState(false);
   const role = useOrgRole(organizationId);
   const utils = trpc.useUtils();
@@ -198,6 +199,7 @@ export function RoomsPanel({
   propertyId: number;
   organizationId: number;
 }) {
+  const { handleError } = useErrorHandlers();
   const [includeArchived, setIncludeArchived] = useState(false);
   const role = useOrgRole(organizationId);
   const utils = trpc.useUtils();

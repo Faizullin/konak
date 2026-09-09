@@ -61,15 +61,36 @@ export type DomainStatus =
   "BAD_REQUEST" | "CONFLICT" | "NOT_FOUND" | "FORBIDDEN" | "UNAUTHORIZED" | "PRECONDITION_FAILED";
 
 export class DomainError extends Error {
+  /**
+   * What a translation of `code` needs to say the same thing.
+   *
+   * Six refusals interpolate a runtime value — how many rooms are free, which
+   * night, which module. A code alone cannot reproduce those, so the values
+   * travel with it and the client formats them. Set through `.with()`.
+   */
+  values?: Record<string, string | number>;
+
   constructor(
     readonly status: DomainStatus,
     readonly code: string,
     message: string,
-    /** Set when the failure belongs to one input, like `fieldError`. */
+    /** Set when the failure belongs to one input. */
     readonly field?: string
   ) {
     super(message);
     this.name = "DomainError";
+  }
+
+  /**
+   * Attach the values the message interpolated, so a translation can too.
+   *
+   * A method rather than another constructor argument: `field` is already
+   * positional in three of the subclasses and optional in the rest, and a
+   * fifth slot would be unreadable at the six call sites that need it.
+   */
+  with(values: Record<string, string | number>): this {
+    this.values = values;
+    return this;
   }
 }
 

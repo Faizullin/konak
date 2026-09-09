@@ -16,7 +16,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { handleError } from "@/lib/errors";
+import { useErrorHandlers } from "@/lib/errors";
 import { OrgRole } from "@/features/organizations";
 import {
   canArchiveRatePlans,
@@ -43,6 +43,7 @@ export function RatePlansPanel({
   organizationId: number;
   currencyCode: string;
 }) {
+  const { handleError } = useErrorHandlers();
   const [includeArchived, setIncludeArchived] = useState(false);
   const utils = trpc.useUtils();
 

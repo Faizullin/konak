@@ -123,6 +123,6 @@ export async function requireOrgModule(organizationId: number, moduleId: OrgModu
     throw new ForbiddenError(
       OrganizationError.MODULE_DISABLED,
       `${orgModule(moduleId).label} is not enabled for this organization`
-    );
+    ).with({ module: orgModule(moduleId).label });
   }
 }

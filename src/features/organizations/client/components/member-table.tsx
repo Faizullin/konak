@@ -33,7 +33,7 @@ import {
   canManageMembers,
   type AddMemberFormInput,
 } from "@/features/organizations";
-import { handleError, handleFormError } from "@/lib/errors";
+import { useErrorHandlers } from "@/lib/errors";
 import { trpc } from "@/utils/trpc";
 
 /**
@@ -53,6 +53,7 @@ export function MemberTable({
   currentUserRole: OrgRole;
   currentUserId?: string;
 }) {
+  const { handleError, handleFormError } = useErrorHandlers();
   const utils = trpc.useUtils();
 
   // Bound to the router's own schema, so a typo'd email is refused here with a

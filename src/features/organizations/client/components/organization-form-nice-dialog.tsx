@@ -13,7 +13,7 @@ import {
   slugify,
   type CreateOrganizationInput,
 } from "@/features/organizations";
-import { handleFormError } from "@/lib/errors";
+import { useErrorHandlers } from "@/lib/errors";
 import { trpc } from "@/utils/trpc";
 
 /**
@@ -33,6 +33,7 @@ export interface OrganizationFormNiceDialogProps {
 
 export const OrganizationFormNiceDialog = NiceModal.create(
   ({ mode = "create", organizationId }: OrganizationFormNiceDialogProps) => {
+    const { handleFormError } = useErrorHandlers();
     const isEdit = mode === "edit";
     const modal = useModal();
     const utils = trpc.useUtils();
