@@ -204,6 +204,12 @@ export type HandleOptions<T extends FieldValues = FieldValues> = {
   map?: Partial<Record<string, Path<T>>>;
   /** Supplied by `useErrorHandlers`; absent means the server's English. */
   translate?: TranslateDomain;
+  /**
+   * Turns a validation key into a sentence. The server re-validates with the
+   * same schema, so a field error arriving over the wire is a key too — the
+   * same key the client's own resolver would have produced.
+   */
+  translateField?: (key: string) => string | null;
 };
 
 /**
@@ -242,7 +248,8 @@ export function handleFormError<T extends FieldValues>(
   const unplaced: string[] = [];
   let placed = 0;
 
-  for (const [field, message] of fieldEntriesOf(app)) {
+  for (const [field, raw] of fieldEntriesOf(app)) {
+    const message = options.translateField?.(raw) ?? raw;
     const target = (options.map?.[field] ?? field) as Path<T>;
     if (known.has(target)) {
       form.setError(target, { type: "server", message });
@@ -286,6 +293,7 @@ export function handleFormError<T extends FieldValues>(
  */
 export function useErrorHandlers() {
   const t = useTranslations("errors");
+  const translateField = useValidationMessages();
 
   const translate = useCallback<TranslateDomain>(
     (code, values) => {
@@ -301,13 +309,39 @@ export function useErrorHandlers() {
   return useMemo(
     () => ({
       handleError: (error: unknown, options: HandleOptions = {}) =>
-        handleError(error, { translate, ...options }),
+        handleError(error, { translate, translateField, ...options }),
       handleFormError: <T extends FieldValues>(
         form: UseFormReturn<T>,
         error: unknown,
         options: HandleOptions<T> = {}
-      ) => handleFormError(form, error, { translate, ...options }),
+      ) => handleFormError(form, error, { translate, translateField, ...options }),
     }),
-    [translate]
+    [translate, translateField]
+  );
+}
+
+/* --- Validation messages -------------------------------------------------- */
+
+/**
+ * A Zod message in `model/` is a key, not a sentence.
+ *
+ * The schemas are module-level constants shared by the router and the form —
+ * that is what `model/` is for — so they cannot be built per request with a
+ * translator, and a key is what survives that. `architecture.md` has the
+ * argument; the short version is that a factory would give the router and the
+ * form two different schemas, which is the drift `model/` exists to prevent.
+ */
+export function useValidationMessages(): (key: string) => string | null {
+  const t = useTranslations("validation");
+
+  return useCallback(
+    (key) => {
+      // Typed to the literal keys of the JSON; a Zod message is data by the
+      // time it arrives here, and `has` is what keeps an unknown one from
+      // throwing rather than rendering.
+      const named = key as Parameters<typeof t.has>[0];
+      return t.has(named) ? t(named) : null;
+    },
+    [t]
   );
 }

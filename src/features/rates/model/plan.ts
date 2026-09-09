@@ -54,9 +54,9 @@ export const createRatePlanSchema = z.object({
   propertyId: z.number(),
   /** Absent applies the plan to every room type in the property. */
   roomTypeId: z.number().nullable(),
-  name: z.string().min(1, "A name is required").max(120),
+  name: z.string().min(1, "name_required").max(120),
   code: inventoryCodeSchema,
-  currencyCode: z.string().length(3, "A three-letter currency code"),
+  currencyCode: z.string().length(3, "currency_code"),
   mealPlan: mealPlanSchema,
   isRefundable: z.boolean(),
   cancellationCutoffHours: z.number().int().min(0).max(8760).nullable(),

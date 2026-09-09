@@ -19,6 +19,43 @@ const messages = JSON.parse(readFileSync("messages/en/errors.json", "utf8")) as 
   string
 >;
 
+const validation = JSON.parse(readFileSync("messages/en/validation.json", "utf8")) as Record<
+  string,
+  string
+>;
+
+/**
+ * Every key a Zod schema names, read from the schemas themselves.
+ *
+ * A message in `model/` is a key rather than a sentence — the schemas are
+ * module-level constants shared by the router and the form, so they cannot be
+ * built per request with a translator.
+ */
+function validationKeysInUse(): Set<string> {
+  const keys = new Set<string>();
+  const call =
+    /\.(?:min|max|length|regex|refine|startsWith|endsWith|nonempty)\([^)]*?"([a-z][a-z0-9_]*)"\s*\)|z\.(?:email|url|uuid|string|number)\(\s*"([a-z][a-z0-9_]*)"\s*\)/g;
+
+  for (const feature of readdirSync("src/features")) {
+    const dir = `src/features/${feature}/model`;
+    let files: string[];
+    try {
+      files = readdirSync(dir);
+    } catch {
+      continue;
+    }
+    for (const file of files) {
+      if (file.endsWith(".test.ts")) continue;
+      const source = readFileSync(`${dir}/${file}`, "utf8");
+      for (const [, a, b] of source.matchAll(call)) {
+        const key = a ?? b;
+        if (key) keys.add(key);
+      }
+    }
+  }
+  return keys;
+}
+
 /** The codes as declared, from every `model/errors.ts` plus `SharedError`. */
 function declaredCodes(): Set<string> {
   const files = [
@@ -85,4 +122,25 @@ test("no message is empty, and every placeholder is closed", () => {
     const closes = (value.match(/\}/g) ?? []).length;
     assert.equal(opens, closes, `${key} has unbalanced braces`);
   }
+});
+
+test("every validation key a schema names has a message", () => {
+  const missing = [...validationKeysInUse()].filter((key) => !(key in validation));
+
+  assert.deepEqual(missing, [], "keys with no message in messages/en/validation.json");
+});
+
+test("every validation message is named by a schema", () => {
+  const used = validationKeysInUse();
+  const orphans = Object.keys(validation).filter((key) => !used.has(key));
+
+  assert.deepEqual(orphans, [], "messages/en/validation.json has keys no schema uses");
+});
+
+test("no Zod message is an English sentence left behind", () => {
+  // A key is lower_snake_case. A capital letter or a space means a sentence
+  // survived the sweep and will never be translated.
+  const sentences = [...validationKeysInUse()].filter((key) => !/^[a-z][a-z0-9_]*$/.test(key));
+
+  assert.deepEqual(sentences, [], "a Zod call still carries prose");
 });

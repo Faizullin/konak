@@ -22,13 +22,15 @@ test("a Zod failure becomes field errors, under the names the server used", () =
       httpStatus: 400,
       zodError: {
         formErrors: [],
-        fieldErrors: { email: ["Enter a valid email address"] },
+        fieldErrors: { email: ["email_invalid"] },
       },
     })
   );
 
   assert.equal(app.kind, "field");
-  assert.deepEqual(app.fieldErrors, { email: ["Enter a valid email address"] });
+  // A Zod message is a key by the time it reaches here; `handleFormError`
+  // resolves it when placing, which is what `translateField` is for.
+  assert.deepEqual(app.fieldErrors, { email: ["email_invalid"] });
 });
 
 test("fieldError() puts a domain rule under its field", () => {

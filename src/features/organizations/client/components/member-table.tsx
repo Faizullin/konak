@@ -1,6 +1,5 @@
 "use client";
 
-import { zodResolver } from "@hookform/resolvers/zod";
 import { LoaderIcon, UserPlus } from "lucide-react";
 import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
@@ -34,6 +33,7 @@ import {
   type AddMemberFormInput,
 } from "@/features/organizations";
 import { useErrorHandlers } from "@/lib/errors";
+import { useZodResolver } from "@/lib/form";
 import { trpc } from "@/utils/trpc";
 
 /**
@@ -58,8 +58,10 @@ export function MemberTable({
 
   // Bound to the router's own schema, so a typo'd email is refused here with a
   // message under the field rather than as a toast after a round trip.
+  const resolver = useZodResolver<AddMemberFormInput>(addMemberFormSchema);
+
   const form = useForm<AddMemberFormInput>({
-    resolver: zodResolver(addMemberFormSchema),
+    resolver,
     defaultValues: { email: "", role: OrgRole.MEMBER },
   });
 

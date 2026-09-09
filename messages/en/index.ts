@@ -1,5 +1,6 @@
 import auth from "./auth.json";
 import errors from "./errors.json";
+import validation from "./validation.json";
 
 /**
  * One namespace per file, merged here.
@@ -8,6 +9,6 @@ import errors from "./errors.json";
  * types come from the JSON itself, and a client tree can be given one namespace
  * without shipping the rest.
  */
-const en = { auth, errors };
+const en = { auth, errors, validation };
 
 export default en;

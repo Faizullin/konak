@@ -1,6 +1,5 @@
 "use client";
 
-import { zodResolver } from "@hookform/resolvers/zod";
 import NiceModal, { useModal } from "@ebay/nice-modal-react";
 import { useEffect } from "react";
 import { Controller, useForm } from "react-hook-form";
@@ -18,6 +17,7 @@ import {
 import { isRoomSellable, ROOM_STATUS_LABELS, type RoomStatus } from "@/features/properties";
 import { walkInFormSchema, type WalkInFormInput } from "@/features/reservations";
 import { useErrorHandlers } from "@/lib/errors";
+import { useZodResolver } from "@/lib/form";
 import { trpc } from "@/utils/trpc";
 
 /**
@@ -53,8 +53,10 @@ export const WalkInFormNiceDialog = NiceModal.create(
     const modal = useModal();
     const utils = trpc.useUtils();
 
+    const resolver = useZodResolver<WalkInFormInput>(walkInFormSchema);
+
     const form = useForm<WalkInFormInput>({
-      resolver: zodResolver(walkInFormSchema),
+      resolver,
       defaultValues: EMPTY,
     });
 

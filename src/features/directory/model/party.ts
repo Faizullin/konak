@@ -21,18 +21,18 @@ export function blankToNull(value: string | null | undefined): string | null {
   return trimmed ? trimmed : null;
 }
 
-export const emailField = z.email("Enter a valid email address").optional().or(z.literal(""));
+export const emailField = z.email("email_invalid").optional().or(z.literal(""));
 
 export const addressSchema = z.object({
-  line1: z.string().min(1, "Street address is required").max(200),
+  line1: z.string().min(1, "address_line1_required").max(200),
   line2: z.string().max(200).optional(),
   city: z.string().max(120).optional(),
   region: z.string().max(120).optional(),
   postalCode: z.string().max(32).optional(),
   countryCode: z
     .string()
-    .length(2, "Use the two-letter country code")
-    .regex(/^[A-Z]{2}$/, "Use the two-letter country code, uppercase"),
+    .length(2, "country_code")
+    .regex(/^[A-Z]{2}$/, "country_code_upper"),
 });
 
 export type AddressInput = z.infer<typeof addressSchema>;

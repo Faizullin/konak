@@ -1,6 +1,5 @@
 "use client";
 
-import { zodResolver } from "@hookform/resolvers/zod";
 import NiceModal, { useModal } from "@ebay/nice-modal-react";
 import { useEffect } from "react";
 import { Controller, useForm } from "react-hook-form";
@@ -17,6 +16,7 @@ import {
 } from "@/components/ui/select";
 import { MEAL_PLAN_LABELS, ratePlanFormSchema, type RatePlanFormInput } from "@/features/rates";
 import { useErrorHandlers } from "@/lib/errors";
+import { useZodResolver } from "@/lib/form";
 import { trpc } from "@/utils/trpc";
 
 /**
@@ -57,8 +57,10 @@ export const RatePlanFormNiceDialog = NiceModal.create(
       defaultMinLengthOfStay: 1,
     };
 
+    const resolver = useZodResolver<RatePlanFormInput>(ratePlanFormSchema);
+
     const form = useForm<RatePlanFormInput>({
-      resolver: zodResolver(ratePlanFormSchema),
+      resolver,
       defaultValues: empty,
     });
 

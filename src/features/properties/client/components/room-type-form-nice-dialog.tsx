@@ -1,6 +1,5 @@
 "use client";
 
-import { zodResolver } from "@hookform/resolvers/zod";
 import NiceModal, { useModal } from "@ebay/nice-modal-react";
 import { useEffect } from "react";
 import { Controller, useForm } from "react-hook-form";
@@ -10,6 +9,7 @@ import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/c
 import { Input } from "@/components/ui/input";
 import { roomTypeFormSchema, type RoomTypeFormInput } from "@/features/properties";
 import { useErrorHandlers } from "@/lib/errors";
+import { useZodResolver } from "@/lib/form";
 import { trpc } from "@/utils/trpc";
 
 /**
@@ -52,8 +52,10 @@ export const RoomTypeFormNiceDialog = NiceModal.create(
     const modal = useModal();
     const utils = trpc.useUtils();
 
+    const resolver = useZodResolver<RoomTypeFormInput>(roomTypeFormSchema);
+
     const form = useForm<RoomTypeFormInput>({
-      resolver: zodResolver(roomTypeFormSchema),
+      resolver,
       defaultValues: EMPTY,
     });
 

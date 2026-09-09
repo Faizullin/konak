@@ -161,8 +161,8 @@ surprises:
 - **`RoomTypeInventory` has no computed availability.** Sold is derived on every
   read by design — correct, and the first thing to measure when a channel push
   is doing it for ninety days at once in **Phase 7**.
-- **Bundle floor.** `npm run bundle`, after a build: **824,258 bytes shared by
-  every route**, and `/dashboard` at 1428.3 kB. Anything that moves those
+- **Bundle floor.** `npm run bundle`, after a build: **824,461 bytes shared by
+  every route**, and `/dashboard` at 1428.9 kB. Anything that moves those
   without adding a screen is a regression. Re-record them when a phase ends: a
   floor left behind by two phases reads as a regression that never happened.
 

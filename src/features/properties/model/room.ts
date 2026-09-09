@@ -127,15 +127,15 @@ export function refuseOccupancy(type: {
  */
 export const inventoryCodeSchema = z
   .string()
-  .min(2, "At least two characters")
-  .max(16, "At most sixteen characters")
-  .regex(/^[A-Z0-9-]+$/, "Capitals, digits and hyphens only");
+  .min(2, "code_too_short")
+  .max(16, "code_too_long")
+  .regex(/^[A-Z0-9-]+$/, "code_format");
 
 const occupancyField = z.number().int().min(0).max(20);
 
 export const createRoomTypeSchema = z.object({
   propertyId: z.number(),
-  name: z.string().min(1, "A name is required").max(120),
+  name: z.string().min(1, "name_required").max(120),
   code: inventoryCodeSchema,
   description: z.string().max(2000).optional(),
   baseOccupancy: occupancyField,
@@ -163,7 +163,7 @@ export type UpdateRoomTypeInput = z.infer<typeof updateRoomTypeSchema>;
 export const createRoomSchema = z.object({
   propertyId: z.number(),
   roomTypeId: z.number(),
-  number: z.string().min(1, "A room number is required").max(24),
+  number: z.string().min(1, "room_number_required").max(24),
   floor: z.string().max(24).optional(),
   status: roomStatusSchema,
   notes: z.string().max(2000).optional(),

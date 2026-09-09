@@ -26,7 +26,11 @@ export default async function AuthLayout({ children }: Readonly<{ children: Reac
       <div className="w-full max-w-md space-y-8">
         <NextIntlClientProvider
           locale={locale}
-          messages={{ auth: messages.auth, errors: messages.errors }}
+          messages={{
+            auth: messages.auth,
+            errors: messages.errors,
+            validation: messages.validation,
+          }}
         >
           {children}
         </NextIntlClientProvider>

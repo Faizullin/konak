@@ -85,9 +85,9 @@ export const walkInSchema = z.object({
   nights: z.number().min(1).max(60),
   adults: z.number().min(1).max(20),
   children: z.number().min(0).max(20),
-  firstName: z.string().min(1, "First name is required").max(80),
-  lastName: z.string().min(1, "Last name is required").max(80),
-  email: z.email("Enter a valid email address").optional().or(z.literal("")),
+  firstName: z.string().min(1, "first_name_required").max(80),
+  lastName: z.string().min(1, "last_name_required").max(80),
+  email: z.email("email_invalid").optional().or(z.literal("")),
   phone: z.string().max(40).optional(),
   notes: z.string().max(2000).optional(),
 });

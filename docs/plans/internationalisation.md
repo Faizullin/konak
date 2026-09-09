@@ -173,12 +173,10 @@ being declined.
 The upgrade shipped, and so did the wiring — `history.md` has both. What is left
 is the part that was always the work:
 
-1. **Turn the 171 Zod messages into keys**, which is the same move one layer
-   down and the only part that touches every feature's `model/`.
-2. **The rest of the client strings** — the dashboard, the grid, the dialogs.
+1. **The rest of the client strings** — the dashboard, the grid, the dialogs.
    Mechanical once the first two settle the shape, and each route mounts the
    provider with the namespaces it renders.
-3. **Then a second locale**, which is the first point at which any of this is
+2. **Then a second locale**, which is the first point at which any of this is
    testable by reading a screen — and the point at which a parity check and a
    translation dashboard start earning their keep.
 
@@ -194,4 +192,8 @@ the words, and which words depends on why, so a single key cannot reproduce
 them. They keep the server's English until those rules return codes too, and a
 test pins the list so the debt stays visible.
 
-Step 1 is where the work still is; step 3 is what proves it.
+**The Zod half shipped too.** It also corrected a number this plan had wrong:
+171 was every capitalised string in `model/`, labels included. The real surface
+was **21 distinct messages across 33 calls**, and it is now keys.
+
+Step 1 is where the work still is; step 2 is what proves it.

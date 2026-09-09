@@ -5,8 +5,8 @@ export const PERSON_SORT_FIELDS = ["lastName", "firstName", "createdAt"] as cons
 
 export const createPersonSchema = z.object({
   organizationId: z.number(),
-  firstName: z.string().min(1, "First name is required").max(80),
-  lastName: z.string().min(1, "Last name is required").max(80),
+  firstName: z.string().min(1, "first_name_required").max(80),
+  lastName: z.string().min(1, "last_name_required").max(80),
   email: emailField,
   phone: z.string().max(40).optional(),
   dateOfBirth: z.date().optional(),

@@ -12,8 +12,10 @@ top of the file.
 
 **Do:**
 
-- Use `useForm` with `zodResolver`, and take the schema from the feature's
-  `model/` — the same object the router validates against.
+- Use `useForm` with **`useZodResolver`** from `@/lib/form`, and take the schema
+  from the feature's `model/` — the same object the router validates against.
+  Not `zodResolver` directly: a Zod message in `model/` is a key, and the
+  wrapper is what turns it into a sentence in the current language.
 - **Zod defaults:** if you pass `defaultValues` to `useForm`, do **not** also
   use `.default()` in the schema. The schema default overrides the form default
   and the conflict is invisible until a field resets to the wrong value.
@@ -24,8 +26,10 @@ top of the file.
 
 ```tsx
 export function MyForm() {
+  const resolver = useZodResolver<CreateOrganizationInput>(createOrganizationSchema);
+
   const form = useForm<CreateOrganizationInput>({
-    resolver: zodResolver(createOrganizationSchema),
+    resolver,
     defaultValues: { name: "", slug: "", description: "" },
   });
 
@@ -119,6 +123,13 @@ The hook is what binds them to the current language. `handleError` and
 `handleFormError` stay exported and pure — their tests pass a translator
 directly and need no provider — but a component should not call them bare: it
 gets the server's English and no translation.
+
+**A Zod message is a key, not a sentence.** `z.email("email_invalid")`, resolved
+from `messages/en/validation.json`. The schemas are module-level constants the
+router and the form share, so they cannot be built per request with a translator
+— a factory would give the two sides different schemas, which is the drift
+`model/` exists to prevent. The server sends the key over the wire and
+`useErrorHandlers` resolves it there too, so both paths land on the same words.
 
 A refusal is worded by its **domain code**, not by the sentence the server sent.
 `messages/en/errors.json` is keyed by code, and the English at the throw site is

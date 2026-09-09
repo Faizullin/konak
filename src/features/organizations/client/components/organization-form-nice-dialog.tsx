@@ -1,6 +1,5 @@
 "use client";
 
-import { zodResolver } from "@hookform/resolvers/zod";
 import NiceModal, { useModal } from "@ebay/nice-modal-react";
 import { useEffect } from "react";
 import { Controller, useForm } from "react-hook-form";
@@ -14,6 +13,7 @@ import {
   type CreateOrganizationInput,
 } from "@/features/organizations";
 import { useErrorHandlers } from "@/lib/errors";
+import { useZodResolver } from "@/lib/form";
 import { trpc } from "@/utils/trpc";
 
 /**
@@ -38,8 +38,10 @@ export const OrganizationFormNiceDialog = NiceModal.create(
     const modal = useModal();
     const utils = trpc.useUtils();
 
+    const resolver = useZodResolver<CreateOrganizationInput>(createOrganizationSchema);
+
     const form = useForm<CreateOrganizationInput>({
-      resolver: zodResolver(createOrganizationSchema),
+      resolver,
       defaultValues: { name: "", slug: "", description: "" },
     });
 

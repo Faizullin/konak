@@ -1,6 +1,5 @@
 "use client";
 
-import { zodResolver } from "@hookform/resolvers/zod";
 import { useEffect } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
@@ -9,6 +8,7 @@ import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field
 import { Input } from "@/components/ui/input";
 import { personFormSchema, type PersonFormInput } from "@/features/directory";
 import { useErrorHandlers } from "@/lib/errors";
+import { useZodResolver } from "@/lib/form";
 import { trpc } from "@/utils/trpc";
 
 /**
@@ -30,8 +30,10 @@ export function PersonFormDialog({
   const { handleFormError } = useErrorHandlers();
   const utils = trpc.useUtils();
 
+  const resolver = useZodResolver<PersonFormInput>(personFormSchema);
+
   const form = useForm<PersonFormInput>({
-    resolver: zodResolver(personFormSchema),
+    resolver,
     defaultValues: { firstName: "", lastName: "", email: "", phone: "", notes: "" },
   });
 

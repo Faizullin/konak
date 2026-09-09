@@ -45,7 +45,10 @@ export default async function DashboardLayout({ children }: Readonly<{ children:
   const [locale, messages] = await Promise.all([getLocale(), getMessages()]);
 
   return (
-    <NextIntlClientProvider locale={locale} messages={{ errors: messages.errors }}>
+    <NextIntlClientProvider
+      locale={locale}
+      messages={{ errors: messages.errors, validation: messages.validation }}
+    >
       <SidebarProvider defaultOpen={defaultOpen}>
         <AppSidebar user={user} />
         <SidebarInset>

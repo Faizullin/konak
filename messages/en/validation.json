@@ -1,0 +1,22 @@
+{
+  "address_line1_required": "Street address is required",
+  "code_format": "Capitals, digits and hyphens only",
+  "code_too_long": "At most sixteen characters",
+  "code_too_short": "At least two characters",
+  "country_code": "Use the two-letter country code",
+  "country_code_upper": "Use the two-letter country code, uppercase",
+  "currency_code": "A three-letter currency code",
+  "email_invalid": "Enter a valid email address",
+  "file_name_required": "A file name is required",
+  "first_name_required": "First name is required",
+  "last_name_required": "Last name is required",
+  "name_required": "A name is required",
+  "password_required": "Password is required",
+  "password_too_short": "Use at least 8 characters",
+  "room_number_required": "A room number is required",
+  "slug_format": "Slug can only contain lowercase letters, numbers, and hyphens",
+  "slug_too_long": "Slug must be at most 48 characters",
+  "slug_too_short": "Slug must be at least 2 characters",
+  "subject_required": "A subject is required",
+  "url_invalid": "Enter a valid URL"
+}

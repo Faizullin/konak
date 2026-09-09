@@ -923,3 +923,57 @@ put it after the component's body-opening brace. One file has two components and
 needed the hook twice, which `tsc` caught.
 
 149 unit tests, 114 integration.
+
+## 2026-09-10 — Zod messages are keys now
+
+The third surface. A message in a `model/` schema is a key —
+`z.email("email_invalid")` — resolved from `messages/en/validation.json`.
+
+**The count in the plan was wrong, and the correction matters.** It said 171
+English strings in Zod schemas. That number came from a regex that matched every
+capitalised string in `model/`, labels and enum values included. The real
+surface is **21 distinct messages across 33 calls**. A measurement worth
+re-taking before acting on it, which is the second time that has been true here.
+
+**Why keys rather than a translated schema.** The usual answer is a factory —
+`createSchema(t)`, built per request. It cannot work: `createOrganizationSchema`
+is a module-level const used both at `.input()` in the router and as the form's
+resolver, and `.input()` is evaluated when the router is *defined*, with no
+request and no locale. A factory serves only the form, leaving the router on a
+second schema — the drift `architecture.md` says `model/` exists to prevent.
+
+### Two paths, and only one of them goes through `lib/errors.ts`
+
+Client-side validation never reaches `normalizeError`: react-hook-form hands the
+schema's message straight to the field. So a key becomes a sentence in two
+places, and they had to be found separately —
+
+- **`useZodResolver`** wraps `zodResolver` and rewrites the messages it produces.
+- **`useErrorHandlers`** gained `translateField`, for the same failure arriving
+  over the wire after the server re-validated.
+
+Both land on the same words, because both read the same JSON.
+
+The alternative was translating in `FieldError`, which is one place instead of
+two — but it is a `components/ui/` file that the shadcn CLI rewrites, and 34
+call sites against the resolver's 9.
+
+### The resolver has its own file, and the bundle says why
+
+`useZodResolver` started in `lib/errors.ts` and moved to `lib/form.ts`. The
+first arrangement put `@hookform/resolvers` in the shared chunk, because
+`errors.ts` is reached by every route through `handleError` — **shared JS went
+824,258 → 881,764 bytes**, and a screen with no form was carrying a resolver.
+
+Split out, it is **824,461 bytes**: 203 more than before this change, for three
+namespaces and two resolution paths. Sign-up is *smaller* than it was —
+1301.2 → 1292.7 kB — because the English left the schemas that every route
+imports and went into a namespace loaded per provider. A key is shorter than a
+sentence.
+
+**Parity is in the gate.** `error-messages.test.ts` now checks the validation
+side both ways as well: every key a schema names has a message, every message is
+named by a schema, and no Zod call still carries prose — a key is
+`lower_snake_case`, so a capital letter fails the test.
+
+152 unit tests, 114 integration.

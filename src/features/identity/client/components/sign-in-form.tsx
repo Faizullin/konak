@@ -1,6 +1,5 @@
 "use client";
 
-import { zodResolver } from "@hookform/resolvers/zod";
 import { LoaderIcon } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -13,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { signInSchema, type SignInInput } from "@/features/identity";
 import { authClient } from "@/lib/auth-client";
 import { useErrorHandlers } from "@/lib/errors";
+import { useZodResolver } from "@/lib/form";
 import { OAuthButtons, type OAuthProvider } from "./oauth-buttons";
 
 /**
@@ -26,8 +26,10 @@ export function SignInForm({ providers = [] }: { providers?: OAuthProvider[] }) 
   const t = useTranslations("auth");
   const router = useRouter();
 
+  const resolver = useZodResolver<SignInInput>(signInSchema);
+
   const form = useForm<SignInInput>({
-    resolver: zodResolver(signInSchema),
+    resolver,
     defaultValues: { email: "", password: "" },
   });
 
