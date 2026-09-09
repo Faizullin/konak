@@ -140,8 +140,8 @@ created** — nothing else. It is short by design; if it is long, the phase was.
 **Server.** Does any request do the same lookup twice? Does a list do one query
 per row? Does every new query shape have an index, tenant column first?
 
-**Client.** Did any route's first-load bundle grow, and is the growth something
-that route actually renders? Does anything the shell draws on every navigation
+**Client.** Did any route's first-load bundle grow — `npm run bundle` — and is
+the growth something that route actually renders? Does anything the shell draws on every navigation
 have a `staleTime`? Does a table keep the previous page while the next loads,
 or collapse to a skeleton?
 
@@ -161,10 +161,14 @@ surprises:
 - **`RoomTypeInventory` has no computed availability.** Sold is derived on every
   read by design — correct, and the first thing to measure when a channel push
   is doing it for ninety days at once in **Phase 7**.
-- **Bundle floor.** `First Load JS shared by all` is 245 kB, and `/dashboard` is
-  403 kB. Anything that moves those without adding a screen is a regression, and
-  the build prints both. Re-record them when a phase ends: a floor left behind
-  by two phases reads as a regression that never happened.
+- **Bundle floor.** `npm run bundle`, after a build: **783,927 bytes shared by
+  every route**, and `/dashboard` at 1388.8 kB. Anything that moves those
+  without adding a screen is a regression. Re-record them when a phase ends: a
+  floor left behind by two phases reads as a regression that never happened.
+
+  These are raw chunk bytes and are **not** comparable to the 245 kB Next 15
+  used to print — Next 16 removed `size` and `First Load JS` from the build
+  output, so the unit changed once, deliberately. See `scripts/bundle.mts`.
 
 ## Not phases
 

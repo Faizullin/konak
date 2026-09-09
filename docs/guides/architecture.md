@@ -44,11 +44,12 @@ src/
 
 `scripts/` sits beside `src/`, not inside it: a `.mts` file run by `tsx` is not
 part of the app's module graph, and putting one under `src/` would put it in
-`tsc`'s and Next's. `outbox-worker.mts` is the only one today — see
+`tsc`'s and Next's. Two live there: `outbox-worker.mts`, which needs `--conditions=react-server`
+because it reaches a feature's `server/` — see
 [local-development.md](local-development.md#running-scripts-that-import-feature-code)
-for why it needs `--conditions=react-server`.
+— and `bundle.mts`, which reads build output and needs nothing.
 
-Six features exist. `identity` (who the caller is) and `organizations` (the
+Seven features exist. `identity` (who the caller is) and `organizations` (the
 container the rest hangs off) exercise every layer, and `organizations` is the
 worked example. `directory` (people and companies) has a `model/` and a
 `server/`; `platform`, `rates` and `reservations` are `model/`-only so far —

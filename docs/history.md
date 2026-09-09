@@ -763,3 +763,58 @@ failed were asserting on the *pre*-boundary shape, which is the one thing the
 change was always going to move.
 
 140 unit tests, 114 integration.
+
+## 2026-09-09 — Next 16, and the instrument it took away
+
+Upgraded 15.5.9 → 16.3.4. Almost none of the breaking changes touched this
+codebase — no `next/image`, no `revalidateTag`, no parallel routes, no
+`serverRuntimeConfig`, no PPR, no custom webpack, `params` already awaited, and
+`next lint` already avoided. The `middleware` → `proxy` rename cost nothing
+because there is no middleware, which is the design.
+
+**The upgrade removes `size` and `First Load JS` from the build output**, and
+that was the whole reason to read the guide before doing anything else.
+`roadmap.md` recorded a floor of 245 kB shared and asked at every phase end
+whether a route's first-load bundle grew. The upgrade would have deleted the
+instrument and left the obligation.
+
+So `scripts/bundle.mts` landed **first, on Next 15**, and recorded a baseline in
+its own units before anything moved — 767,307 bytes shared. One change at a
+time, which is the rule the file itself exists to serve.
+
+**Then it broke, which was the useful part.** `.next/app-build-manifest.json`
+does not exist in Next 16; `build-manifest.json` survives but covers only the
+Pages Router. The per-route client chunks are in
+`server/app/**/page_client-reference-manifest.js`, as a `globalThis.__RSC_MANIFEST`
+assignment whose `clientModules[*].chunks` is the list. The script reads that
+now, and **fails loudly with the path it looked for** rather than reporting a
+confident zero — it reads build internals, and Next will move them again.
+
+**The floor is re-recorded once, in a unit that is not comparable.** 783,927
+bytes shared, `/dashboard` at 1388.8 kB. Both the version and the measurement
+source changed together, so the difference from 767,307 is not attributable to
+either — which is exactly why the number resets rather than being carried over.
+
+**The boundary lint was verified, not assumed.** `eslint.config.mjs` reaches
+`next/core-web-vitals` through `FlatCompat`, and Next 16 makes the plugin
+default to flat config — the one place an upgrade could have silently stopped
+enforcing `import/no-restricted-paths`. A deliberate violation (a `model/` file
+importing a feature's `server/`) was added, seen reported, and reverted. The
+config's own comment warns that a broken rule of this kind reports nothing,
+which is worse than having no rule.
+
+**Two things the upgrade changed on its own.** Next rewrote `tsconfig.json`:
+`jsx` from `preserve` to `react-jsx`, and `.next/dev/types` added to `include`.
+`next dev` and `next build` now use separate output directories, so they can run
+at once.
+
+The app was checked running, not only building: `/` and `/sign-in` answer 200,
+`/dashboard` redirects at 307, and tRPC answers 401 with "You must be signed in"
+— the `UnauthorizedError` from the previous entry, arriving through the boundary
+it now goes through.
+
+Also corrected while nearby: `local-development.md` still documented
+`--turbopack` flags that are now the default, and `architecture.md` said six
+features when there are seven.
+
+140 unit tests, 114 integration.

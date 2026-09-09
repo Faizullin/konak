@@ -3,8 +3,9 @@
 ## Running
 
 ```bash
-npm run dev      # next dev --turbopack
-npm run build    # next build --turbopack
+npm run dev      # Turbopack is the default from Next 16; no flag
+npm run build
+npm run bundle   # what each route ships, after a build — see below
 npm run lint
 npx tsc --noEmit # type check on its own
 npm run format   # prettier --write .
@@ -150,6 +151,24 @@ autoincrementing integers, so a `userId`/`organizationId` pair mixes the two.
 
 Rows that are quoted outside the building carry a separate
 `publicId` (UUIDv7) — see [architecture.md](architecture.md#table-conventions).
+
+## Measuring what a route ships
+
+`npm run bundle`, after `npm run build`. Next 16 removed `size` and `First Load
+JS` from the build output — accurately, it says, because those figures mislead
+in server-driven architectures — and that left the client half of the
+end-of-phase pass with nothing to read. The script prints the chunks each route
+actually loads and the set every route shares, in raw bytes.
+
+Raw bytes are **not** the kilobytes Next used to print, and the floor in
+`plans/roadmap.md` was re-recorded once when this landed. The point is that the
+number is deterministic: the last two phase-end passes both had to fall back to
+counting bytes by hand because a printed kilobyte had moved for reasons of its
+own.
+
+It reads build internals, which Next rearranges between majors — the manifest it
+first used disappeared in 16. It fails loudly with the path it looked for rather
+than reporting a confident zero.
 
 ## Running scripts that import feature code
 
