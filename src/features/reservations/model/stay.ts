@@ -15,6 +15,36 @@ export function toStayDate(value: Date): Date {
   return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate()));
 }
 
+/**
+ * The property's own day, as a stay date.
+ *
+ * A hotel's today ends at its front desk, not at UTC midnight: at 01:00 local
+ * an arrival is still yesterday's in Auckland and tomorrow's in Los Angeles,
+ * and "has this booking arrived yet" is answered against that day.
+ *
+ * An unrecognised zone falls back to UTC rather than throwing — a typo in one
+ * property's column must not take the front desk down with it.
+ */
+export function todayAt(timezone: string, now: Date = new Date()): Date {
+  const parts = (zone: string) =>
+    new Intl.DateTimeFormat("en", {
+      timeZone: zone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).formatToParts(now);
+
+  let fields;
+  try {
+    fields = parts(timezone);
+  } catch {
+    fields = parts("UTC");
+  }
+
+  const part = (type: string) => Number(fields.find((f) => f.type === type)?.value);
+  return new Date(Date.UTC(part("year"), part("month") - 1, part("day")));
+}
+
 export function nightsBetween(checkIn: Date, checkOut: Date): number {
   return Math.round((toStayDate(checkOut).getTime() - toStayDate(checkIn).getTime()) / MS_PER_DAY);
 }

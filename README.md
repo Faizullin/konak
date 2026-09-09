@@ -1,8 +1,8 @@
 # konak
 
-A Next.js starter with **Better Auth** for authentication, **Prisma on SQLite**
-for data, and **tRPC** for the typed API — carrying the feature-per-domain
-layout from `web_backend` without any of its domain code.
+A hotel PMS on Next.js, with **Better Auth** for authentication, **Prisma on
+Postgres** for data, and **tRPC** for the typed API — carrying the
+feature-per-domain layout from `web_backend` without any of its domain code.
 
 ## Getting started
 
@@ -194,10 +194,12 @@ a user row and its credential can never disagree.
 with **`input: false`**: that is what stops a caller POSTing themselves to
 `ADMIN` at sign-up. Only `adminProcedure` writes it, through Prisma.
 
-SQLite has no enum type, so `role` is a string column and `UserRole` lives in
-`model/` instead — one definition the server validates against and the client
-renders from. The credential forms take their schemas from the same place, so
-the form cannot accept a password the server will reject.
+`role` is a string column and `UserRole` lives in `model/` — one definition the
+server validates against and the client renders from. Postgres could hold a
+real enum now; `model/` is already the enforcement, is tested, and answers "no"
+to an unrecognised value rather than throwing. The credential forms take their
+schemas from the same place, so the form cannot accept a password the server
+will reject.
 
 ### `organizations`
 

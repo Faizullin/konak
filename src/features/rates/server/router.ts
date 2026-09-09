@@ -1,9 +1,8 @@
 import "server-only";
 import { TRPCError } from "@trpc/server";
-import { requireOrgMember } from "@/server/auth";
 import { fieldError } from "@/server/errors";
 import { createTRPCRouter, protectedProcedure } from "@/server/trpc";
-import prisma from "@/server/db";
+import { requirePropertyMember } from "@/features/properties/server";
 import { nightsOf, toStayDate } from "@/features/reservations";
 import {
   quoteInputSchema,
@@ -18,31 +17,22 @@ import { quoteStay, refusalMessage } from "./service";
  *
  * Editing is by date range because that is how a rate is actually set: a price
  * for a season, not a row per day typed by hand.
+ *
+ * The local guard here was named `requirePropertyManager` but only ever checked
+ * membership; it is now the shared `requirePropertyMember`, which is what it
+ * did. Whether setting a season's prices should require a manager is a decision
+ * about roles, not a rename.
  */
-
-async function requirePropertyManager(
-  ctx: { db: typeof prisma; session: Parameters<typeof requireOrgMember>[0]["session"] },
-  propertyId: number
-) {
-  const property = await ctx.db.property.findUnique({
-    where: { id: propertyId },
-    select: { id: true, organizationId: true },
-  });
-  if (!property) {
-    throw new TRPCError({ code: "NOT_FOUND", message: "Property not found" });
-  }
-  return requireOrgMember(ctx, property.organizationId);
-}
 
 export const rateRouter = createTRPCRouter({
   /** A price and a verdict. `refusal` is why it may not be sold, if it may not. */
   quote: protectedProcedure.input(quoteInputSchema).query(async ({ ctx, input }) => {
-    await requirePropertyManager(ctx, input.propertyId);
+    await requirePropertyMember(ctx, input.propertyId);
     return quoteStay(input);
   }),
 
   calendar: protectedProcedure.input(rateCalendarInputSchema).query(async ({ ctx, input }) => {
-    await requirePropertyManager(ctx, input.propertyId);
+    await requirePropertyMember(ctx, input.propertyId);
 
     const [prices, restrictions] = await Promise.all([
       ctx.db.rateCalendar.findMany({
@@ -67,7 +57,7 @@ export const rateRouter = createTRPCRouter({
   }),
 
   setRates: protectedProcedure.input(setRatesSchema).mutation(async ({ ctx, input }) => {
-    await requirePropertyManager(ctx, input.propertyId);
+    await requirePropertyMember(ctx, input.propertyId);
 
     const days = nightsOf({ checkIn: toStayDate(input.from), checkOut: toStayDate(input.to) });
     if (days.length === 0) {
@@ -110,7 +100,7 @@ export const rateRouter = createTRPCRouter({
   setRestrictions: protectedProcedure
     .input(setRestrictionsSchema)
     .mutation(async ({ ctx, input }) => {
-      await requirePropertyManager(ctx, input.propertyId);
+      await requirePropertyMember(ctx, input.propertyId);
 
       const days = nightsOf({ checkIn: toStayDate(input.from), checkOut: toStayDate(input.to) });
       if (days.length === 0) {

@@ -1,12 +1,22 @@
 import "server-only";
 import { TRPCError } from "@trpc/server";
 import prisma from "@/server/db";
+import { personDisplayName } from "@/features/directory";
+import { compareRoomNumbers } from "@/features/properties";
 import {
+  assignLanes,
   availableRooms,
+  GRID_HIDDEN_STATUSES,
+  GRID_MAX_NIGHTS,
+  gridWindowOf,
+  laneCount,
   nightsBetween,
   nightsOf,
   occupiesInventory,
+  spanInWindow,
   toStayDate,
+  type GridSpan,
+  type Laned,
   type StayRange,
 } from "../model";
 
@@ -167,4 +177,187 @@ export async function nextSeriesNumber(
   });
 
   return `${series.prefix}${String(counter).padStart(series.padding, "0")}`;
+}
+
+export type GridStay = Laned<GridSpan> & {
+  /** The stay, not the reservation: `assignRoom` and a drag both move this id. */
+  id: number;
+  reservationId: number;
+  publicId: string;
+  reference: string;
+  status: string;
+  roomId: number | null;
+  roomTypeId: number;
+  checkIn: Date;
+  checkOut: Date;
+  adults: number;
+  children: number;
+  guestName: string | null;
+};
+
+export type GridRoomRow = {
+  roomId: number;
+  roomTypeId: number;
+  number: string;
+  floor: string | null;
+  status: string;
+  /** How many lanes the row needs. One, unless unconstrained stays overlap in it. */
+  lanes: number;
+  stays: GridStay[];
+};
+
+/** The stays a room type owes but has not placed in a room yet. */
+export type GridUnassignedBand = {
+  roomTypeId: number;
+  lanes: number;
+  stays: GridStay[];
+};
+
+export type FrontDeskGrid = {
+  window: { from: Date; to: Date; nights: Date[] };
+  roomTypes: {
+    id: number;
+    name: string;
+    code: string;
+    position: number;
+    archivedAt: Date | null;
+  }[];
+  rooms: GridRoomRow[];
+  unassigned: GridUnassignedBand[];
+  availability: NightAvailability[];
+};
+
+/**
+ * The whole grid for a window, in one call.
+ *
+ * Four queries for any number of rooms, not one per room: the rooms, the types
+ * they belong to, every stay that touches the window, and the per-type
+ * availability the sell row shows. Whether that stays fast enough — or wants a
+ * read model — is the measurement `roadmap.md` puts in this phase, and it can
+ * only be made against a query that exists.
+ *
+ * The layout is done here rather than in the component because it is the same
+ * arithmetic the drag has to undo, and `model/` proves it without a browser.
+ */
+export async function frontDeskGrid(args: {
+  propertyId: number;
+  from: Date;
+  to: Date;
+}): Promise<FrontDeskGrid> {
+  const window = gridWindowOf(args.from, args.to);
+  if (!window) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: `A grid window is between one and ${GRID_MAX_NIGHTS} nights`,
+    });
+  }
+
+  const from = window.from;
+  const to = toStayDate(args.to);
+
+  const [rooms, roomTypes, stays, nightly] = await Promise.all([
+    prisma.room.findMany({
+      where: { propertyId: args.propertyId, archivedAt: null },
+      select: { id: true, number: true, floor: true, status: true, roomTypeId: true },
+    }),
+    // Archived types are included, unlike everywhere else: archiving one does
+    // not cancel the stays already sold on it, and a type the grid cannot name
+    // is a booking it cannot draw. It carries `archivedAt` so the screen can
+    // say so and refuse to sell more.
+    prisma.roomType.findMany({
+      where: { propertyId: args.propertyId },
+      orderBy: [{ position: "asc" }, { name: "asc" }],
+      select: { id: true, name: true, code: true, position: true, archivedAt: true },
+    }),
+    // Columns are named rather than taken wholesale: this is every stay in a
+    // month for a whole hotel, and adding a column should be a decision.
+    prisma.roomStay.findMany({
+      where: {
+        reservation: { propertyId: args.propertyId },
+        checkIn: { lt: to },
+        checkOut: { gt: from },
+        status: { notIn: [...GRID_HIDDEN_STATUSES] },
+      },
+      select: {
+        id: true,
+        reservationId: true,
+        roomId: true,
+        roomTypeId: true,
+        status: true,
+        checkIn: true,
+        checkOut: true,
+        adults: true,
+        children: true,
+        reservation: {
+          select: {
+            publicId: true,
+            reference: true,
+            booker: { select: { firstName: true, lastName: true } },
+          },
+        },
+      },
+    }),
+    availability({ propertyId: args.propertyId, from, to }),
+  ]);
+
+  const drawn = stays.flatMap((stay) => {
+    const span = spanInWindow(stay, window);
+    // A stay the query returned but the window cannot draw would be a bug in
+    // one of the two; dropping it keeps the contract "every span is visible".
+    if (!span) return [];
+
+    return [
+      {
+        ...span,
+        id: stay.id,
+        reservationId: stay.reservationId,
+        publicId: stay.reservation.publicId,
+        reference: stay.reservation.reference,
+        status: stay.status,
+        roomId: stay.roomId,
+        roomTypeId: stay.roomTypeId,
+        checkIn: stay.checkIn,
+        checkOut: stay.checkOut,
+        adults: stay.adults,
+        children: stay.children,
+        guestName: stay.reservation.booker ? personDisplayName(stay.reservation.booker) : null,
+      },
+    ];
+  });
+
+  const byRoom = new Map<number, (typeof drawn)[number][]>();
+  const byType = new Map<number, (typeof drawn)[number][]>();
+  for (const stay of drawn) {
+    const bucket = stay.roomId === null ? byType : byRoom;
+    const key = stay.roomId ?? stay.roomTypeId;
+    bucket.set(key, [...(bucket.get(key) ?? []), stay]);
+  }
+
+  const laned = (spans: (typeof drawn)[number][]) => {
+    const rows = assignLanes(spans);
+    return { lanes: laneCount(rows), stays: rows };
+  };
+
+  return {
+    window: { from, to, nights: nightsOf({ checkIn: from, checkOut: to }) },
+    roomTypes,
+    // The corridor's order, which Postgres cannot give: room numbers are strings.
+    rooms: rooms
+      .toSorted((a, b) => compareRoomNumbers(a.number, b.number))
+      .map((room) => ({
+        roomId: room.id,
+        roomTypeId: room.roomTypeId,
+        number: room.number,
+        floor: room.floor,
+        status: room.status,
+        ...laned(byRoom.get(room.id) ?? []),
+      })),
+    // A band per type, in the same order as the types themselves, and only
+    // where something is actually waiting to be placed.
+    unassigned: roomTypes.flatMap((type) => {
+      const waiting = byType.get(type.id);
+      return waiting ? [{ roomTypeId: type.id, ...laned(waiting) }] : [];
+    }),
+    availability: nightly,
+  };
 }

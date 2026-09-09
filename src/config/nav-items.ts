@@ -1,5 +1,6 @@
 import {
   Building2,
+  CalendarRange,
   ChevronLeft,
   Contact,
   LayoutDashboard,
@@ -70,6 +71,7 @@ export const accountNavItems: NavGroup[] = [
  * in each nav component.
  */
 const ORG_ICONS: Record<string, LucideIcon> = {
+  CalendarRange,
   Contact,
   LayoutDashboard,
   Users,

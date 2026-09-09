@@ -223,3 +223,114 @@ by the sass pass. They had not — the emitted CSS is minified onto one line, so
 identical to the CSS entry: fourteen `data-orientation=` selectors and no stale
 `[data-horizontal]`. A measurement that disagrees with expectation is worth
 re-measuring before acting on.
+
+## 2026-09-09 — the front desk, and the read model that is not needed
+
+Phase 4 opened with three read axes no router exposed — which hotels an
+organization runs, what a guest can book at one, which rooms exist — so
+`properties` became a feature. No pagination anywhere in it: these are axes, not
+tables, and the `{ items, total }` contract belongs to `DataTable`, which
+answers a different question. Rooms come back in the corridor's order, because
+room numbers are strings and Postgres puts 10 before 2; `compareRoomNumbers` is
+a pure function, applied in the router and tested without a database.
+
+`requirePropertyMember` had been written twice, in `reservations` and `rates`,
+each typed by an inline `ctx` shape. A third caller is the threshold, so it
+moved into `properties/server/service.ts`. The `rates` copy was called
+`requirePropertyManager` and only ever checked membership: renamed to what it
+does rather than changed to what it says, because whether pricing a season needs
+a manager is a roles decision and a rename is not where to make it.
+
+**The grid's geometry is pure and lives in `model/`.** A span drawn one column
+off shows a sold room as free, and that should not need a browser to catch.
+`spanInWindow` clips a stay and says which edge is not real, so a clipped edge
+does not become a resize handle. `assignLanes` stacks what overlaps: confirmed
+stays in one room cannot overlap — the exclusion constraint refuses it — but an
+enquiry holds nothing and is not constrained, and the unassigned band for a type
+overlaps constantly. `GRID_HIDDEN_STATUSES` is both what the screen hides and
+the `where` the query filters by, so the two cannot drift.
+
+**Measured before deciding.** 60 rooms, 4 types, 31 nights, 846 stays at 85%
+occupancy: **44 ms warm, 128 ms cold, 310 kB of JSON and 23.7 kB gzipped**, in
+seven queries whose count does not move with the number of rooms. So the
+denormalised read model Phase 4 reserved a decision for is **not built** — it
+would buy tens of milliseconds and cost a table that can drift from the stays it
+summarises, which is the failure `RoomTypeInventory` already refuses to make for
+`soldRooms`. Virtualisation is not built either: 1,860 cells is not a windowing
+problem, and the payload is smaller than the JavaScript that draws it.
+
+**The front desk is a module, `FRONT_DESK`, off by default.** The registry
+already decides the sidebar entry, the URL segment, the roles and the off
+switch from one declaration, and a hotel PMS whose main screen is irrelevant to
+a tenant using only the directory is exactly the split `DIRECTORY` was built
+for. The alternative — always on — is an afternoon to migrate away from later,
+which is why this was worth deciding rather than defaulting.
+
+Archived room types come back marked rather than filtered out: archiving a type
+does not cancel the stays already sold on it, and a type the grid cannot name is
+a booking it cannot draw. They carry `archivedAt` and have no availability row.
+
+Bundles: the grid route is **404 kB** against 492 kB for the `DataTable` routes,
+which is the cost of not using that stack. Shared JS is unchanged at 243 kB —
+the +1 kB against the recorded floor is CSS for the grid's utilities, not
+JavaScript.
+
+**Learned:** the benchmark's own calendar walk used `%` on a negative day
+offset, went backwards forever and took Node to a 2 GB heap — after the fixture
+had already written its property, rooms and inventory. The cleanup pass that
+followed found and removed them. A throwaway script writes to the same database
+as the suite, and it needs the same `after` block.
+
+94 unit tests, 65 integration.
+
+## 2026-09-09 — checking in, and what the desk refuses
+
+`setStatus` had been written since Phase 2 and no screen called it. Wiring it up
+turned out to be less about the button than about what a check-in actually
+requires, none of which the status machine knows.
+
+**A guest checks into a room, not into a room type.** An unassigned stay is the
+ordinary state of a future booking, so the machine cannot refuse it in general —
+but at the moment of check-in the room is the thing being handed over, and a
+booking checked in to nothing is a guest the housekeeping board cannot see.
+`refuseStatusChange` refuses it, and the grid renders the sentence on the
+disabled button: the screen teaching what to do next, which hiding the button
+would not.
+
+**A booking that has not arrived is wrong dates, not an early arrival.** Checking
+in tomorrow's booking today means the guest sleeps tonight, and that is a date
+change with a re-quote behind it. The same rule refuses a no-show before the
+day, because a guest cannot fail to turn up before they were due. A no-show
+recorded late is allowed and a check-in after the last night is not — one is
+paperwork catching up, the other has no night left to check into.
+
+**The rule returns the sentence, not a boolean.** One string serves the disabled
+button and the server's refusal, so the two cannot say different things about
+the same booking. It lives in `model/`, which is why the three rules are proved
+by unit tests and not by a browser.
+
+**Today is the property's day.** At 01:00 an arrival is still yesterday's in
+Auckland and tomorrow's in Los Angeles, and "has this arrived" is unanswerable
+without saying whose day. `todayAt` reads `Property.timezone`; an unrecognised
+zone falls back to UTC rather than throwing, because a typo in one property's
+column must not take a front desk down.
+
+The rules apply to **every** caller of `setStatus`, not to the grid alone. That
+changed an existing integration test, which had been checking a 2027 booking in
+from an unassigned stay — legal before, and not something a desk can do.
+
+**The actions are a selection bar, not a menu on the chip.** A dropdown on a
+draggable element opens on every drag, and the refusals need more room than a
+menu row. Clicking a booking selects it; the bar offers the legal transitions,
+disables the refused ones with their reason, and puts cancel and no-show behind
+`confirm()`.
+
+**Measured: `confirm()`'s second caller costs 1 kB everywhere.** Shared JS went
+243 → 244 kB and every route grew 1–2 kB, including `/sign-in`, which shares
+nothing with the front desk. Removing just the `confirm()` call and rebuilding
+put all three numbers back exactly, so the cause is the alert dialog being
+promoted out of the organizations chunk into the common one now that two route
+families import it. Kept: the alternative is a second confirmation dialog, and
+that is the cost of having one.
+
+101 unit tests, 67 integration.

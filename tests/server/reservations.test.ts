@@ -14,7 +14,13 @@ let roomTypeId: number;
 let roomIds: number[] = [];
 
 const day = (offset: number) => new Date(Date.UTC(2027, 0, 10 + offset));
+/** The property's timezone is UTC, so its day is this one. */
+const today = (offset: number) => {
+  const now = new Date();
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + offset));
+};
 const code = (e: unknown) => (e instanceof TRPCError ? e.code : String(e));
+const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 const field = (e: unknown) =>
   e instanceof TRPCError && e.cause && "field" in e.cause
     ? (e.cause as { field: string }).field
@@ -57,7 +63,13 @@ before(async () => {
   // Two rooms for five nights, plus a separate island at day 10 for the tests
   // that need nights no earlier test has spent.
   await prisma.roomTypeInventory.createMany({
-    data: [0, 1, 2, 3, 4, 10, 11].map((i) => ({ roomTypeId, date: day(i), totalRooms: 2 })),
+    data: [0, 1, 2, 3, 4, 10, 11, 30].map((i) => ({ roomTypeId, date: day(i), totalRooms: 2 })),
+  });
+
+  // Checking in is refused before the arrival day, so the tests that do it need
+  // real nights: today and tomorrow, whenever the suite happens to run.
+  await prisma.roomTypeInventory.createMany({
+    data: [0, 1].map((i) => ({ roomTypeId, date: today(i), totalRooms: 2 })),
   });
 });
 
@@ -223,18 +235,71 @@ describe("status and rooms", () => {
         }),
       (e) => code(e) === "BAD_REQUEST"
     );
+  });
 
-    await callerFor(fx.owner).reservation.setStatus({
+  test("a guest checks in on the day, into a room", async () => {
+    const r = await callerFor(fx.owner).reservation.create({
+      propertyId,
+      roomTypeId,
+      checkIn: today(0),
+      checkOut: today(1),
+      adults: 1,
+      children: 0,
+      source: "DIRECT",
+    });
+
+    // The dates are right, but nothing has been assigned yet — which is the
+    // ordinary state of a booking until someone works out which room.
+    await assert.rejects(
+      () =>
+        callerFor(fx.owner).reservation.setStatus({ propertyId, id: r.id, status: "CHECKED_IN" }),
+      (e) => code(e) === "BAD_REQUEST" && /assign a room/i.test(message(e))
+    );
+
+    const stay = await prisma.roomStay.findFirstOrThrow({ where: { reservationId: r.id } });
+    await callerFor(fx.owner).reservation.assignRoom({
+      propertyId,
+      stayId: stay.id,
+      roomId: roomIds[0]!,
+    });
+
+    const inHouse = await callerFor(fx.owner).reservation.setStatus({
       propertyId,
       id: r.id,
       status: "CHECKED_IN",
     });
+    assert.equal(inHouse.status, "CHECKED_IN");
+
     const out = await callerFor(fx.owner).reservation.setStatus({
       propertyId,
       id: r.id,
       status: "CHECKED_OUT",
     });
     assert.equal(out.status, "CHECKED_OUT");
+
+    // The stay carries the status too, because the overlap constraint reads it.
+    const moved = await prisma.roomStay.findFirstOrThrow({ where: { id: stay.id } });
+    assert.equal(moved.status, "CHECKED_OUT");
+  });
+
+  test("a booking that has not arrived cannot check in or be a no-show", async () => {
+    const r = await callerFor(fx.owner).reservation.create({
+      propertyId,
+      roomTypeId,
+      checkIn: day(30),
+      checkOut: day(31),
+      adults: 1,
+      children: 0,
+      roomId: roomIds[1],
+      source: "DIRECT",
+    });
+
+    for (const status of ["CHECKED_IN", "NO_SHOW"] as const) {
+      await assert.rejects(
+        () => callerFor(fx.owner).reservation.setStatus({ propertyId, id: r.id, status }),
+        (e) => code(e) === "BAD_REQUEST" && /arrives on/.test(message(e))
+      );
+    }
   });
 
   test("cancelling releases the nights it held", async () => {

@@ -1,4 +1,4 @@
 import "server-only";
 
 export { reservationRouter } from "./router";
-export { availability, nextSeriesNumber } from "./service";
+export { availability, frontDeskGrid, nextSeriesNumber } from "./service";

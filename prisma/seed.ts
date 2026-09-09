@@ -404,15 +404,16 @@ async function main() {
     data: { roomId: room101.id },
   });
 
-  // The demo organization switches the directory on; it is off by default, so
-  // without this its route 404s and the module looks broken rather than off.
-  await prisma.organizationModule.upsert({
-    where: {
-      organizationId_moduleId: { organizationId: organization.id, moduleId: "DIRECTORY" },
-    },
-    update: {},
-    create: { organizationId: organization.id, moduleId: "DIRECTORY", enabled: true },
-  });
+  // The demo organization switches its optional modules on; both are off by
+  // default, so without this their routes 404 and the modules look broken
+  // rather than off.
+  for (const moduleId of ["DIRECTORY", "FRONT_DESK"]) {
+    await prisma.organizationModule.upsert({
+      where: { organizationId_moduleId: { organizationId: organization.id, moduleId } },
+      update: {},
+      create: { organizationId: organization.id, moduleId, enabled: true },
+    });
+  }
 
   // A corporate client, and the guest who books for them.
   const company = await prisma.company.upsert({

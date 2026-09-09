@@ -207,9 +207,16 @@ testing.
 
 ## Backups
 
-`dev.db` is one file: copy it. Do it before any migration that drops a
-column or a table.
+The database is in a container, so a backup is a dump. Take one before any
+migration that drops a column or a table.
 
-**Write the copy outside the repo.** `.gitignore` covers `dev.db` and `prisma/*.db`, but a
-dump moved somewhere else is one `git add -f` away from being committed, and it
-contains every user row.
+```bash
+docker exec konak-db-1 pg_dump -U konak konak > ~/konak-$(date +%F).sql
+docker exec -i konak-db-1 psql -U konak konak < ~/konak-2026-09-09.sql   # restore
+```
+
+**Write the dump outside the repo.** Nothing in `.gitignore` covers a stray
+`.sql`, it is one `git add` away from being committed, and it contains every
+user row.
+
+`down -v` drops the volume, which is the data. `down` on its own keeps it.

@@ -55,6 +55,15 @@ export const ORG_MODULE_REGISTRY = {
     segment: "directory",
     enabledByDefault: false,
   },
+  // The desk itself: the grid, and the day a receptionist works. Off by
+  // default like the directory — an organization keeping only a guest list has
+  // no rooms to draw, and a hotel switches it on once.
+  FRONT_DESK: {
+    label: "Front desk",
+    icon: "CalendarRange",
+    segment: "front-desk",
+    enabledByDefault: false,
+  },
 } satisfies Record<string, OrgModule>;
 
 export type OrgModuleId = keyof typeof ORG_MODULE_REGISTRY;

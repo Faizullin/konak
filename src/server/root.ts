@@ -2,6 +2,7 @@ import { directoryRouter } from "@/features/directory/server";
 import { userRouter } from "@/features/identity/server";
 import { organizationRouter } from "@/features/organizations/server";
 import { platformRouter } from "@/features/platform/server";
+import { propertyRouter } from "@/features/properties/server";
 import { rateRouter } from "@/features/rates/server";
 import { reservationRouter } from "@/features/reservations/server";
 import { createTRPCRouter } from "./trpc";
@@ -13,6 +14,7 @@ export const appRouter = createTRPCRouter({
   directory: directoryRouter,
   organization: organizationRouter,
   platform: platformRouter,
+  property: propertyRouter,
   rate: rateRouter,
   reservation: reservationRouter,
 });

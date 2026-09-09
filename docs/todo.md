@@ -5,10 +5,26 @@ boxes. A finished item leaves here; the fact of it goes to `history.md`.
 
 Where this sits in the whole build: `plans/roadmap.md`.
 
-## The reservation grid
-Rooms down, dates across, one month visible — the first screen with nothing
-missing beneath it. Not the DataTable stack: two axes, spans rather than rows.
-See `plans/roadmap.md` Phase 4 for what it has to answer.
+## Arrivals, departures, and the walk-in
+The grid draws the month, a drag assigns a room, and a booking checks in and
+out. The rest of the day does not exist: no arrivals or departures list for a
+date, and nothing in the UI creates a booking, so a walk-in still means SQL.
+Phase 4's **Done when** is the whole day.
+
+## Moving a stay's dates
+A drag moves a booking between rooms; dragging it sideways or resizing an edge
+has nothing to land on. `assignRoom` changes the room, and no procedure changes
+`checkIn`/`checkOut` — it needs the same overlap refusal and a re-quote, so it is
+a procedure with a rule, not a field update.
+
+## What Phase 4 still owes itself
+**Real-time** is undecided, and the phase is where the need shows: two
+receptionists on one grid go stale, and today the only refresh is the mutation's
+own invalidation. The end-of-phase pass has been made over the client (bundles)
+and the read model (measured, not built); the **server half has not** — whether
+the grid's window query and the arrivals query it is about to grow have an index
+with the tenant column first, and whether any request looks the same row up
+twice.
 
 ## Room and rate-plan management
 Room types, rooms and plans are seeded and readable but have no screens, so a

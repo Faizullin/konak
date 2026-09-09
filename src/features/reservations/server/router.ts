@@ -1,54 +1,51 @@
 import "server-only";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import { requireOrgMember } from "@/server/auth";
 import { fieldError } from "@/server/errors";
 import { createTRPCRouter, protectedProcedure } from "@/server/trpc";
-import prisma from "@/server/db";
+import { requirePropertyMember } from "@/features/properties/server";
 import {
   assignRoomSchema,
   availabilityInputSchema,
   holdInputSchema,
   releaseHoldSchema,
-  canTransition,
   createReservationSchema,
+  gridWindowSchema,
   isValidStayRange,
   nightsOf,
+  refuseStatusChange,
   ReservationStatus,
   setReservationStatusSchema,
+  todayAt,
   toStayDate,
 } from "../model";
 import { quoteStay, refusalMessage } from "@/features/rates/server";
-import { availability, nextSeriesNumber } from "./service";
+import { availability, frontDeskGrid, nextSeriesNumber } from "./service";
 
 /**
  * Reservations — availability, and the four things a desk does to a booking.
  *
  * Every procedure resolves the property to its organization first, then checks
- * membership. A property id that belongs to another tenant is indistinguishable
- * from one that does not exist.
+ * membership — `requirePropertyMember`, which the properties feature owns and
+ * which decides the two refusals: an unknown id is NOT_FOUND, another tenant's
+ * is FORBIDDEN.
  */
-
-async function requirePropertyMember(
-  ctx: { db: typeof prisma; session: Parameters<typeof requireOrgMember>[0]["session"] },
-  propertyId: number
-) {
-  const property = await ctx.db.property.findUnique({
-    where: { id: propertyId },
-    select: { id: true, organizationId: true },
-  });
-  if (!property) {
-    throw new TRPCError({ code: "NOT_FOUND", message: "Property not found" });
-  }
-  const member = await requireOrgMember(ctx, property.organizationId);
-  return { property, ...member };
-}
 
 export const reservationRouter = createTRPCRouter({
   /** Free rooms per type per night. Derived, never read from a flag. */
   availability: protectedProcedure.input(availabilityInputSchema).query(async ({ ctx, input }) => {
     await requirePropertyMember(ctx, input.propertyId);
     return availability(input);
+  }),
+
+  /**
+   * The front desk grid for one window: rooms, the stays that touch it, what is
+   * still unassigned, and availability per type per night — one call rather
+   * than one per room, which is the contract `roadmap.md` Phase 4 asks for.
+   */
+  grid: protectedProcedure.input(gridWindowSchema).query(async ({ ctx, input }) => {
+    await requirePropertyMember(ctx, input.propertyId);
+    return frontDeskGrid(input);
   }),
 
   list: protectedProcedure
@@ -258,19 +255,29 @@ export const reservationRouter = createTRPCRouter({
 
       const reservation = await ctx.db.reservation.findFirst({
         where: { id: input.id, propertyId: input.propertyId },
-        select: { id: true, status: true },
+        select: {
+          id: true,
+          status: true,
+          property: { select: { timezone: true } },
+          // Check-in reads the rooms and the dates, so the rule sees the whole
+          // booking rather than the column alone.
+          stays: { select: { roomId: true, checkIn: true, checkOut: true } },
+        },
       });
       if (!reservation) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Reservation not found" });
       }
 
-      // The legal transitions are a pure function in `model/`; this is the two
-      // writes it permits.
-      if (!canTransition(reservation.status, input.status)) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: `A ${reservation.status.toLowerCase()} reservation cannot become ${input.status.toLowerCase()}`,
-        });
+      // The rule is a pure function in `model/`; this is the two writes it
+      // permits, and the sentence it refuses with is the one the screen shows.
+      const refusal = refuseStatusChange({
+        from: reservation.status,
+        to: input.status,
+        stays: reservation.stays,
+        today: todayAt(reservation.property.timezone),
+      });
+      if (refusal) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: refusal });
       }
 
       return ctx.db.$transaction(async (tx) => {

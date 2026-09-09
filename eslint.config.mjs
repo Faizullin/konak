@@ -10,7 +10,15 @@ const compat = new FlatCompat({
 });
 
 /** Every feature. Adding one here is what extends the boundaries below to it. */
-const FEATURES = ["directory", "identity", "organizations", "platform", "rates", "reservations"];
+const FEATURES = [
+  "directory",
+  "identity",
+  "organizations",
+  "platform",
+  "properties",
+  "rates",
+  "reservations",
+];
 
 const serverDirs = FEATURES.map((f) => `./src/features/${f}/server`);
 const clientDirs = FEATURES.map((f) => `./src/features/${f}/client`);
