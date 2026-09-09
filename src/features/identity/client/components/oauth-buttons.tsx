@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { authClient } from "@/lib/auth-client";
-import { handleError } from "@/lib/errors";
+import { useErrorHandlers } from "@/lib/errors";
 
 /**
  * The social half of the credential screens.
@@ -31,6 +31,7 @@ export function OAuthButtons({
   providers: OAuthProvider[];
   callbackURL?: string;
 }) {
+  const { handleError } = useErrorHandlers();
   const [pending, setPending] = useState<OAuthProvider | null>(null);
 
   if (providers.length === 0) return null;

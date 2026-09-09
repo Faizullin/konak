@@ -1,12 +1,19 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
+import { OrgRole } from "@/features/organizations";
 import {
+  canArchiveRoomTypes,
+  canManageRoomTypes,
+  canManageRooms,
+  canReadInventory,
   compareRoomNumbers,
   formatDayMinutes,
   isRoomSellable,
   listRoomsSchema,
   propertySlugSchema,
+  inventoryCodeSchema,
+  refuseOccupancy,
   ROOM_STATUS_VALUES,
   RoomStatus,
 } from "./index";
@@ -64,4 +71,55 @@ test("listing rooms is unfiltered by default", () => {
   assert.equal(parsed.status, undefined);
   assert.equal(parsed.includeArchived, undefined);
   assert.equal(listRoomsSchema.safeParse({ propertyId: 1, status: "SPOTLESS" }).success, false);
+});
+
+const occupancy = { baseOccupancy: 2, maxOccupancy: 4, maxAdults: 3, maxChildren: 2 };
+
+test("an occupancy a room type cannot honour is refused with the pair that clashes", () => {
+  assert.equal(refuseOccupancy(occupancy), null);
+
+  assert.equal(
+    refuseOccupancy({ ...occupancy, baseOccupancy: 5 })?.code,
+    "room_type.base_over_max"
+  );
+  assert.equal(refuseOccupancy({ ...occupancy, maxAdults: 5 })?.code, "room_type.adults_over_max");
+  assert.equal(
+    refuseOccupancy({ ...occupancy, maxChildren: 5 })?.code,
+    "room_type.children_over_max"
+  );
+  assert.equal(refuseOccupancy({ ...occupancy, maxAdults: 0 })?.code, "room_type.needs_one_adult");
+});
+
+test("base may equal max, and children may fill the room", () => {
+  // Neither is a mistake: a double sold as a double, and a family room whose
+  // maximum is reached by children.
+  assert.equal(refuseOccupancy({ ...occupancy, baseOccupancy: 4 }), null);
+  assert.equal(refuseOccupancy({ ...occupancy, maxChildren: 4 }), null);
+});
+
+test("an inventory code survives the systems it travels through", () => {
+  assert.equal(inventoryCodeSchema.safeParse("DBL").success, true);
+  assert.equal(inventoryCodeSchema.safeParse("FAM-2").success, true);
+  // A space or lower case would not survive a channel mapping.
+  assert.equal(inventoryCodeSchema.safeParse("DBL ROOM").success, false);
+  assert.equal(inventoryCodeSchema.safeParse("dbl").success, false);
+  assert.equal(inventoryCodeSchema.safeParse("D").success, false);
+});
+
+test("a receptionist reads the inventory and does not set it up", () => {
+  assert.equal(canReadInventory(OrgRole.MEMBER), true);
+  assert.equal(canManageRooms(OrgRole.MEMBER), false);
+  assert.equal(canManageRoomTypes(OrgRole.MEMBER), false);
+  assert.equal(canArchiveRoomTypes(OrgRole.MEMBER), false);
+
+  for (const role of [OrgRole.OWNER, OrgRole.ADMIN]) {
+    assert.equal(canManageRooms(role), true, role);
+    assert.equal(canManageRoomTypes(role), true, role);
+    assert.equal(canArchiveRoomTypes(role), true, role);
+  }
+});
+
+test("a role nobody granted reads as no", () => {
+  assert.equal(canReadInventory("GUEST"), false);
+  assert.equal(canManageRooms(""), false);
 });

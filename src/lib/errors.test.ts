@@ -22,13 +22,15 @@ test("a Zod failure becomes field errors, under the names the server used", () =
       httpStatus: 400,
       zodError: {
         formErrors: [],
-        fieldErrors: { email: ["Enter a valid email address"] },
+        fieldErrors: { email: ["email_invalid"] },
       },
     })
   );
 
   assert.equal(app.kind, "field");
-  assert.deepEqual(app.fieldErrors, { email: ["Enter a valid email address"] });
+  // A Zod message is a key by the time it reaches here; `handleFormError`
+  // resolves it when placing, which is what `translateField` is for.
+  assert.deepEqual(app.fieldErrors, { email: ["email_invalid"] });
 });
 
 test("fieldError() puts a domain rule under its field", () => {
@@ -134,4 +136,115 @@ test("form-level Zod messages stay separate from field ones", () => {
   assert.equal(app.kind, "form");
   assert.deepEqual(app.formErrors, ["Pick at least one"]);
   assert.equal(app.fieldErrors, undefined);
+});
+
+test("a domain code survives the wire, alongside the transport's own", () => {
+  const app = normalizeError(
+    trpc(
+      {
+        code: "CONFLICT",
+        httpStatus: 409,
+        domainCode: "room.taken",
+        field: "roomId",
+      },
+      "That room is taken for part of this stay"
+    )
+  );
+
+  // Two codes, and they answer different questions: `code` is the transport's
+  // and decides where this renders; `domainCode` is the rule's and is what a
+  // screen or a translation keys on.
+  assert.equal(app.code, "CONFLICT");
+  assert.equal(app.domainCode, "room.taken");
+  assert.deepEqual(app.fieldErrors, { roomId: ["That room is taken for part of this stay"] });
+});
+
+test("an error with no domain code does not invent one", () => {
+  const app = normalizeError(trpc({ code: "NOT_FOUND", httpStatus: 404 }, "Gone"));
+
+  assert.equal("domainCode" in app, false);
+});
+
+test("a null domain code is an absence, not a value", () => {
+  // The formatter writes `null` when the cause was not a `DomainError`, and a
+  // caller checking `app.domainCode === X` must not match on that.
+  const app = normalizeError(
+    trpc({ code: "NOT_FOUND", httpStatus: 404, domainCode: null }, "Gone")
+  );
+
+  assert.equal(app.domainCode, undefined);
+});
+
+test("a domain code never rescues a 500's message", () => {
+  const app = normalizeError(
+    trpc({ code: "INTERNAL_SERVER_ERROR", httpStatus: 500, domainCode: "x.y" }, "at Object.<anon>")
+  );
+
+  assert.equal(app.message, GENERIC_SERVER_MESSAGE);
+  assert.equal(app.domainCode, "x.y");
+});
+
+test("a domain code with a translation replaces the server's English", () => {
+  const app = normalizeError(
+    trpc(
+      { code: "CONFLICT", httpStatus: 409, domainCode: "room.taken" },
+      "English from the server"
+    ),
+    (code) => (code === "room.taken" ? "Translated" : null)
+  );
+
+  assert.equal(app.message, "Translated");
+  assert.equal(app.domainCode, "room.taken");
+});
+
+test("a code the translation does not cover keeps the server's English", () => {
+  // The five refusals whose sentence comes from a `model/` rule are exactly
+  // this case: a code, and no key that could reproduce the sentence.
+  const app = normalizeError(
+    trpc(
+      { code: "BAD_REQUEST", httpStatus: 400, domainCode: "reservation.status_refused" },
+      "A confirmed reservation cannot become checked out"
+    ),
+    () => null
+  );
+
+  assert.equal(app.message, "A confirmed reservation cannot become checked out");
+});
+
+test("the values a computed refusal carried reach the translator", () => {
+  let seen: Record<string, string | number> | undefined;
+  normalizeError(
+    trpc(
+      {
+        code: "CONFLICT",
+        httpStatus: 409,
+        domainCode: "hold.short",
+        domainValues: { available: 3, date: "2027-03-04" },
+      },
+      "Only 3 free on 2027-03-04"
+    ),
+    (_code, values) => {
+      seen = values;
+      return "translated";
+    }
+  );
+
+  assert.deepEqual(seen, { available: 3, date: "2027-03-04" });
+});
+
+test("no translator at all is the server's English, not a blank", () => {
+  const app = normalizeError(
+    trpc({ code: "NOT_FOUND", httpStatus: 404, domainCode: "room.not_found" }, "Room not found")
+  );
+
+  assert.equal(app.message, "Room not found");
+});
+
+test("a translated 500 is still not shown — the message is for a log", () => {
+  const app = normalizeError(
+    trpc({ code: "INTERNAL_SERVER_ERROR", httpStatus: 500, domainCode: "x.y" }, "at Object.<anon>"),
+    () => "a translation that must not appear"
+  );
+
+  assert.equal(app.message, GENERIC_SERVER_MESSAGE);
 });

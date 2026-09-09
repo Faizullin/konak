@@ -49,3 +49,7 @@ next-env.d.ts
 /prisma/*.db-wal
 
 
+
+# Attachments, when STORAGE_PROVIDER=filesystem. Outside public/ on purpose.
+.storage
+.storage-test

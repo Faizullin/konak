@@ -1,6 +1,6 @@
 "use client";
 
-import { zodResolver } from "@hookform/resolvers/zod";
+import { useTranslations } from "next-intl";
 import { useEffect } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
@@ -8,7 +8,8 @@ import { FormDialog } from "@/components/common/form-dialog";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { personFormSchema, type PersonFormInput } from "@/features/directory";
-import { handleFormError } from "@/lib/errors";
+import { useErrorHandlers } from "@/lib/errors";
+import { useZodResolver } from "@/lib/form";
 import { trpc } from "@/utils/trpc";
 
 /**
@@ -27,10 +28,14 @@ export function PersonFormDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  const t = useTranslations("directory");
+  const { handleFormError } = useErrorHandlers();
   const utils = trpc.useUtils();
 
+  const resolver = useZodResolver<PersonFormInput>(personFormSchema);
+
   const form = useForm<PersonFormInput>({
-    resolver: zodResolver(personFormSchema),
+    resolver,
     defaultValues: { firstName: "", lastName: "", email: "", phone: "", notes: "" },
   });
 
@@ -41,11 +46,11 @@ export function PersonFormDialog({
 
   const mutation = trpc.directory.createPerson.useMutation({
     onSuccess: async () => {
-      toast.success("Person added");
+      toast.success(t("form.added"));
       await utils.directory.listPeople.invalidate();
       onOpenChange(false);
     },
-    // A duplicate email arrives from `fieldError("email", …)` and lands under
+    // A duplicate email arrives as a `ConflictError` naming "email", and lands under
     // the email box; anything else lands on the form.
     onError: (e) => handleFormError(form, e),
   });
@@ -67,7 +72,7 @@ export function PersonFormDialog({
           name="firstName"
           render={({ field, fieldState }) => (
             <Field data-invalid={!!fieldState.error}>
-              <FieldLabel htmlFor="person-first-name">First name</FieldLabel>
+              <FieldLabel htmlFor="person-first-name">{t("form.firstName")}</FieldLabel>
               <Input id="person-first-name" disabled={mutation.isPending} {...field} />
               {fieldState.error && <FieldError>{fieldState.error.message}</FieldError>}
             </Field>
@@ -79,7 +84,7 @@ export function PersonFormDialog({
           name="lastName"
           render={({ field, fieldState }) => (
             <Field data-invalid={!!fieldState.error}>
-              <FieldLabel htmlFor="person-last-name">Last name</FieldLabel>
+              <FieldLabel htmlFor="person-last-name">{t("form.lastName")}</FieldLabel>
               <Input id="person-last-name" disabled={mutation.isPending} {...field} />
               {fieldState.error && <FieldError>{fieldState.error.message}</FieldError>}
             </Field>
@@ -91,7 +96,7 @@ export function PersonFormDialog({
           name="email"
           render={({ field, fieldState }) => (
             <Field data-invalid={!!fieldState.error}>
-              <FieldLabel htmlFor="person-email">Email</FieldLabel>
+              <FieldLabel htmlFor="person-email">{t("form.email")}</FieldLabel>
               <Input
                 id="person-email"
                 type="email"
@@ -110,7 +115,7 @@ export function PersonFormDialog({
           name="phone"
           render={({ field, fieldState }) => (
             <Field data-invalid={!!fieldState.error}>
-              <FieldLabel htmlFor="person-phone">Phone</FieldLabel>
+              <FieldLabel htmlFor="person-phone">{t("form.phone")}</FieldLabel>
               <Input
                 id="person-phone"
                 disabled={mutation.isPending}
@@ -127,10 +132,10 @@ export function PersonFormDialog({
           name="notes"
           render={({ field, fieldState }) => (
             <Field data-invalid={!!fieldState.error}>
-              <FieldLabel htmlFor="person-notes">Notes</FieldLabel>
+              <FieldLabel htmlFor="person-notes">{t("form.notes")}</FieldLabel>
               <Input
                 id="person-notes"
-                placeholder="Optional"
+                placeholder={t("form.optional")}
                 disabled={mutation.isPending}
                 {...field}
                 value={field.value ?? ""}

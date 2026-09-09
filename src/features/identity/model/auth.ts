@@ -16,7 +16,7 @@ import { z } from "zod";
  */
 export const signInSchema = z.object({
   email: z.email(),
-  password: z.string().min(1, "Password is required"),
+  password: z.string().min(1, "password_required"),
 });
 
 export type SignInInput = z.infer<typeof signInSchema>;
@@ -26,9 +26,9 @@ export type SignInInput = z.infer<typeof signInSchema>;
  * the form would accept what the server then rejects.
  */
 export const signUpSchema = z.object({
-  name: z.string().min(1, "Name is required").max(64),
+  name: z.string().min(1, "name_required").max(64),
   email: z.email(),
-  password: z.string().min(8, "Use at least 8 characters"),
+  password: z.string().min(8, "password_too_short"),
 });
 
 export type SignUpInput = z.infer<typeof signUpSchema>;

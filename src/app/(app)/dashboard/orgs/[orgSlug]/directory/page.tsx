@@ -1,3 +1,4 @@
+import { getTranslations } from "next-intl/server";
 import { notFound } from "next/navigation";
 import { PageHeader } from "@/components/common/page-header";
 import { PeopleTableView } from "@/features/directory/client/components/people-table-view";
@@ -6,6 +7,7 @@ import { organizationBySlug } from "@/features/organizations/server";
 import prisma from "@/server/db";
 
 export default async function DirectoryPage({ params }: { params: Promise<{ orgSlug: string }> }) {
+  const t = await getTranslations("pages");
   const { orgSlug } = await params;
   const organization = await organizationBySlug(orgSlug);
   if (!organization) {
@@ -24,10 +26,7 @@ export default async function DirectoryPage({ params }: { params: Promise<{ orgS
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="Directory"
-        description="Guests, contacts and the companies they belong to."
-      />
+      <PageHeader title={t("directory.title")} description={t("directory.description")} />
       <PeopleTableView organizationId={organization.id} />
     </div>
   );

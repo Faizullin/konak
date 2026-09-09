@@ -5,12 +5,12 @@ export const COMPANY_SORT_FIELDS = ["name", "createdAt"] as const;
 
 export const createCompanySchema = z.object({
   organizationId: z.number(),
-  name: z.string().min(1, "Name is required").max(160),
+  name: z.string().min(1, "name_required").max(160),
   legalName: z.string().max(200).optional(),
   taxId: z.string().max(64).optional(),
   email: emailField,
   phone: z.string().max(40).optional(),
-  website: z.url("Enter a valid URL").optional().or(z.literal("")),
+  website: z.url("url_invalid").optional().or(z.literal("")),
   notes: z.string().max(2000).optional(),
   address: addressSchema.optional(),
 });

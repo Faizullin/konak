@@ -1,14 +1,19 @@
+import { getTranslations } from "next-intl/server";
 import { notFound } from "next/navigation";
+import Link from "next/link";
 import { PageHeader } from "@/components/common/page-header";
+import { Button } from "@/components/ui/button";
 import { isOrgModuleEnabled } from "@/features/organizations";
 import { organizationBySlug } from "@/features/organizations/server";
 import { formatDayMinutes, propertySlugSchema } from "@/features/properties";
+import { FrontDeskDay } from "@/features/reservations/client/components/front-desk-day";
 import { ReservationGrid } from "@/features/reservations/client/components/reservation-grid";
 import prisma from "@/server/db";
 
 type Params = { params: Promise<{ orgSlug: string; propertySlug: string }> };
 
 export default async function PropertyGridPage({ params }: Params) {
+  const t = await getTranslations("pages");
   const { orgSlug, propertySlug } = await params;
   if (!propertySlugSchema.safeParse(propertySlug).success) {
     notFound();
@@ -41,10 +46,24 @@ export default async function PropertyGridPage({ params }: Params) {
     <div className="space-y-6">
       <PageHeader
         title={property.name}
-        description={`Check-in from ${formatDayMinutes(property.checkInMinutes)}, check-out by ${formatDayMinutes(property.checkOutMinutes)}.`}
+        description={t("property.description", {
+          checkIn: formatDayMinutes(property.checkInMinutes),
+          checkOut: formatDayMinutes(property.checkOutMinutes),
+        })}
+        actions={
+          <Button
+            nativeButton={false}
+            variant="outline"
+            render={<Link href={`/dashboard/orgs/${orgSlug}/front-desk/${propertySlug}/setup`} />}
+          >
+            {t("property.setup")}
+          </Button>
+        }
       />
       {/* The desk's day, not the browser's: whether a booking has arrived is
-          answered in the hotel's timezone. */}
+          answered in the hotel's timezone. Today's work first, the month under
+          it — the order a receptionist reads them in. */}
+      <FrontDeskDay propertyId={property.id} timezone={property.timezone} />
       <ReservationGrid propertyId={property.id} timezone={property.timezone} />
     </div>
   );

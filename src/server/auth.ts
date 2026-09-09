@@ -1,4 +1,3 @@
-import { TRPCError } from "@trpc/server";
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import { nextCookies } from "better-auth/next-js";
@@ -9,7 +8,7 @@ import { haveIBeenPwned } from "better-auth/plugins";
 import { env } from "../env.mjs";
 import { UserRole } from "../features/identity/model/user";
 import { OrgRole, canManageMembers } from "../features/organizations/model/organization";
-import { userNotFound } from "./errors";
+import { ForbiddenError, SharedError, userNotFound } from "./errors";
 import prisma from "./db";
 
 /**
@@ -117,7 +116,7 @@ export async function requireOrgMember(ctx: AuthedContext, organizationId: numbe
     where: { organizationId_userId: { organizationId, userId: user.id } },
   });
   if (!member) {
-    throw new TRPCError({ code: "FORBIDDEN", message: "No access to this organization" });
+    throw new ForbiddenError(SharedError.ORG_NO_ACCESS, "No access to this organization");
   }
   return { user, member, role: member.role as OrgRole };
 }
@@ -126,10 +125,10 @@ export async function requireOrgMember(ctx: AuthedContext, organizationId: numbe
 export async function requireOrgManager(ctx: AuthedContext, organizationId: number) {
   const result = await requireOrgMember(ctx, organizationId);
   if (!canManageMembers(result.role)) {
-    throw new TRPCError({
-      code: "FORBIDDEN",
-      message: "Only owners and admins can perform this action",
-    });
+    throw new ForbiddenError(
+      SharedError.ORG_MANAGER_REQUIRED,
+      "Only owners and admins can perform this action"
+    );
   }
   return result;
 }
@@ -138,10 +137,10 @@ export async function requireOrgManager(ctx: AuthedContext, organizationId: numb
 export async function requireOrgOwner(ctx: AuthedContext, organizationId: number) {
   const result = await requireOrgMember(ctx, organizationId);
   if (result.role !== OrgRole.OWNER) {
-    throw new TRPCError({
-      code: "FORBIDDEN",
-      message: "Only the organization owner can perform this action",
-    });
+    throw new ForbiddenError(
+      SharedError.ORG_OWNER_REQUIRED,
+      "Only the organization owner can perform this action"
+    );
   }
   return result;
 }

@@ -1,0 +1,61 @@
+{
+  "archive": {
+    "show": "Show archived",
+    "hide": "Hide archived",
+    "confirm": "Archive"
+  },
+  "types": {
+    "heading": "Room types",
+    "subtitle": "What a guest books.",
+    "new": "New type",
+    "empty": "No room types yet. A property sells nothing until it has one.",
+    "archived": "Room type archived",
+    "restored": "Room type restored",
+    "archiveTitle": "Archive {name}?",
+    "archiveDescription": "It stops being sellable. Bookings already on it are untouched.",
+    "editLabel": "Edit {name}",
+    "name": "Name",
+    "code": "Code",
+    "sleeps": "Sleeps",
+    "base": "Base"
+  },
+  "rooms": {
+    "heading": "Rooms",
+    "subtitle": "The grid's vertical axis.",
+    "new": "New room",
+    "empty": "No rooms yet.",
+    "archived": "Room archived",
+    "restored": "Room restored",
+    "archiveTitle": "Archive room {number}?",
+    "archiveDescription": "It leaves the grid and stops being assignable.",
+    "editLabel": "Edit room {number}",
+    "number": "Number",
+    "type": "Type",
+    "floor": "Floor",
+    "housekeeping": "Housekeeping"
+  },
+  "roomForm": {
+    "editTitle": "Edit room",
+    "newTitle": "New room",
+    "save": "Save",
+    "add": "Add room",
+    "number": "Number",
+    "floor": "Floor",
+    "type": "Room type",
+    "chooseType": "Choose a type",
+    "housekeeping": "Housekeeping"
+  },
+  "typeForm": {
+    "editTitle": "Edit room type",
+    "newTitle": "New room type",
+    "save": "Save",
+    "add": "Add room type",
+    "name": "Name",
+    "code": "Code",
+    "baseOccupancy": "Base occupancy",
+    "maxOccupancy": "Sleeps",
+    "maxAdults": "Max adults",
+    "maxChildren": "Max children",
+    "position": "Order"
+  }
+}

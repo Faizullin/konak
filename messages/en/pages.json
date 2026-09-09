@@ -1,0 +1,29 @@
+{
+  "overview": {
+    "title": "Overview",
+    "description": "Your account and the org you work in."
+  },
+  "organizations": {
+    "title": "Organizations",
+    "description": "Every organization you belong to, and your role in each."
+  },
+  "users": {
+    "title": "Users",
+    "description": "Everyone with an account on this install, and the role each one holds."
+  },
+  "directory": {
+    "title": "Directory",
+    "description": "Guests, contacts and the companies they belong to."
+  },
+  "frontDesk": {
+    "title": "Front desk",
+    "description": "Choose a property to open its grid."
+  },
+  "property": {
+    "description": "Check-in from {checkIn}, check-out by {checkOut}.",
+    "setupTitle": "{property} setup",
+    "setupDescription": "Room types, the rooms behind them, and the plans a stay is quoted on.",
+    "backToDesk": "Back to the desk",
+    "setup": "Setup"
+  }
+}

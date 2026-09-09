@@ -1,8 +1,14 @@
 import "server-only";
-import { TRPCError } from "@trpc/server";
+import { NotFoundError } from "@/server/errors";
 import prisma from "@/server/db";
 import { nightsBetween, nightsOf, toStayDate } from "@/features/reservations";
-import { sellRefusal, stayTotalMinor, type Restriction, type SellRefusal } from "../model";
+import {
+  RateError,
+  sellRefusal,
+  stayTotalMinor,
+  type Restriction,
+  type SellRefusal,
+} from "../model";
 
 /**
  * What a stay costs, and whether it may be sold.
@@ -57,7 +63,7 @@ export async function quoteStay(args: {
     }),
   ]);
   if (!roomType || !ratePlan) {
-    throw new TRPCError({ code: "NOT_FOUND", message: "Room type or rate plan not found" });
+    throw new NotFoundError(RateError.PLAN_OR_TYPE_NOT_FOUND, "Room type or rate plan not found");
   }
 
   const [calendar, restrictions] = await Promise.all([

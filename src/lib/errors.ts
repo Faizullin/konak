@@ -1,7 +1,10 @@
 "use client";
 
+import { useCallback, useMemo } from "react";
+import { useTranslations } from "next-intl";
 import type { FieldValues, Path, UseFormReturn } from "react-hook-form";
 import { toast } from "sonner";
+import type { Refusal } from "./refusal";
 
 /**
  * Every error the client can be handed: what it is, and where it renders.
@@ -31,13 +34,33 @@ export type AppError = {
   kind: AppErrorKind;
   /** Safe to display, always. */
   message: string;
-  /** Field name → messages. Zod's map and `fieldError()`'s single name both land here. */
+  /** Field name → messages. Zod's map and a `DomainError`'s single name both land here. */
   fieldErrors?: Record<string, string[]>;
   /** Messages belonging to the submission as a whole. */
   formErrors?: string[];
   code?: string;
+  /**
+   * The stable half of a domain refusal — `DomainError.code` on the server.
+   *
+   * `code` above is the transport's (`CONFLICT`, `NOT_FOUND`); this is the
+   * rule's ("reservation.room_taken"). A message can be reworded or translated
+   * without moving, which is what a screen keying off a specific refusal, and a
+   * later translation file, need.
+   */
+  domainCode?: string;
   status?: number;
 };
+
+/**
+ * Turns a domain code into a sentence, or `null` when it has no translation.
+ *
+ * Passed in rather than imported, so `normalizeError` stays pure and its tests
+ * stay free of a provider. `useErrorHandlers` supplies the real one.
+ */
+export type TranslateDomain = (
+  code: string,
+  values?: Record<string, string | number>
+) => string | null;
 
 /** What a 500 says. The server's own message is written for a log, not a person. */
 export const GENERIC_SERVER_MESSAGE = "Something went wrong. Please try again.";
@@ -90,11 +113,20 @@ function kindByStatus(status: number): AppErrorKind {
 }
 
 /** Everything above, applied. Never throws, whatever it is handed. */
-export function normalizeError(error: unknown): AppError {
+export function normalizeError(error: unknown, translate?: TranslateDomain): AppError {
   const data = trpcDataOf(error);
 
   if (data) {
-    const message = stringOr(isRecord(error) ? error.message : null, GENERIC_SERVER_MESSAGE);
+    const english = stringOr(isRecord(error) ? error.message : null, GENERIC_SERVER_MESSAGE);
+    // The code wins when it has a translation; the server's English is the
+    // fallback, not the source. A refusal whose sentence comes from a `model/`
+    // rule has no translation yet and keeps its English — see
+    // `plans/internationalisation.md`.
+    const code = typeof data.domainCode === "string" ? data.domainCode : null;
+    const values = isRecord(data.domainValues)
+      ? (data.domainValues as Record<string, string | number>)
+      : undefined;
+    const message = (code && translate?.(code, values)) || english;
     const zod = isRecord(data.zodError) ? data.zodError : null;
 
     const fieldErrors: Record<string, string[]> = {};
@@ -104,7 +136,7 @@ export function normalizeError(error: unknown): AppError {
         if (list.length) fieldErrors[name] = list;
       }
     }
-    // `fieldError()` names one field for a rule Zod cannot express, and the
+    // A `DomainError` names one field for a rule Zod cannot express, and the
     // message for it is the error's own.
     if (typeof data.field === "string" && data.field) {
       fieldErrors[data.field] = [...(fieldErrors[data.field] ?? []), message];
@@ -120,6 +152,7 @@ export function normalizeError(error: unknown): AppError {
       ...(named ? { fieldErrors } : {}),
       ...(formErrors.length ? { formErrors } : {}),
       code: data.code as string,
+      ...(code ? { domainCode: code } : {}),
       ...(typeof data.httpStatus === "number" ? { status: data.httpStatus } : {}),
     };
   }
@@ -170,6 +203,14 @@ export type HandleOptions<T extends FieldValues = FieldValues> = {
   fallbackMessage?: string;
   /** Server field name → form field name, for the cases where they differ. */
   map?: Partial<Record<string, Path<T>>>;
+  /** Supplied by `useErrorHandlers`; absent means the server's English. */
+  translate?: TranslateDomain;
+  /**
+   * Turns a validation key into a sentence. The server re-validates with the
+   * same schema, so a field error arriving over the wire is a key too — the
+   * same key the client's own resolver would have produced.
+   */
+  translateField?: (key: string) => string | null;
 };
 
 /**
@@ -178,7 +219,7 @@ export type HandleOptions<T extends FieldValues = FieldValues> = {
  * `options` is expected.
  */
 export function handleError(error: unknown, options: HandleOptions = {}): AppError | null {
-  const app = normalizeError(error);
+  const app = normalizeError(error, options.translate);
   const message = display(app.message, undefined, options.fallbackMessage);
   if (options.toast === false) return { ...app, message };
   toast.error(message);
@@ -202,13 +243,14 @@ export function handleFormError<T extends FieldValues>(
   error: unknown,
   options: HandleOptions<T> = {}
 ): AppError | null {
-  const app = normalizeError(error);
+  const app = normalizeError(error, options.translate);
   const known = new Set(Object.keys(form.getValues() ?? {}));
 
   const unplaced: string[] = [];
   let placed = 0;
 
-  for (const [field, message] of fieldEntriesOf(app)) {
+  for (const [field, raw] of fieldEntriesOf(app)) {
+    const message = options.translateField?.(raw) ?? raw;
     const target = (options.map?.[field] ?? field) as Path<T>;
     if (known.has(target)) {
       form.setError(target, { type: "server", message });
@@ -234,4 +276,94 @@ export function handleFormError<T extends FieldValues>(
     toast.error(message);
   }
   return null;
+}
+
+/* --- Translating a refusal ------------------------------------------------ */
+
+/**
+ * The two placers, bound to the current language.
+ *
+ * `handleError` and `handleFormError` stay exported and pure — their tests pass
+ * a `translate` directly and need no provider. A component uses this instead:
+ *
+ *   const { handleError } = useErrorHandlers();
+ *   const remove = trpc.x.useMutation({ onError: handleError });
+ *
+ * The component's tree must be under a `NextIntlClientProvider` carrying the
+ * `errors` namespace — `(app)/dashboard/layout.tsx` and `(auth)/layout.tsx` do.
+ */
+export function useErrorHandlers() {
+  const t = useTranslations("errors");
+  const translateField = useValidationMessages();
+
+  const translate = useCallback<TranslateDomain>(
+    (code, values) => {
+      // `has` and `t` are typed to literal keys from the JSON. A domain code is
+      // data — it arrives over the wire — so the cast is the honest shape, and
+      // `has` is what keeps an unknown one from throwing.
+      const key = code as Parameters<typeof t.has>[0];
+      return t.has(key) ? t(key, values as never) : null;
+    },
+    [t]
+  );
+
+  return useMemo(
+    () => ({
+      handleError: (error: unknown, options: HandleOptions = {}) =>
+        handleError(error, { translate, translateField, ...options }),
+      handleFormError: <T extends FieldValues>(
+        form: UseFormReturn<T>,
+        error: unknown,
+        options: HandleOptions<T> = {}
+      ) => handleFormError(form, error, { translate, translateField, ...options }),
+    }),
+    [translate, translateField]
+  );
+}
+
+/* --- Validation messages -------------------------------------------------- */
+
+/**
+ * A Zod message in `model/` is a key, not a sentence.
+ *
+ * The schemas are module-level constants shared by the router and the form —
+ * that is what `model/` is for — so they cannot be built per request with a
+ * translator, and a key is what survives that. `architecture.md` has the
+ * argument; the short version is that a factory would give the router and the
+ * form two different schemas, which is the drift `model/` exists to prevent.
+ */
+export function useValidationMessages(): (key: string) => string | null {
+  const t = useTranslations("validation");
+
+  return useCallback(
+    (key) => {
+      // Typed to the literal keys of the JSON; a Zod message is data by the
+      // time it arrives here, and `has` is what keeps an unknown one from
+      // throwing rather than rendering.
+      const named = key as Parameters<typeof t.has>[0];
+      return t.has(named) ? t(named) : null;
+    },
+    [t]
+  );
+}
+
+/**
+ * The words for a refusal a `model/` rule returned.
+ *
+ * The rules answer with a code so that both sides of the same rule say the same
+ * thing — a disabled button and the server's refusal are the same key, resolved
+ * from the same file. `refusal.message` is the last resort, and
+ * `error-messages.test.ts` makes sure it is never reached.
+ */
+export function useRefusalText(): (refusal: Refusal | null) => string | undefined {
+  const t = useTranslations("errors");
+
+  return useCallback(
+    (refusal) => {
+      if (!refusal) return undefined;
+      const key = refusal.code as Parameters<typeof t.has>[0];
+      return t.has(key) ? t(key, refusal.values as never) : refusal.message;
+    },
+    [t]
+  );
 }

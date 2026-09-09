@@ -1,0 +1,19 @@
+{
+  "form": {
+    "added": "Person added",
+    "firstName": "First name",
+    "lastName": "Last name",
+    "email": "Email",
+    "phone": "Phone",
+    "notes": "Notes",
+    "optional": "Optional"
+  },
+  "table": {
+    "name": "Name",
+    "email": "Email",
+    "phone": "Phone",
+    "companies": "Companies",
+    "added": "Added",
+    "search": "Search name or email…"
+  }
+}

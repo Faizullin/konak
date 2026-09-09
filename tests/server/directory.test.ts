@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { after, before, describe, test } from "node:test";
 import { TRPCError } from "@trpc/server";
-import { callerFor, createFixture, prisma, type Fixture } from "./harness";
+import { callerFor, createFixture, domainCodeOf, prisma, type Fixture } from "./harness";
+import { OrganizationError } from "@/features/organizations";
 
 /**
  * What `model/` cannot answer: that the procedures actually ask the questions
@@ -209,9 +210,11 @@ describe("module enablement", () => {
     await prisma.organizationModule.update({ where, data: { enabled: false } });
     try {
       // Not merely hidden: the procedure itself refuses.
+      // Called directly, the service throws its `DomainError` — the boundary
+      // that would make it a `TRPCError` is a procedure, and there is none here.
       await assert.rejects(
         () => requireOrgModule(fx.org.id, "DIRECTORY"),
-        (e) => code(e) === "FORBIDDEN"
+        (e) => domainCodeOf(e) === OrganizationError.MODULE_DISABLED
       );
       await assert.rejects(
         () =>
@@ -258,7 +261,7 @@ describe("module enablement", () => {
     try {
       await assert.rejects(
         () => requireOrgModule(bare.id, "DIRECTORY"),
-        (e) => code(e) === "FORBIDDEN"
+        (e) => domainCodeOf(e) === OrganizationError.MODULE_DISABLED
       );
     } finally {
       await prisma.organization.delete({ where: { id: bare.id } });

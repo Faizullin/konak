@@ -26,7 +26,7 @@ src/
 │   ├── (app)/    /dashboard/* — the session guard + sidebar shell
 │   └── api/      route handlers (tRPC transport, Better Auth catch-all)
 ├── features/     THE DOMAIN — vertical slices, each complete
-│   └── <name>/       identity · organizations · directory
+│   └── <name>/       identity · organizations · directory · properties
 │                      platform · rates · reservations
 │       ├── server/   router, services, db access        ("server-only")
 │       ├── client/   "use client" components and hooks
@@ -34,15 +34,26 @@ src/
 │       └── index.ts  re-exports model/ ONLY
 ├── server/       FRAMEWORK — trpc, root, db, auth, errors, provider
 ├── components/   SHARED UI — ui (shadcn), common (ours), data-table, layout (the shell)
-├── config/       nav-items.ts — the sidebar, as data
+├── config/       data, not behaviour — nav-items.ts, locales.ts
 ├── hooks/        generic hooks only
-├── lib/          REPLACEABLE ADAPTERS
+├── lib/          REPLACEABLE ADAPTERS — utils, auth-client, errors, i18n
+│   └── storage/  file storage, one class per provider — see below
 ├── styles/       every stylesheet — shadcn's `globals.css`, and ours after it
 ├── store/        client providers (nice-modal)
 └── utils/ generated/
 ```
 
-Six features exist. `identity` (who the caller is) and `organizations` (the
+`scripts/` sits beside `src/`, not inside it: a `.mts` file run by `tsx` is not
+part of the app's module graph, and putting one under `src/` would put it in
+`tsc`'s and Next's. `messages/` sits beside it, for the same reason: one JSON file per namespace
+per locale, merged by `messages/<locale>/index.ts`. Content, not code.
+
+Two live in `scripts/`: `outbox-worker.mts`, which needs `--conditions=react-server`
+because it reaches a feature's `server/` — see
+[local-development.md](local-development.md#running-scripts-that-import-feature-code)
+— and `bundle.mts`, which reads build output and needs nothing.
+
+Seven features exist. `identity` (who the caller is) and `organizations` (the
 container the rest hangs off) exercise every layer, and `organizations` is the
 worked example. `directory` (people and companies) has a `model/` and a
 `server/`; `platform`, `rates` and `reservations` are `model/`-only so far —
@@ -292,12 +303,12 @@ rules the suffix implies.
 
 ## Errors
 
-`src/server/errors.ts` holds the `TRPCError`s thrown from more than one place —
-`userNotFound()` and `memberNotFound()` today. Everything else spells its
-`{ code, message }` out at the throw, and should: a message with a single
-caller reads better next to the condition that raises it than it does behind a
-name. Each helper *returns* the error rather than throwing it, so `throw` stays
-visible at the call site.
+`src/server/errors.ts` holds the error classes, plus the two refusals thrown
+from more than one place — `userNotFound()` and `memberNotFound()`. Everything
+else spells its code and message out at the throw, and should: a message with a
+single caller reads better next to the condition that raises it than it does
+behind a name. Each helper *returns* the error rather than throwing it, so
+`throw` stays visible at the call site.
 
 The threshold is the **third caller, not the second**. Two copies are a
 coincidence; three are a pattern, and only then does the wrapper pay for its
@@ -309,15 +320,160 @@ meant to stay literal — the file to grow is the router, not `errors.ts`.
 without one ships an empty toast. That applies to the framework guards in
 `trpc.ts` as much as to feature routers.
 
-`fieldError(field, message, code)` marks an error as belonging to one input.
-`errorFormatter` in `trpc.ts` copies the name onto `data.field`, and the client
-half — `src/lib/errors.ts` — turns it into an error under that field. That is
-the only way a rule needing the database ("that slug is taken") can render
-where a schema failure would.
+### A refusal is a code, not only a sentence
+
+`DomainError` and its five subclasses — `NotFoundError`, `ForbiddenError`,
+`ConflictError`, `InvalidError`, `PreconditionError` — are what a router throws
+for a rule the domain refused. Each carries a **code**, an optional field, and
+the tRPC status the boundary maps to.
+
+The code is the point. A message is written for a person and will be reworded,
+and eventually translated; a code survives that, so a test asserts on it and a
+screen branches on it without either depending on prose.
+
+**The mapping happens once**, in `mapDomainErrors` in `trpc.ts`. Every procedure
+is built from a base that applies it, so no route can skip it. `errorFormatter`
+then copies the code onto `data.domainCode`, the field onto `data.field` and any
+interpolated values onto `data.domainValues`, and `lib/errors.ts` reads all
+three by shape into `AppError`.
+
+**The code is what the client words the refusal from.** `messages/en/errors.json`
+is keyed by it; `useErrorHandlers` resolves it and falls back to the server's
+English when there is no key. Six refusals interpolate a runtime value — how
+many rooms are free, which night — so `DomainError.with({ … })` attaches them
+and the translation formats them.
+
+**Codes are declared per feature, in `model/`** — `reservations/model/errors.ts`
+is the worked example. Not in `errors.ts`: that file is reached by `auth.ts` and
+may not import from `features/`, and a code in `model/` is also readable by the
+client that has to recognise it.
+
+A `ConflictError` or `InvalidError` given a third argument marks the failure as
+belonging to one input. `errorFormatter` copies that name onto `data.field`, and
+the client half — `src/lib/errors.ts` — turns it into an error under that field.
+That is the only way a rule needing the database ("that slug is taken") can
+render where a schema failure would.
+
+**There is exactly one `new TRPCError` in the tree**, in `mapDomainErrors`.
+Anything else that refuses throws a `DomainError`, which also means a service
+called outside a procedure — from a Server Component, say — throws the domain's
+own class rather than a transport error it has no business knowing about.
 
 `errors.ts` must not import from `features/`. `auth.ts` reaches it, and
 `npm run auth:generate` loads `auth.ts` through jiti, which does not read
 tsconfig `paths` — see [local-development.md](local-development.md).
+
+## File storage
+
+Files are stored in two phases, and nothing about a file is believed until the
+second one. The split runs across three directories, which is the same split
+used everywhere else here:
+
+| | |
+|---|---|
+| `lib/storage/` | the adapters. One base class, four providers, no business rule |
+| `platform/model/attachment.ts` | the rules: what a kind may weigh, what it may be, which providers may hold it |
+| `platform/server/attachments.ts` | the orchestration: reserve, settle, and the quota transaction |
+
+### The two phases
+
+1. **`platform.requestUpload`** checks the caller's claims, reserves quota, and
+   writes a **PENDING** row with a generated key and a `releaseAt`. It answers
+   with a provider ticket, or `null`.
+2. The client uploads — **to the provider** if it got a ticket, **to
+   `POST /api/uploads/<storageKey>`** if it got `null`. One branch, one place.
+3. **`platform.confirmUpload`** asks storage what it actually holds, writes the
+   **observed** size and type, and marks the row **READY**.
+
+Step 3 is the whole point. `fileName`, `mimeType` and `sizeBytes` arrive as
+claims; a file whose bytes turn out to be something else loses the file, not
+just the claim — `confirmUpload` deletes both. The filesystem provider reads the
+magic bytes (`lib/storage/sniff.ts`) rather than echoing back what it was told.
+
+**A row that is PENDING is not a file.** `listAttachments` does not return one,
+and `GET /api/uploads/...` 404s on one.
+
+### Storage cannot be filled
+
+Four bounds, because the first three each leak on their own:
+
+- **Per kind, not per file.** `KIND_LIMITS` in `model/attachment.ts` — a
+  contract is a PDF up to 20 MB, an identity document is 10 MB. An allowlist of
+  types, never a denylist.
+- **Per organization.** `Organization.storageQuotaBytes`, checked **when the
+  ticket is issued** and not at confirmation: once a client holds a ticket the
+  bytes reach the provider whether or not we ever hear about it again. The check
+  holds the organization row `FOR UPDATE` while it decides — a read that decides
+  and is not serialised is overrun by exactly as many callers as are asking,
+  which is the same reason `claimOutboxBatch` locks.
+- **The ticket is the cap on the bytes.** `uploadByteLimit` — what was reserved,
+  not what the kind allows. A direct-upload ticket is signed for exactly the
+  claimed size, so `POST /api/uploads/<key>` refuses at that number too, or a
+  one-byte reservation would admit a 20 MB body and the quota would bound
+  nothing. It counts the body as it arrives: a chunked request carries no
+  `Content-Length` to check first.
+- **Reservations count against the quota.** `reservedBytes` on a PENDING row, or
+  a thousand simultaneous requests each see room and all succeed. The same
+  reason `InventoryHold` exists rather than counting only sold rooms, and
+  `releaseAt` is the same idea as its `releaseAt`.
+- **Nothing outlives its row.** Deleting an attachment enqueues
+  `storage.remove` in the same transaction. The sweeps — `sweepExpiredUploads`
+  for abandoned reservations, `sweepExpiredRetention` for `expiresAt` — run in
+  the outbox worker beside the drain.
+
+Deleting an organization is the one place where the database wins: rows cascade,
+bytes do not, and afterwards nothing knows the keys. So `organization.delete`
+files the removal tasks first, **with `organizationId: null`** — `OutboxTask`
+cascades from `Organization` too, and a task filed against the organization
+being deleted would go with it.
+
+The sweeps are not outbox tasks. An outbox task records an intent that must
+survive a transaction; "look for things nobody confirmed" is a periodic question
+with no transaction behind it. Both live in the worker because that is the
+process that runs periodically.
+
+### The providers
+
+`filesystem` (the default, no configuration) is implemented. `s3`,
+`cloudinary` and `vercel-blob` declare their real capabilities but throw
+`StorageNotImplementedError` from anything that moves bytes — the interface was
+worth settling before four SDKs were.
+
+| | directUpload | privateObjects | signedReads |
+|---|---|---|---|
+| `s3` | ✓ | ✓ | ✓ |
+| `cloudinary` | ✓ | — | ✓ |
+| `vercel-blob` | ✓ | — | — |
+| `filesystem` | — | ✓ | — |
+
+**Only `privateObjects` decides anything.** `KIND_REQUIRES` asks one question —
+can a stranger with the URL open it — and Cloudinary and Vercel Blob are
+therefore refused consents, contracts and identity documents at startup.
+`directUpload` and `signedReads` are facts about *how* a provider works and must
+never become requirements: an earlier version required `signedReads` for
+identity documents and so refused the filesystem, which serves nothing publicly
+and checks membership on every single read. That is stricter than an expiring
+link, not weaker.
+
+### Calling it
+
+```ts
+const store = await storage();          // lib/storage — the only place one is chosen
+```
+
+- **`storage()` is async and memoised.** The provider is imported dynamically so
+  an unconfigured vendor's SDK never loads. One instance per process.
+- **`ticket()` may answer `null`** and the filesystem always does.
+- **`put()` and `read()` work everywhere.** Direct upload and signed reads are
+  optimisations; bytes through the server is the contract.
+- **`stat()` decides what is recorded**, and `providerId` from its result
+  addresses the object afterwards — Cloudinary renames what it stores.
+
+`env.mjs` asks only for the selected provider's variables, so a clone runs on
+`filesystem` with none. Its root must stay outside `public/`: every read goes
+through `/api/uploads/`, which checks membership per request and serves with
+`Content-Disposition: attachment`, so a stored SVG cannot run scripts in our
+origin.
 
 ## Access control
 

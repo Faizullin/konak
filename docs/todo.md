@@ -5,69 +5,37 @@ boxes. A finished item leaves here; the fact of it goes to `history.md`.
 
 Where this sits in the whole build: `plans/roadmap.md`.
 
-## Arrivals, departures, and the walk-in
-The grid draws the month, a drag assigns a room, and a booking checks in and
-out. The rest of the day does not exist: no arrivals or departures list for a
-date, and nothing in the UI creates a booking, so a walk-in still means SQL.
-Phase 4's **Done when** is the whole day.
+## An external API, with keys
+Nothing outside this repository can call it. tRPC's contract is a TypeScript
+type, so there is no schema to publish and no version to pin, and
+`src/server/root.ts` is internal by construction. A versioned REST surface with
+scoped API keys is what a booking engine, a channel manager and the Phase 8
+widget all need — and Phase 8 needs the rate limiting it forces anyway.
+`plans/external-api.md` has the shape, the scopes and what must exist first.
 
-## Moving a stay's dates
-A drag moves a booking between rooms; dragging it sideways or resizing an edge
-has nothing to land on. `assignRoom` changes the room, and no procedure changes
-`checkIn`/`checkOut` — it needs the same overlap refusal and a re-quote, so it is
-a procedure with a rule, not a field update.
-
-## What Phase 4 still owes itself
-**Real-time** is undecided, and the phase is where the need shows: two
-receptionists on one grid go stale, and today the only refresh is the mutation's
-own invalidation. The end-of-phase pass has been made over the client (bundles)
-and the read model (measured, not built); the **server half has not** — whether
-the grid's window query and the arrivals query it is about to grow have an index
-with the tenant column first, and whether any request looks the same row up
-twice.
-
-## Room and rate-plan management
-Room types, rooms and plans are seeded and readable but have no screens, so a
-property can only be set up through SQL.
-
-## A worker draining OutboxTask
-The table is the intent; nothing acts on it. Needed before anything talks to an
-external system.
-
-## Field-level encryption
-`IdentityDocument.numberEncrypted` is named for an obligation the code does not
-meet. Until it does, that column holds plaintext.
-
-## Class-based exceptions on the server
-Forty-four `throw new TRPCError` sites each carry their own English sentence, and
-`server/errors.ts` names only the two that repeat. A small hierarchy thrown by
-the domain and mapped to `TRPCError` once at the boundary would leave codes where
-sentences are now: the translation entry below needs exactly that, and a router
-becomes testable without asserting on prose. `lib/errors.ts` keeps matching by
-shape either way — the comment there says why `instanceof` is not an option.
-
-## Pick a translation library
-Every string in the app is inline English and nothing is installed. The field is
-`next-intl`, `next-i18next` v16, Lingui and Paraglide. Two findings that outlive
-the choice: `next-i18next` v16 is an App Router library now (`getT`/`useT`,
-`localeInPath: false` keeps our URLs), so anything written against
-`appWithTranslation` is a different package; and Paraglide has no App Router
-story at all — its SSR wants the server entry we do not own.
-
-The routers decide this more than the components do. Half the strings a user sees
-are `TRPCError` messages written in English on the server, and every candidate
-makes a route handler pass the locale explicitly. Prisma content — room types,
-rate plans — is a schema question none of them answer.
-
-## Next 16, read against the docs
-We are on 15.5.9 and nextjs.org now documents 16.3. The parts that touch
-decisions we are about to make: `middleware.ts` became `proxy.ts`, Turbopack is
-the default, `next/root-params` arrived in 16.3, and Babel config is picked up
-automatically. Worth a proper read of the upgrade guide before the i18n choice,
-not after — two of the candidates configure themselves differently on either side
-of that line.
+## File uploads — done, except a screen
+Two phases, so nothing about a file is believed until storage is asked; per-kind
+size caps and type allowlists; a per-organization quota that counts unconfirmed
+reservations; sweeps for abandoned uploads and expired retention; and bytes that
+die with their row, including through an organization cascade. `filesystem` is
+implemented and is the default; S3, Cloudinary and Vercel Blob declare their
+capabilities and throw. **What is left is a client** — no screen collects a file
+yet — plus the SDK for whichever provider production uses.
+`plans/file-uploads.md` § What is still missing.
 
 ## Visual design and motion
-Last, once the product works. Density, colour-as-data, keyboard rules, and
+Once the product works. Density, colour-as-data, keyboard rules, and
 animation only where it explains something. Until then shadcn's defaults, which
 are good enough to run a hotel and cheap to replace.
+
+## Internationalisation
+The extraction is finished — refusals, Zod messages, page shells, every
+feature's components and the label tables. `npm test` fails on a message nothing
+reads and on a key nothing declares, in both directions.
+
+One thing remains: **a second locale**, and it is deliberately last. Every
+string already comes from `messages/en/`, and the checks fail on a message
+nothing reads or a key nothing declares — so the machinery is finished and
+waiting. Adding a language before there is someone to read it proves nothing and
+dates immediately; adding it after the product settles is a translation job
+rather than a code one.

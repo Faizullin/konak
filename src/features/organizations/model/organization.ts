@@ -36,12 +36,6 @@ export const orgRoleSchema = z.enum(ORG_ROLE_VALUES);
 /** Roles that can be *assigned*. Ownership moves through `transferOwnership`. */
 export const assignableOrgRoleSchema = z.enum([OrgRole.ADMIN, OrgRole.MEMBER]);
 
-export const ORG_ROLE_LABELS: Record<OrgRole, string> = {
-  OWNER: "Owner",
-  ADMIN: "Admin",
-  MEMBER: "Member",
-};
-
 /**
  * Every resource in this feature, and the verbs each one admits.
  *
@@ -108,12 +102,12 @@ export function canDeleteOrganization(role: OrgRole): boolean {
 /** Lowercase letters, digits and hyphens — it appears in URLs. */
 export const organizationSlugSchema = z
   .string()
-  .min(2, "Slug must be at least 2 characters")
-  .max(48, "Slug must be at most 48 characters")
-  .regex(/^[a-z0-9-]+$/, "Slug can only contain lowercase letters, numbers, and hyphens");
+  .min(2, "slug_too_short")
+  .max(48, "slug_too_long")
+  .regex(/^[a-z0-9-]+$/, "slug_format");
 
 export const createOrganizationSchema = z.object({
-  name: z.string().min(1, "Name is required").max(64),
+  name: z.string().min(1, "name_required").max(64),
   slug: organizationSlugSchema,
   description: z.string().max(280).optional(),
 });
@@ -122,7 +116,7 @@ export type CreateOrganizationInput = z.infer<typeof createOrganizationSchema>;
 
 export const updateOrganizationSchema = z.object({
   id: z.number(),
-  name: z.string().min(1, "Name is required").max(64).optional(),
+  name: z.string().min(1, "name_required").max(64).optional(),
   slug: organizationSlugSchema.optional(),
   description: z.string().max(280).optional(),
 });
@@ -131,7 +125,7 @@ export type UpdateOrganizationInput = z.infer<typeof updateOrganizationSchema>;
 
 export const addMemberSchema = z.object({
   organizationId: z.number(),
-  email: z.email("Enter a valid email address"),
+  email: z.email("email_invalid"),
   role: assignableOrgRoleSchema.default(OrgRole.MEMBER),
 });
 

@@ -10,6 +10,10 @@ model Organization {
   slug                   String                  @unique
   description            String?
   ownerId                String
+  // How many bytes of attachments this organization may hold, counting
+  // unconfirmed uploads. A column rather than a constant so one tenant can be
+  // raised without a deploy. BigInt because 5 GiB does not fit in an Int.
+  storageQuotaBytes      BigInt                  @default(5368709120)
   createdAt              DateTime                @default(now())
   updatedAt              DateTime                @updatedAt
   owner                  User                    @relation("OrganizationOwner", fields: [ownerId], references: [id], onDelete: Cascade)

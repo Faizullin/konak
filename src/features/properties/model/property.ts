@@ -12,9 +12,9 @@ import { z } from "zod";
 /** Lowercase letters, digits and hyphens — it appears in URLs. */
 export const propertySlugSchema = z
   .string()
-  .min(2, "Slug must be at least 2 characters")
-  .max(48, "Slug must be at most 48 characters")
-  .regex(/^[a-z0-9-]+$/, "Slug can only contain lowercase letters, numbers, and hyphens");
+  .min(2, "slug_too_short")
+  .max(48, "slug_too_long")
+  .regex(/^[a-z0-9-]+$/, "slug_format");
 
 export const listPropertiesSchema = z.object({
   organizationId: z.number(),

@@ -3,8 +3,9 @@
 ## Running
 
 ```bash
-npm run dev      # next dev --turbopack
-npm run build    # next build --turbopack
+npm run dev      # Turbopack is the default from Next 16; no flag
+npm run build
+npm run bundle   # what each route ships, after a build — see below
 npm run lint
 npx tsc --noEmit # type check on its own
 npm run format   # prettier --write .
@@ -24,9 +25,27 @@ the app and outside `env.mjs`'s module graph, and `getBaseUrl()` in
 `NEXT_PUBLIC_` would publish them to the browser to no purpose. A third such
 read should be argued for, not added quietly.
 
-Copy `.env.example` to `.env`. Only three variables are required:
-`DATABASE_URL`, `BETTER_AUTH_SECRET` (generate one with `npx auth@latest
-secret`) and `BETTER_AUTH_URL`. The OAuth pairs are optional.
+Copy `.env.example` to `.env`. Four variables are required: `DATABASE_URL`,
+`BETTER_AUTH_SECRET` (generate one with `npx auth@latest secret`),
+`BETTER_AUTH_URL`, and `FIELD_ENCRYPTION_KEY` (`openssl rand -base64 32`). The
+OAuth pairs are optional.
+
+`FIELD_ENCRYPTION_KEY` is validated for length, not just presence — 32 bytes of
+base64 — so a truncated paste fails at startup rather than at the first write.
+**Losing it loses every value encrypted with it.** It is not derivable from
+anything else, and there is no recovery path by design.
+
+**File storage needs nothing to start.** `STORAGE_PROVIDER` defaults to
+`filesystem`, writing under `.storage/` — outside `public/`, and gitignored. The
+seed puts a real PDF there. Only the selected provider's variables are required,
+so choosing `s3` without a bucket fails at startup naming each one; see
+[architecture.md](architecture.md#file-storage).
+
+A quota is a column, not a variable: `Organization.storageQuotaBytes`, 5 GiB by
+default, raised per tenant with an `UPDATE`. `npm run outbox` reports what the
+sweeps would remove and removes it with `--commit`; run it, or abandoned uploads
+hold quota forever. `npm run test:server` writes to `.storage-test/` instead, so
+a test run never touches the seeded files.
 
 ## Authentication
 
@@ -145,6 +164,24 @@ autoincrementing integers, so a `userId`/`organizationId` pair mixes the two.
 Rows that are quoted outside the building carry a separate
 `publicId` (UUIDv7) — see [architecture.md](architecture.md#table-conventions).
 
+## Measuring what a route ships
+
+`npm run bundle`, after `npm run build`. Next 16 removed `size` and `First Load
+JS` from the build output — accurately, it says, because those figures mislead
+in server-driven architectures — and that left the client half of the
+end-of-phase pass with nothing to read. The script prints the chunks each route
+actually loads and the set every route shares, in raw bytes.
+
+Raw bytes are **not** the kilobytes Next used to print, and the floor in
+`plans/roadmap.md` was re-recorded once when this landed. The point is that the
+number is deterministic: the last two phase-end passes both had to fall back to
+counting bytes by hand because a printed kilobyte had moved for reasons of its
+own.
+
+It reads build internals, which Next rearranges between majors — the manifest it
+first used disappeared in 16. It fails loudly with the path it looked for rather
+than reporting a confident zero.
+
 ## Running scripts that import feature code
 
 Every file under `features/*/server/` starts with `import "server-only"`. That
@@ -170,10 +207,13 @@ Write scripts as `.mts` — top-level `await` is not available in the `.ts` (CJS
 transform — and start them with `import "dotenv/config"`, because `env.mjs`
 reads `process.env` and nothing has populated it in a bare `tsx` process.
 
-`prisma/seed.ts` needs none of this. It reaches only `src/server/*` and
-`features/*/model/`, neither of which carries `server-only`, so it runs under
-plain `tsx`. Keep it that way: one import from `features/*/server/` would put
-the condition flag back in `package.json`.
+`prisma/seed.ts` carries the flag too, in `package.json` and again in
+`prisma.config.ts` so `prisma migrate reset` reseeds with it. It reached only
+`src/server/*` and `features/*/model/` until the seed began writing its demo
+attachment through `lib/storage` — which is `server-only`, like every adapter
+that moves bytes. That is the price of a seeded file that genuinely exists;
+a seed that wrote a path instead would be the lie the two-phase flow exists to
+prevent.
 
 Any script that changes data should take a `--commit` flag and be a dry run
 without it. Run the dry run first and read what it says it will do.

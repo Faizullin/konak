@@ -1,11 +1,13 @@
 import "server-only";
-import { TRPCError } from "@trpc/server";
+import { InvalidError, PreconditionError } from "@/server/errors";
 import prisma from "@/server/db";
 import { personDisplayName } from "@/features/directory";
 import { compareRoomNumbers } from "@/features/properties";
 import {
   assignLanes,
   availableRooms,
+  DayRole,
+  dayRoleOf,
   GRID_HIDDEN_STATUSES,
   GRID_MAX_NIGHTS,
   gridWindowOf,
@@ -13,6 +15,7 @@ import {
   nightsBetween,
   nightsOf,
   occupiesInventory,
+  ReservationError,
   spanInWindow,
   toStayDate,
   type GridSpan,
@@ -39,38 +42,59 @@ export type NightAvailability = {
 };
 
 /**
+ * Rows the caller has already read for the same property and window.
+ *
+ * `frontDeskGrid` reads both of these to draw with; without this it would read
+ * them a second time to count with. Passing a superset is safe — only
+ * `occupiesInventory` statuses are counted, and types outside `roomTypeIds`
+ * are never emitted.
+ */
+export type AvailabilityScope = {
+  /** Sellable room type ids for the property. Archived types sell nothing. */
+  roomTypeIds: number[];
+  /** Every stay touching the window, whatever its status. */
+  stays: readonly { roomTypeId: number; checkIn: Date; checkOut: Date; status: string }[];
+};
+
+/**
  * Free rooms per type per night, derived every time.
  *
  * Sold is counted from stays rather than stored, because a cached count drifts
  * the first time a channel cancels quietly — and a wrong count here is an
  * overbooking, not a stale number.
  */
-export async function availability(args: {
-  propertyId: number;
-  roomTypeId?: number;
-  from: Date;
-  to: Date;
-}): Promise<NightAvailability[]> {
+export async function availability(
+  args: {
+    propertyId: number;
+    roomTypeId?: number;
+    from: Date;
+    to: Date;
+  },
+  scope?: AvailabilityScope
+): Promise<NightAvailability[]> {
   const from = toStayDate(args.from);
   const to = toStayDate(args.to);
   if (nightsBetween(from, to) < 1) {
-    throw new TRPCError({
-      code: "BAD_REQUEST",
-      message: "The range must cover at least one night",
-    });
+    throw new InvalidError(
+      ReservationError.STAY_RANGE_INVALID,
+      "The range must cover at least one night"
+    );
   }
 
-  const roomTypes = await prisma.roomType.findMany({
-    where: {
-      propertyId: args.propertyId,
-      archivedAt: null,
-      ...(args.roomTypeId ? { id: args.roomTypeId } : {}),
-    },
-    select: { id: true },
-  });
-  if (roomTypes.length === 0) return [];
+  const roomTypeIds = scope
+    ? scope.roomTypeIds.filter((id) => !args.roomTypeId || id === args.roomTypeId)
+    : (
+        await prisma.roomType.findMany({
+          where: {
+            propertyId: args.propertyId,
+            archivedAt: null,
+            ...(args.roomTypeId ? { id: args.roomTypeId } : {}),
+          },
+          select: { id: true },
+        })
+      ).map((t) => t.id);
+  if (roomTypeIds.length === 0) return [];
 
-  const roomTypeIds = roomTypes.map((t) => t.id);
   const nights = nightsOf({ checkIn: from, checkOut: to });
 
   const [inventory, stays, holds] = await Promise.all([
@@ -79,14 +103,15 @@ export async function availability(args: {
     }),
     // Every stay that touches the window; each contributes to the nights it
     // actually occupies, not to the whole range.
-    prisma.roomStay.findMany({
-      where: {
-        roomTypeId: { in: roomTypeIds },
-        checkIn: { lt: to },
-        checkOut: { gt: from },
-      },
-      select: { roomTypeId: true, checkIn: true, checkOut: true, status: true },
-    }),
+    scope?.stays ??
+      prisma.roomStay.findMany({
+        where: {
+          roomTypeId: { in: roomTypeIds },
+          checkIn: { lt: to },
+          checkOut: { gt: from },
+        },
+        select: { roomTypeId: true, checkIn: true, checkOut: true, status: true },
+      }),
     prisma.inventoryHold.findMany({
       where: {
         roomTypeId: { in: roomTypeIds },
@@ -160,10 +185,10 @@ export async function nextSeriesNumber(
     },
   });
   if (!series) {
-    throw new TRPCError({
-      code: "PRECONDITION_FAILED",
-      message: `No ${args.kind} number series for this property`,
-    });
+    throw new PreconditionError(
+      ReservationError.SERIES_MISSING,
+      `No ${args.kind} number series for this property`
+    ).with({ kind: args.kind });
   }
 
   // A yearly series restarts when the period changes; the update is what makes
@@ -230,11 +255,11 @@ export type FrontDeskGrid = {
 /**
  * The whole grid for a window, in one call.
  *
- * Four queries for any number of rooms, not one per room: the rooms, the types
- * they belong to, every stay that touches the window, and the per-type
- * availability the sell row shows. Whether that stays fast enough — or wants a
- * read model — is the measurement `roadmap.md` puts in this phase, and it can
- * only be made against a query that exists.
+ * Five queries for any number of rooms, not one per room: the rooms, the types
+ * they belong to, every stay that touches the window, and then the inventory
+ * and holds that turn those stays into a free-room count. Whether that stays
+ * fast enough — or wants a read model — is the measurement `roadmap.md` puts in
+ * this phase, and it can only be made against a query that exists.
  *
  * The layout is done here rather than in the component because it is the same
  * arithmetic the drag has to undo, and `model/` proves it without a browser.
@@ -246,16 +271,16 @@ export async function frontDeskGrid(args: {
 }): Promise<FrontDeskGrid> {
   const window = gridWindowOf(args.from, args.to);
   if (!window) {
-    throw new TRPCError({
-      code: "BAD_REQUEST",
-      message: `A grid window is between one and ${GRID_MAX_NIGHTS} nights`,
-    });
+    throw new InvalidError(
+      ReservationError.GRID_WINDOW_INVALID,
+      `A grid window is between one and ${GRID_MAX_NIGHTS} nights`
+    ).with({ max: GRID_MAX_NIGHTS });
   }
 
   const from = window.from;
   const to = toStayDate(args.to);
 
-  const [rooms, roomTypes, stays, nightly] = await Promise.all([
+  const [rooms, roomTypes, stays] = await Promise.all([
     prisma.room.findMany({
       where: { propertyId: args.propertyId, archivedAt: null },
       select: { id: true, number: true, floor: true, status: true, roomTypeId: true },
@@ -297,8 +322,18 @@ export async function frontDeskGrid(args: {
         },
       },
     }),
-    availability({ propertyId: args.propertyId, from, to }),
   ]);
+
+  // Counted from the rows just read rather than read again: same property, same
+  // window. Archived types are excluded here because they sell nothing, even
+  // though the grid still draws the stays already on them.
+  const nightly = await availability(
+    { propertyId: args.propertyId, from, to },
+    {
+      roomTypeIds: roomTypes.flatMap((type) => (type.archivedAt ? [] : [type.id])),
+      stays,
+    }
+  );
 
   const drawn = stays.flatMap((stay) => {
     const span = spanInWindow(stay, window);
@@ -359,5 +394,121 @@ export async function frontDeskGrid(args: {
       return waiting ? [{ roomTypeId: type.id, ...laned(waiting) }] : [];
     }),
     availability: nightly,
+  };
+}
+
+export type DayStay = {
+  id: number;
+  reservationId: number;
+  publicId: string;
+  reference: string;
+  status: string;
+  role: DayRole;
+  roomId: number | null;
+  roomNumber: string | null;
+  roomTypeId: number;
+  roomTypeName: string;
+  checkIn: Date;
+  checkOut: Date;
+  nights: number;
+  adults: number;
+  children: number;
+  guestName: string | null;
+};
+
+export type FrontDeskDayList = {
+  day: Date;
+  arrivals: DayStay[];
+  departures: DayStay[];
+  inHouse: DayStay[];
+};
+
+/**
+ * The three lists a receptionist works from, for one day.
+ *
+ * One query for all three: a stay touching the day is in exactly one of them,
+ * and `dayRoleOf` in `model/` decides which without a second read. The bounds
+ * are the only place `checkOut` is treated as inclusive — a departure is not a
+ * night, but it is the morning's work.
+ */
+export async function frontDeskDay(args: {
+  propertyId: number;
+  day: Date;
+}): Promise<FrontDeskDayList> {
+  const day = toStayDate(args.day);
+
+  const stays = await prisma.roomStay.findMany({
+    where: {
+      reservation: { propertyId: args.propertyId },
+      checkIn: { lte: day },
+      checkOut: { gte: day },
+      status: { notIn: [...GRID_HIDDEN_STATUSES] },
+    },
+    select: {
+      id: true,
+      reservationId: true,
+      roomId: true,
+      roomTypeId: true,
+      status: true,
+      checkIn: true,
+      checkOut: true,
+      adults: true,
+      children: true,
+      room: { select: { number: true } },
+      roomType: { select: { name: true } },
+      reservation: {
+        select: {
+          publicId: true,
+          reference: true,
+          booker: { select: { firstName: true, lastName: true } },
+        },
+      },
+    },
+  });
+
+  const rows = stays.flatMap((stay) => {
+    const role = dayRoleOf(stay, day);
+    // The query bounds already exclude anything roleless; dropping it keeps
+    // "every row is in one list" true rather than assuming it.
+    if (!role) return [];
+
+    return [
+      {
+        id: stay.id,
+        reservationId: stay.reservationId,
+        publicId: stay.reservation.publicId,
+        reference: stay.reservation.reference,
+        status: stay.status,
+        role,
+        roomId: stay.roomId,
+        roomNumber: stay.room?.number ?? null,
+        roomTypeId: stay.roomTypeId,
+        roomTypeName: stay.roomType.name,
+        checkIn: stay.checkIn,
+        checkOut: stay.checkOut,
+        nights: nightsBetween(stay.checkIn, stay.checkOut),
+        adults: stay.adults,
+        children: stay.children,
+        guestName: stay.reservation.booker ? personDisplayName(stay.reservation.booker) : null,
+      },
+    ];
+  });
+
+  // Unassigned first: a stay with no room is the work, and burying it under
+  // fifty assigned rows is how it gets missed. The rest in corridor order.
+  const ordered = (role: DayRole) =>
+    rows
+      .filter((row) => row.role === role)
+      .toSorted((a, b) => {
+        if ((a.roomNumber === null) !== (b.roomNumber === null)) return a.roomNumber ? 1 : -1;
+        if (a.roomNumber && b.roomNumber) return compareRoomNumbers(a.roomNumber, b.roomNumber);
+        return a.reference.localeCompare(b.reference);
+      });
+
+  return {
+    day,
+    arrivals: ordered(DayRole.ARRIVAL),
+    departures: ordered(DayRole.DEPARTURE),
+    inHouse: ordered(DayRole.IN_HOUSE),
   };
 }

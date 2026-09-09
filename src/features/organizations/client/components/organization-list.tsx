@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import NiceModal from "@ebay/nice-modal-react";
 import { Building2, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -19,6 +20,7 @@ import { OrganizationsTableView } from "./organizations-table-view";
  * second question; it is already cached by the sidebar switcher.
  */
 export function OrganizationList() {
+  const t = useTranslations("organizations");
   const { data, isLoading } = trpc.organization.listMine.useQuery(undefined, {
     staleTime: 60_000,
   });
@@ -35,14 +37,14 @@ export function OrganizationList() {
         <CardContent className="flex flex-col items-center gap-3 py-12 text-center">
           <Building2 className="text-muted-foreground size-8" />
           <div>
-            <p className="font-medium">No organizations yet</p>
+            <p className="font-medium">{t("list.empty")}</p>
             <p className="text-muted-foreground text-sm">
               Create one to start inviting people and grouping work.
             </p>
           </div>
           <Button onClick={openCreate}>
             <Plus className="size-4" />
-            New organization
+            {t("list.new")}
           </Button>
         </CardContent>
       </Card>
@@ -54,7 +56,7 @@ export function OrganizationList() {
       <div className="flex justify-end">
         <Button onClick={openCreate}>
           <Plus className="size-4" />
-          New organization
+          {t("list.new")}
         </Button>
       </div>
       <OrganizationsTableView />

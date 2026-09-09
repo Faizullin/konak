@@ -1,6 +1,8 @@
 import "dotenv/config";
 import { randomUUID } from "node:crypto";
+import { TRPCError } from "@trpc/server";
 import { appRouter } from "@/server/root";
+import { DomainError } from "@/server/errors";
 import prisma from "@/server/db";
 import { createCallerFactory } from "@/server/trpc";
 import { OrgRole } from "@/features/organizations";
@@ -17,6 +19,24 @@ import { UserRole } from "@/features/identity";
 const createCaller = createCallerFactory(appRouter);
 
 export type TestUser = { id: string; email: string; name: string; role: string };
+
+/**
+ * The stable half of a refusal, for a test that should not assert on prose.
+ *
+ * A refusal has two shapes depending on where it is caught. Through a procedure
+ * it is a `TRPCError` with the `DomainError` as its `cause` — the boundary
+ * middleware did that, and over HTTP the same value arrives as
+ * `data.domainCode`. Called directly, a service throws the `DomainError`
+ * itself, because the domain does not know about tRPC.
+ *
+ * This reads the code from either, so a test asserts on the rule rather than on
+ * which side of the boundary it happened to catch it.
+ */
+export function domainCodeOf(error: unknown): string | null {
+  if (error instanceof DomainError) return error.code;
+  const cause = error instanceof TRPCError ? error.cause : null;
+  return cause instanceof DomainError ? cause.code : null;
+}
 
 /**
  * A session as `protectedProcedure` sees it. Better Auth's own type carries

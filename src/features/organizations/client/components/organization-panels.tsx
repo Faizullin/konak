@@ -1,5 +1,7 @@
 "use client";
 
+import { useEnumLabels } from "@/lib/labels";
+import { useTranslations } from "next-intl";
 import NiceModal from "@ebay/nice-modal-react";
 import { Building2, Pencil, Users } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -7,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  ORG_ROLE_LABELS,
+  ORG_ROLE_VALUES,
   canEditOrganization,
   type OrganizationRouteData,
   type OrgRole,
@@ -34,10 +36,12 @@ function useOrganization(organizationId: number) {
 }
 
 function PanelError({ message }: { message: string }) {
+  const t = useTranslations("organizations");
+
   return (
     <Card className="border-destructive/40">
       <CardHeader>
-        <CardTitle>Cannot open this organization</CardTitle>
+        <CardTitle>{t("panels.unavailable")}</CardTitle>
         <CardDescription>{message}</CardDescription>
       </CardHeader>
     </Card>
@@ -45,6 +49,8 @@ function PanelError({ message }: { message: string }) {
 }
 
 export function OrganizationOverview({ organization }: { organization: OrganizationRouteData }) {
+  const labels = useEnumLabels("orgRole", ORG_ROLE_VALUES);
+  const t = useTranslations("organizations");
   const organizationId = organization.id;
   const { data, isLoading, error } = useOrganization(organizationId);
   const currentUser = trpc.user.getCurrent.useQuery();
@@ -64,9 +70,7 @@ export function OrganizationOverview({ organization }: { organization: Organizat
           </p>
         </div>
         <div className="flex items-center gap-2">
-          {data && (
-            <Badge variant="secondary">{ORG_ROLE_LABELS[data.currentUserRole as OrgRole]}</Badge>
-          )}
+          {data && <Badge variant="secondary">{labels[data.currentUserRole as OrgRole]}</Badge>}
           {canEdit && (
             <Button
               variant="outline"
@@ -91,7 +95,7 @@ export function OrganizationOverview({ organization }: { organization: Organizat
               <CardHeader className="pb-2">
                 <CardDescription className="flex items-center gap-1.5">
                   <Users className="size-4" />
-                  Members
+                  {t("panels.members")}
                 </CardDescription>
                 <CardTitle className="text-3xl">{data.memberCount}</CardTitle>
               </CardHeader>
@@ -111,8 +115,8 @@ export function OrganizationOverview({ organization }: { organization: Organizat
 
           <Card>
             <CardHeader>
-              <CardTitle>Members</CardTitle>
-              <CardDescription>Who has access, and what they can do.</CardDescription>
+              <CardTitle>{t("panels.members")}</CardTitle>
+              <CardDescription>{t("panels.membersDescription")}</CardDescription>
             </CardHeader>
             <CardContent>
               <MemberTable
@@ -133,6 +137,7 @@ export function OrganizationMembersPanel({
 }: {
   organization: OrganizationRouteData;
 }) {
+  const t = useTranslations("organizations");
   const organizationId = organization.id;
   const { data, isLoading, error } = useOrganization(organizationId);
   const currentUser = trpc.user.getCurrent.useQuery();
@@ -144,7 +149,7 @@ export function OrganizationMembersPanel({
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold">Members</h1>
+        <h1 className="text-2xl font-semibold">{t("panels.members")}</h1>
         <p className="text-muted-foreground text-sm">
           Owners and admins can add people and change roles.
         </p>
@@ -163,6 +168,7 @@ export function OrganizationSettingsPanel({
 }: {
   organization: OrganizationRouteData;
 }) {
+  const t = useTranslations("organizations");
   const organizationId = organization.id;
   const { data, isLoading, error } = useOrganization(organizationId);
   const currentUser = trpc.user.getCurrent.useQuery();
@@ -176,8 +182,8 @@ export function OrganizationSettingsPanel({
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold">Settings</h1>
-        <p className="text-muted-foreground text-sm">Name, slug and the irreversible actions.</p>
+        <h1 className="text-2xl font-semibold">{t("panels.settings")}</h1>
+        <p className="text-muted-foreground text-sm">{t("panels.settingsDescription")}</p>
       </div>
 
       <Card>

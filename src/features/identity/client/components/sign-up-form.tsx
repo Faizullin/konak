@@ -1,17 +1,18 @@
 "use client";
 
-import { zodResolver } from "@hookform/resolvers/zod";
 import { LoaderIcon } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Controller, useForm } from "react-hook-form";
 import { FormError } from "@/components/common/form-error";
+import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { signUpSchema, type SignUpInput } from "@/features/identity";
 import { authClient } from "@/lib/auth-client";
-import { handleFormError } from "@/lib/errors";
+import { useErrorHandlers } from "@/lib/errors";
+import { useZodResolver } from "@/lib/form";
 import { OAuthButtons, type OAuthProvider } from "./oauth-buttons";
 
 /**
@@ -21,10 +22,14 @@ import { OAuthButtons, type OAuthProvider } from "./oauth-buttons";
  * so there is nothing here that could set it. New accounts are always USER.
  */
 export function SignUpForm({ providers = [] }: { providers?: OAuthProvider[] }) {
+  const { handleFormError } = useErrorHandlers();
+  const t = useTranslations("auth");
   const router = useRouter();
 
+  const resolver = useZodResolver<SignUpInput>(signUpSchema);
+
   const form = useForm<SignUpInput>({
-    resolver: zodResolver(signUpSchema),
+    resolver,
     defaultValues: { name: "", email: "", password: "" },
   });
 
@@ -61,11 +66,11 @@ export function SignUpForm({ providers = [] }: { providers?: OAuthProvider[] }) 
             name="name"
             render={({ field, fieldState }) => (
               <Field data-invalid={!!fieldState.error}>
-                <FieldLabel htmlFor="sign-up-name">Name</FieldLabel>
+                <FieldLabel htmlFor="sign-up-name">{t("fields.name")}</FieldLabel>
                 <Input
                   id="sign-up-name"
                   autoComplete="name"
-                  placeholder="Ada Lovelace"
+                  placeholder={t("fields.namePlaceholder")}
                   disabled={isPending}
                   {...field}
                 />
@@ -79,12 +84,12 @@ export function SignUpForm({ providers = [] }: { providers?: OAuthProvider[] }) 
             name="email"
             render={({ field, fieldState }) => (
               <Field data-invalid={!!fieldState.error}>
-                <FieldLabel htmlFor="sign-up-email">Email</FieldLabel>
+                <FieldLabel htmlFor="sign-up-email">{t("fields.email")}</FieldLabel>
                 <Input
                   id="sign-up-email"
                   type="email"
                   autoComplete="email"
-                  placeholder="you@example.com"
+                  placeholder={t("fields.emailPlaceholder")}
                   disabled={isPending}
                   {...field}
                 />
@@ -98,12 +103,12 @@ export function SignUpForm({ providers = [] }: { providers?: OAuthProvider[] }) 
             name="password"
             render={({ field, fieldState }) => (
               <Field data-invalid={!!fieldState.error}>
-                <FieldLabel htmlFor="sign-up-password">Password</FieldLabel>
+                <FieldLabel htmlFor="sign-up-password">{t("fields.password")}</FieldLabel>
                 <Input
                   id="sign-up-password"
                   type="password"
                   autoComplete="new-password"
-                  placeholder="At least 8 characters"
+                  placeholder={t("fields.passwordPlaceholder")}
                   disabled={isPending}
                   {...field}
                 />
@@ -115,14 +120,14 @@ export function SignUpForm({ providers = [] }: { providers?: OAuthProvider[] }) 
 
         <Button type="submit" className="w-full" disabled={isPending}>
           {isPending && <LoaderIcon className="size-4 animate-spin" />}
-          Create account
+          {t("signUp.submit")}
         </Button>
       </form>
 
       <p className="text-muted-foreground text-center text-sm">
-        Already have an account?{" "}
+        {t("signUp.haveAccount")}{" "}
         <Button nativeButton={false} variant="link" size="xs" render={<Link href="/sign-in" />}>
-          Sign in
+          {t("signUp.signIn")}
         </Button>
       </p>
     </div>

@@ -1,4 +1,6 @@
 import { z } from "zod";
+import type { Refused } from "@/lib/refusal";
+import { PropertyError } from "./errors";
 
 /**
  * Rooms and room types — the physical side of the inventory decision.
@@ -26,14 +28,6 @@ export type RoomStatus = (typeof RoomStatus)[keyof typeof RoomStatus];
 export const ROOM_STATUS_VALUES = Object.values(RoomStatus);
 
 export const roomStatusSchema = z.enum(ROOM_STATUS_VALUES);
-
-export const ROOM_STATUS_LABELS: Record<RoomStatus, string> = {
-  CLEAN: "Clean",
-  DIRTY: "Dirty",
-  IN_PROGRESS: "Being cleaned",
-  INSPECTED: "Inspected",
-  OUT_OF_ORDER: "Out of order",
-};
 
 /**
  * Whether a room can hold a guest at all. Only `OUT_OF_ORDER` says no — a dirty
@@ -89,3 +83,116 @@ export const listRoomTypesSchema = z.object({
 });
 
 export type ListRoomTypesInput = z.infer<typeof listRoomTypesSchema>;
+
+/**
+ * Whether the four occupancy numbers can all be true at once, or the sentence
+ * saying which pair cannot.
+ *
+ * A room type sells `baseOccupancy` at the plan's nightly rate and prices
+ * anyone beyond it as an extra person, so a base above the maximum would quote
+ * a room it cannot sleep. The rest is arithmetic a form should not let someone
+ * past — and it is the same sentence on the field and at the router.
+ */
+export function refuseOccupancy(type: {
+  baseOccupancy: number;
+  maxOccupancy: number;
+  maxAdults: number;
+  maxChildren: number;
+}): Refused {
+  if (type.maxAdults < 1) {
+    return {
+      code: PropertyError.ROOM_TYPE_NEEDS_ONE_ADULT,
+      message: "A room type sleeps at least one adult",
+    };
+  }
+  if (type.baseOccupancy > type.maxOccupancy) {
+    return {
+      code: PropertyError.ROOM_TYPE_BASE_OVER_MAX,
+      message: "The base occupancy is above the maximum",
+    };
+  }
+  if (type.maxAdults > type.maxOccupancy) {
+    return {
+      code: PropertyError.ROOM_TYPE_ADULTS_OVER_MAX,
+      message: "More adults than the type sleeps",
+    };
+  }
+  if (type.maxChildren > type.maxOccupancy) {
+    return {
+      code: PropertyError.ROOM_TYPE_CHILDREN_OVER_MAX,
+      message: "More children than the type sleeps",
+    };
+  }
+  return null;
+}
+
+/**
+ * A code a channel manager maps to an OTA's own id, so it outlives renaming
+ * the type. Upper case and punctuation-free for the same reason: it travels
+ * through systems that will not preserve a space.
+ */
+export const inventoryCodeSchema = z
+  .string()
+  .min(2, "code_too_short")
+  .max(16, "code_too_long")
+  .regex(/^[A-Z0-9-]+$/, "code_format");
+
+const occupancyField = z.number().int().min(0).max(20);
+
+export const createRoomTypeSchema = z.object({
+  propertyId: z.number(),
+  name: z.string().min(1, "name_required").max(120),
+  code: inventoryCodeSchema,
+  description: z.string().max(2000).optional(),
+  baseOccupancy: occupancyField,
+  maxOccupancy: occupancyField,
+  maxAdults: occupancyField,
+  maxChildren: occupancyField,
+  sizeSqm: z.number().int().min(0).max(10_000).optional(),
+  position: z.number().int().min(0).max(999),
+});
+
+export type CreateRoomTypeInput = z.infer<typeof createRoomTypeSchema>;
+
+/** The dialog's half: the property comes from the route, not a field. */
+export const roomTypeFormSchema = createRoomTypeSchema.omit({ propertyId: true });
+
+export type RoomTypeFormInput = z.infer<typeof roomTypeFormSchema>;
+
+export const updateRoomTypeSchema = roomTypeFormSchema.extend({
+  propertyId: z.number(),
+  id: z.number(),
+});
+
+export type UpdateRoomTypeInput = z.infer<typeof updateRoomTypeSchema>;
+
+export const createRoomSchema = z.object({
+  propertyId: z.number(),
+  roomTypeId: z.number(),
+  number: z.string().min(1, "room_number_required").max(24),
+  floor: z.string().max(24).optional(),
+  status: roomStatusSchema,
+  notes: z.string().max(2000).optional(),
+});
+
+export type CreateRoomInput = z.infer<typeof createRoomSchema>;
+
+export const roomFormSchema = createRoomSchema.omit({ propertyId: true });
+
+export type RoomFormInput = z.infer<typeof roomFormSchema>;
+
+export const updateRoomSchema = roomFormSchema.extend({
+  propertyId: z.number(),
+  id: z.number(),
+});
+
+export type UpdateRoomInput = z.infer<typeof updateRoomSchema>;
+
+/** Archiving is reversible, so it is a value rather than a separate procedure. */
+export const archiveInventorySchema = z.object({
+  propertyId: z.number(),
+  id: z.number(),
+  archived: z.boolean(),
+});
+
+export type ArchiveInventoryInput = z.infer<typeof archiveInventorySchema>;

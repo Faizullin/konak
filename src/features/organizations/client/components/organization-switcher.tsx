@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import NiceModal from "@ebay/nice-modal-react";
 import { Building2, Check, ChevronsUpDown, Plus } from "lucide-react";
 import Link from "next/link";
@@ -32,6 +33,7 @@ import { OrganizationFormNiceDialog } from "./organization-form-nice-dialog";
  * header never changes height or disappears between pages.
  */
 export function OrganizationSwitcher() {
+  const t = useTranslations("organizations");
   const params = useParams<{ orgSlug?: string }>();
   const { isMobile } = useSidebar();
 
@@ -100,7 +102,7 @@ export function OrganizationSwitcher() {
             </DropdownMenuGroup>
 
             {organizations.data?.length === 0 && (
-              <p className="text-muted-foreground p-2 text-xs">No organizations yet.</p>
+              <p className="text-muted-foreground p-2 text-xs">{t("list.switcherEmpty")}</p>
             )}
 
             <DropdownMenuSeparator />
@@ -109,7 +111,7 @@ export function OrganizationSwitcher() {
               onClick={() => NiceModal.show(OrganizationFormNiceDialog, { mode: "create" })}
             >
               <Plus className="size-4" />
-              <span>New organization</span>
+              <span>{t("list.new")}</span>
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

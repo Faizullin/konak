@@ -1,23 +1,26 @@
 "use client";
 
+import { useEnumLabels } from "@/lib/labels";
+import { useTranslations } from "next-intl";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import { toast } from "sonner";
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, useRef, useState, type ReactNode } from "react";
 import { confirm } from "@/components/common/confirm-nice-dialog";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { handleError } from "@/lib/errors";
+import { useErrorHandlers, useRefusalText } from "@/lib/errors";
 import { cn } from "@/lib/utils";
-import { ROOM_STATUS_LABELS, RoomStatus } from "@/features/properties";
+import { ROOM_STATUS_VALUES, RoomStatus } from "@/features/properties";
 import {
   assignLanes,
   laneCount,
   monthWindowOf,
   nextStatuses,
   refuseStatusChange,
-  RESERVATION_STATUS_LABELS,
+  RESERVATION_STATUS_VALUES,
   ReservationStatus,
   shiftMonths,
+  spanInWindow,
   todayAt,
 } from "@/features/reservations";
 import type { GeneralRouterOutputs } from "@/server/types";
@@ -35,37 +38,92 @@ type GridStay = Grid["rooms"][number]["stays"][number];
  * it, and this file only positions what it is given.
  */
 
+/**
+ * `stayDateSchema` is `z.coerce.date()`, so a mutation's *input* type is
+ * `unknown` — it accepts what the wire sends. The optimistic update reads the
+ * variables back, so it narrows them here rather than trusting the shape.
+ */
+const asDate = (value: unknown) => (value instanceof Date ? value : new Date(String(value)));
+
+/** A whole number of days from a stay date, which stays a stay date. */
+function shiftDays(date: Date, days: number): Date {
+  return new Date(date.getTime() + days * 86_400_000);
+}
+
+/** Matches the day lists: the two surfaces read the same stays. */
+const GRID_REFRESH_MS = 30_000;
+
 const LABEL_WIDTH = "10rem";
 const NIGHT_WIDTH = 2.5;
 const LANE_HEIGHT = "1.75rem";
 
-/** Temporary, and Phase 12 replaces it. Colour is state, not decoration. */
+/**
+ * Temporary, and Phase 12 replaces the palette. What is **not** temporary is
+ * that colour is never the only cue: every pair of states differs by border
+ * style or by `STATUS_MARK` as well as by hue, so the grid still reads for
+ * someone who cannot tell sky from emerald. Front desks also run dim at night,
+ * which is what the dark variants are for.
+ */
 const STATUS_CLASS: Record<string, string> = {
   [ReservationStatus.ENQUIRY]:
     "border-dashed border-muted-foreground/60 bg-muted text-muted-foreground",
-  [ReservationStatus.CONFIRMED]: "border-sky-600/40 bg-sky-100 text-sky-950",
-  [ReservationStatus.CHECKED_IN]: "border-emerald-600/40 bg-emerald-100 text-emerald-950",
-  [ReservationStatus.CHECKED_OUT]: "border-slate-400/50 bg-slate-100 text-slate-700",
+  [ReservationStatus.CONFIRMED]:
+    "border-sky-600/40 bg-sky-100 text-sky-950 dark:border-sky-400/50 dark:bg-sky-950 dark:text-sky-50",
+  [ReservationStatus.CHECKED_IN]:
+    "border-emerald-600/40 bg-emerald-100 text-emerald-950 dark:border-emerald-400/50 dark:bg-emerald-950 dark:text-emerald-50",
+  [ReservationStatus.CHECKED_OUT]:
+    "border-dotted border-slate-400/60 bg-slate-100 text-slate-700 dark:border-slate-400/50 dark:bg-slate-800 dark:text-slate-200",
+};
+
+/** The states the grid draws, in the order a booking passes through them. */
+const STATUS_LEGEND = [
+  ReservationStatus.ENQUIRY,
+  ReservationStatus.CONFIRMED,
+  ReservationStatus.CHECKED_IN,
+  ReservationStatus.CHECKED_OUT,
+] as const;
+
+/**
+ * The cue that is not colour. Shapes rather than letters, which stay legible at
+ * the width of a one-night chip: hollow is a room still waiting, filled is a
+ * guest in it, and a tick is a stay that is over.
+ *
+ * `aria-hidden`, because the chip's `title` already carries the status in words
+ * — this is for the eye that cannot use the hue, not for the screen reader.
+ */
+const STATUS_MARK: Record<string, string> = {
+  [ReservationStatus.ENQUIRY]: "?",
+  [ReservationStatus.CONFIRMED]: "○",
+  [ReservationStatus.CHECKED_IN]: "●",
+  [ReservationStatus.CHECKED_OUT]: "✓",
 };
 
 /** What the desk calls the transition, rather than the state it lands in. */
-const STATUS_ACTION: Record<string, string> = {
-  [ReservationStatus.CONFIRMED]: "Confirm",
-  [ReservationStatus.CHECKED_IN]: "Check in",
-  [ReservationStatus.CHECKED_OUT]: "Check out",
-  [ReservationStatus.NO_SHOW]: "No show",
-  [ReservationStatus.CANCELLED]: "Cancel booking",
-};
+/** Labels come from `actions.<status>`; cancelling reads longer here. */
 
 /** The two that end a booking and are not undone by setting the column back. */
-const ASKS_FIRST: Record<string, { title: string; description: string }> = {
+/**
+ * What the desk calls the transition. Cancelling reads longer on the grid than
+ * in the day lists, where the row already says which booking it is.
+ */
+function useActionLabel() {
+  const t = useTranslations("reservations");
+
+  return (status: string) => {
+    if (status === ReservationStatus.CANCELLED) return t("grid.cancelAction");
+    const key = `actions.${status}` as Parameters<typeof t.has>[0];
+    return t.has(key) ? t(key) : status;
+  };
+}
+
+const ASKS_FIRST: Record<string, { titleKey: string; descriptionKey: string }> = {
   [ReservationStatus.CANCELLED]: {
-    title: "Cancel this booking?",
-    description: "The nights it holds go back on sale, and a booking that returns is a new one.",
+    titleKey: "grid.cancelTitle",
+    descriptionKey: "grid.cancelDescription",
   },
   [ReservationStatus.NO_SHOW]: {
-    title: "Mark this booking as a no-show?",
-    description: "It cannot be checked in afterwards — the guest arriving late is a new booking.",
+    titleKey: "grid.noShowTitle",
+    descriptionKey: "grid.noShowDescription",
   },
 };
 
@@ -84,21 +142,23 @@ const rangeFormat = new Intl.DateTimeFormat("en", {
 
 const isWeekend = (date: Date) => date.getUTCDay() === 0 || date.getUTCDay() === 6;
 
+/** Every stay on the grid, whichever row or band it is drawn in. */
+function everyStay(grid: Grid): GridStay[] {
+  return [
+    ...grid.rooms.flatMap((row) => row.stays),
+    ...grid.unassigned.flatMap((band) => band.stays),
+  ];
+}
+
 /**
  * The optimistic move, done the same way the server does it: put the stay in
  * its new row and re-lane both rows with the model's own comparator. A drag
  * that waited for a round trip would feel broken; the server stays the
  * authority, and `onError` puts the snapshot back.
  */
-function moveStay(grid: Grid, stayId: number, roomId: number | null): Grid {
-  const everyStay = [
-    ...grid.rooms.flatMap((row) => row.stays),
-    ...grid.unassigned.flatMap((band) => band.stays),
-  ];
-  const moving = everyStay.find((stay) => stay.id === stayId);
-  if (!moving || moving.roomId === roomId) return grid;
-
-  const moved = { ...moving, roomId };
+function placeStay(grid: Grid, moved: GridStay): Grid {
+  const stayId = moved.id;
+  const roomId = moved.roomId;
   const relane = (stays: GridStay[]) => {
     const laned = assignLanes(stays);
     return { lanes: laneCount(laned), stays: laned };
@@ -128,39 +188,105 @@ function moveStay(grid: Grid, stayId: number, roomId: number | null): Grid {
   };
 }
 
+/**
+ * Which night of the chip the pointer is over, 0-based. A drag has to put the
+ * grabbed night under the cursor, or a five-night booking jumps four days the
+ * moment it is picked up.
+ */
+function nightUnder(event: { clientX: number }, element: HTMLElement, nights: number): number {
+  const rect = element.getBoundingClientRect();
+  if (rect.width === 0) return 0;
+  const index = Math.floor(((event.clientX - rect.left) / rect.width) * nights);
+  return Math.min(Math.max(index, 0), Math.max(nights - 1, 0));
+}
+
 function StayChip({
   stay,
   onDragStart,
+  onDragEnd,
   onSelect,
+  onResize,
   selected,
   disabled,
 }: {
   stay: GridStay;
-  onDragStart: (stayId: number) => void;
+  onDragStart: (stayId: number, grabNight: number) => void;
+  onDragEnd: () => void;
   onSelect: (stayId: number) => void;
+  onResize: (stay: GridStay, edge: "start" | "end", days: number) => void;
   selected: boolean;
   disabled: boolean;
 }) {
+  const statusLabels = useEnumLabels("reservationStatus", RESERVATION_STATUS_VALUES);
   const nights = Math.round((stay.checkOut.getTime() - stay.checkIn.getTime()) / 86_400_000);
+  // Nights added or removed while the pointer is still down, so the edge
+  // follows the cursor instead of jumping when the server answers.
+  const [preview, setPreview] = useState<{ start: number; end: number } | null>(null);
+  // A ref rather than state: `dragstart` fires before a re-render would land,
+  // and a resize that also starts a drag moves the booking twice.
+  const resizing = useRef(false);
+
+  const startResize = (edge: "start" | "end") => (event: React.PointerEvent<HTMLSpanElement>) => {
+    if (disabled) return;
+    event.preventDefault();
+    event.stopPropagation();
+    resizing.current = true;
+
+    const chip = event.currentTarget.parentElement;
+    if (!chip) return;
+    const column = chip.getBoundingClientRect().width / Math.max(stay.nights, 1);
+    const originX = event.clientX;
+
+    const days = (clientX: number) => Math.round((clientX - originX) / Math.max(column, 1));
+    const track = (moved: PointerEvent) => {
+      const delta = days(moved.clientX);
+      setPreview(edge === "start" ? { start: delta, end: 0 } : { start: 0, end: delta });
+    };
+    const finish = (released: PointerEvent) => {
+      window.removeEventListener("pointermove", track);
+      window.removeEventListener("pointerup", finish);
+      setPreview(null);
+      // The flag outlives the click that follows a pointerup, so it is cleared
+      // after the event loop rather than inside it.
+      setTimeout(() => (resizing.current = false), 0);
+
+      const delta = days(released.clientX);
+      if (delta !== 0) onResize(stay, edge, delta);
+    };
+
+    window.addEventListener("pointermove", track);
+    window.addEventListener("pointerup", finish);
+  };
+
+  // Clamped so a preview never draws a stay shorter than one night.
+  const shownOffset = stay.offset + (preview?.start ?? 0);
+  const shownNights = Math.max(stay.nights - (preview?.start ?? 0) + (preview?.end ?? 0), 1);
 
   return (
     <button
       type="button"
       draggable={!disabled}
       onDragStart={(event) => {
+        if (resizing.current) {
+          event.preventDefault();
+          return;
+        }
         event.dataTransfer.effectAllowed = "move";
         // Firefox refuses to start a drag without payload, even unused.
         event.dataTransfer.setData("text/plain", String(stay.id));
-        onDragStart(stay.id);
+        onDragStart(stay.id, nightUnder(event, event.currentTarget, stay.nights));
       }}
+      // A drag abandoned off a row still ends, and a stale grab would be
+      // applied to the next drop.
+      onDragEnd={onDragEnd}
       // Click selects rather than opening a menu: a menu on a draggable chip
       // opens on every drag, and the actions want more room than one anyway.
       onClick={() => onSelect(stay.id)}
       aria-pressed={selected}
-      style={{ gridColumn: `${stay.offset + 1} / span ${stay.nights}`, gridRow: stay.lane + 1 }}
-      title={`${stay.reference} · ${RESERVATION_STATUS_LABELS[stay.status as ReservationStatus] ?? stay.status} · ${rangeFormat.format(stay.checkIn)} → ${rangeFormat.format(stay.checkOut)} · ${nights} night${nights === 1 ? "" : "s"}`}
+      style={{ gridColumn: `${shownOffset + 1} / span ${shownNights}`, gridRow: stay.lane + 1 }}
+      title={`${stay.reference} · ${statusLabels[stay.status as ReservationStatus] ?? stay.status} · ${rangeFormat.format(stay.checkIn)} → ${rangeFormat.format(stay.checkOut)} · ${nights} night${nights === 1 ? "" : "s"}`}
       className={cn(
-        "z-10 mx-px flex items-center overflow-hidden rounded border px-1.5 text-xs whitespace-nowrap",
+        "relative z-10 mx-px flex items-center overflow-hidden rounded border px-1.5 text-xs whitespace-nowrap",
         "cursor-grab active:cursor-grabbing disabled:cursor-default",
         STATUS_CLASS[stay.status] ?? "border-border bg-card",
         // A clipped edge is not the real one, so it does not get a rounded cap.
@@ -170,9 +296,61 @@ function StayChip({
       )}
       disabled={disabled}
     >
+      {/* A clipped edge is not the real one, so it is not a handle: dragging it
+          would move a date the grid cannot see. `model/grid.ts` decides which. */}
+      {!stay.continuesBefore && !disabled && (
+        <span
+          role="presentation"
+          onPointerDown={startResize("start")}
+          className="hover:bg-foreground/20 absolute inset-y-0 left-0 w-1.5 cursor-ew-resize rounded-l"
+        />
+      )}
+      <span aria-hidden className="mr-0.5 shrink-0 opacity-70">
+        {STATUS_MARK[stay.status] ?? "·"}
+      </span>
       <span className="truncate">{stay.guestName ?? stay.reference}</span>
+      {!stay.continuesAfter && !disabled && (
+        <span
+          role="presentation"
+          onPointerDown={startResize("end")}
+          className="hover:bg-foreground/20 absolute inset-y-0 right-0 w-1.5 cursor-ew-resize rounded-r"
+        />
+      )}
     </button>
   );
+}
+
+/** A room change: the dates are untouched, so the span is too. */
+function relocateStay(grid: Grid, stayId: number, roomId: number | null): Grid {
+  const moving = everyStay(grid).find((stay) => stay.id === stayId);
+  if (!moving || moving.roomId === roomId) return grid;
+  return placeStay(grid, { ...moving, roomId });
+}
+
+/**
+ * A date change: the span has to be recomputed, and by `spanInWindow` rather
+ * than by hand — it is the same function the server laid the grid out with, so
+ * an optimistic chip cannot land a column away from where the refetch puts it.
+ *
+ * A stay dragged clean out of the month returns the grid untouched: there is no
+ * span to draw, and the refetch is what removes it.
+ */
+function rescheduleStay(
+  grid: Grid,
+  stayId: number,
+  range: { checkIn: Date; checkOut: Date },
+  roomId: number | null
+): Grid {
+  const moving = everyStay(grid).find((stay) => stay.id === stayId);
+  if (!moving) return grid;
+
+  const span = spanInWindow(range, {
+    from: grid.window.from,
+    nights: grid.window.nights.length,
+  });
+  if (!span) return grid;
+
+  return placeStay(grid, { ...moving, ...span, ...range, roomId });
 }
 
 /** The night columns of one row: the calendar rules, plus whatever sits on them. */
@@ -186,7 +364,7 @@ function NightArea({
   nights: Date[];
   lanes: number;
   children?: ReactNode;
-  onDropStay?: () => void;
+  onDropStay?: (column: number) => void;
   className?: string;
 }) {
   return (
@@ -197,11 +375,14 @@ function NightArea({
         gridTemplateRows: `repeat(${Math.max(lanes, 1)}, ${LANE_HEIGHT})`,
       }}
       onDragOver={onDropStay ? (event) => event.preventDefault() : undefined}
+      // The column is read from the pointer rather than from a per-cell
+      // handler: a chip sits above the cells, and dropping on one must still
+      // say which night it landed on.
       onDrop={
         onDropStay
           ? (event) => {
               event.preventDefault();
-              onDropStay();
+              onDropStay(nightUnder(event, event.currentTarget, nights.length));
             }
           : undefined
       }
@@ -240,19 +421,24 @@ function StayActions({
   onAct: (status: ReservationStatus) => void;
   onClose: () => void;
 }) {
+  const statusLabels = useEnumLabels("reservationStatus", RESERVATION_STATUS_VALUES);
+  const actionLabel = useActionLabel();
+  const t = useTranslations("reservations");
+  const refusalText = useRefusalText();
+
   const actions = nextStatuses(stay.status).map((status) => ({
     status,
     // Only this stay is known here. A booking holding two rooms is answered by
     // the server, which reads them all; this picks the button.
     refusal: refuseStatusChange({ from: stay.status, to: status, stays: [stay], today }),
   }));
-  const reasons = [...new Set(actions.flatMap((action) => action.refusal ?? []))];
+  const reasons = [...new Set(actions.flatMap((action) => refusalText(action.refusal) ?? []))];
 
   return (
     <div className="bg-card flex flex-wrap items-center gap-x-3 gap-y-2 rounded border px-3 py-2">
       <span className="text-sm font-medium">{stay.guestName ?? stay.reference}</span>
       <span className="text-muted-foreground text-xs">
-        {stay.reference} · {RESERVATION_STATUS_LABELS[stay.status as ReservationStatus]} ·{" "}
+        {stay.reference} · {statusLabels[stay.status as ReservationStatus]} ·{" "}
         {rangeFormat.format(stay.checkIn)} → {rangeFormat.format(stay.checkOut)} ·{" "}
         {roomNumber ? `room ${roomNumber}` : "no room yet"}
       </span>
@@ -265,16 +451,16 @@ function StayActions({
             variant={ASKS_FIRST[status] ? "ghost" : "default"}
             className={cn(ASKS_FIRST[status] && "text-destructive hover:text-destructive")}
             disabled={pending || refusal !== null}
-            title={refusal ?? undefined}
+            title={refusalText(refusal)}
             onClick={() => onAct(status)}
           >
-            {STATUS_ACTION[status] ?? status}
+            {actionLabel(status)}
           </Button>
         ))}
         {actions.length === 0 && (
-          <span className="text-muted-foreground text-xs">Nothing left to do</span>
+          <span className="text-muted-foreground text-xs">{t("grid.nothingLeft")}</span>
         )}
-        <Button size="icon" variant="ghost" aria-label="Close" onClick={onClose}>
+        <Button size="icon" variant="ghost" aria-label={t("grid.close")} onClick={onClose}>
           <X />
         </Button>
       </div>
@@ -307,9 +493,14 @@ export function ReservationGrid({
   propertyId: number;
   timezone: string;
 }) {
+  const statusLabels = useEnumLabels("reservationStatus", RESERVATION_STATUS_VALUES);
+  const labels = useEnumLabels("roomStatus", ROOM_STATUS_VALUES);
+  const actionLabel = useActionLabel();
+  const t = useTranslations("reservations");
+  const { handleError } = useErrorHandlers();
   const [anchor, setAnchor] = useState(() => monthWindowOf(new Date()).from);
   const [refusal, setRefusal] = useState<string | null>(null);
-  const [draggingId, setDraggingId] = useState<number | null>(null);
+  const [dragging, setDragging] = useState<{ id: number; grabNight: number } | null>(null);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const today = useMemo(() => todayAt(timezone), [timezone]);
 
@@ -321,6 +512,9 @@ export function ReservationGrid({
     // Keep last month on screen while the next one loads; a grid that blanks
     // between clicks reads as broken.
     placeholderData: (previous) => previous,
+    // Real-time, decided in Phase 4: polling rather than a subscription. See
+    // the note in `front-desk-day.tsx`, which sets the interval.
+    refetchInterval: GRID_REFRESH_MS,
   });
 
   const assign = trpc.reservation.assignRoom.useMutation({
@@ -331,7 +525,7 @@ export function ReservationGrid({
       if (snapshot) {
         utils.reservation.grid.setData(
           input,
-          moveStay(snapshot, variables.stayId, variables.roomId)
+          relocateStay(snapshot, variables.stayId, variables.roomId)
         );
       }
       return { snapshot };
@@ -341,37 +535,121 @@ export function ReservationGrid({
       // In place, not as a toast: the answer is about the room under the
       // cursor, and it is read where the drag ended.
       const app = handleError(error, { toast: false });
-      setRefusal(app?.message ?? "That move was refused");
+      setRefusal(app?.message ?? t("grid.moveRefused"));
     },
-    onSettled: () => utils.reservation.grid.invalidate(input),
+    onSettled: () => {
+      utils.reservation.grid.invalidate(input);
+      utils.reservation.day.invalidate();
+    },
+  });
+
+  const move = trpc.reservation.moveStay.useMutation({
+    onMutate: async (variables) => {
+      setRefusal(null);
+      await utils.reservation.grid.cancel(input);
+      const snapshot = utils.reservation.grid.getData(input);
+      if (snapshot) {
+        const moving = everyStay(snapshot).find((stay) => stay.id === variables.stayId);
+        utils.reservation.grid.setData(
+          input,
+          rescheduleStay(
+            snapshot,
+            variables.stayId,
+            { checkIn: asDate(variables.checkIn), checkOut: asDate(variables.checkOut) },
+            variables.roomId === undefined ? (moving?.roomId ?? null) : variables.roomId
+          )
+        );
+      }
+      return { snapshot };
+    },
+    onError: (error, _variables, context) => {
+      if (context?.snapshot) utils.reservation.grid.setData(input, context.snapshot);
+      const app = handleError(error, { toast: false });
+      setRefusal(app?.message ?? t("grid.moveRefused"));
+    },
+    onSettled: () => {
+      utils.reservation.grid.invalidate(input);
+      utils.reservation.day.invalidate();
+    },
   });
 
   const setStatus = trpc.reservation.setStatus.useMutation({
     onMutate: () => setRefusal(null),
     onSuccess: (reservation) => {
-      toast.success(
-        `${STATUS_ACTION[reservation.status] ?? reservation.status} — ${reservation.reference}`
-      );
+      toast.success(`${actionLabel(reservation.status)} — ${reservation.reference}`);
     },
     onError: (error) => {
       const app = handleError(error, { toast: false });
-      setRefusal(app?.message ?? "That change was refused");
+      setRefusal(app?.message ?? t("grid.changeRefused"));
     },
-    onSettled: () => utils.reservation.grid.invalidate(input),
+    onSettled: () => {
+      utils.reservation.grid.invalidate(input);
+      utils.reservation.day.invalidate();
+    },
   });
 
-  const drop = (roomId: number | null) => () => {
-    if (draggingId === null) return;
-    assign.mutate({ propertyId, stayId: draggingId, roomId });
-    setDraggingId(null);
+  const stayById = (id: number) =>
+    [
+      ...(data?.rooms.flatMap((row) => row.stays) ?? []),
+      ...(data?.unassigned.flatMap((band) => band.stays) ?? []),
+    ].find((stay) => stay.id === id);
+
+  /**
+   * A drop is one of two decisions, and which one is arithmetic.
+   *
+   * Landing on the night the chip was already on is a room change and nothing
+   * more — `assignRoom`, which is cheaper and optimistic. Landing anywhere else
+   * moves the dates, and the room travels with them in the same call so a
+   * refused move cannot leave the booking in a room it was never given.
+   */
+  const drop = (roomId: number | null) => (column: number) => {
+    if (!dragging) return;
+    const stay = stayById(dragging.id);
+    setDragging(null);
+    if (!stay) return;
+
+    const days = column - (stay.offset + dragging.grabNight);
+    if (days === 0) {
+      if (stay.roomId !== roomId) {
+        assign.mutate({ propertyId, stayId: stay.id, roomId });
+      }
+      return;
+    }
+
+    move.mutate({
+      propertyId,
+      stayId: stay.id,
+      checkIn: shiftDays(stay.checkIn, days),
+      checkOut: shiftDays(stay.checkOut, days),
+      roomId,
+    });
+  };
+
+  /** An edge dragged on its own: one date moves, the other and the room stay. */
+  const resize = (stay: GridStay, edge: "start" | "end", days: number) => {
+    move.mutate({
+      propertyId,
+      stayId: stay.id,
+      checkIn: edge === "start" ? shiftDays(stay.checkIn, days) : stay.checkIn,
+      checkOut: edge === "end" ? shiftDays(stay.checkOut, days) : stay.checkOut,
+    });
   };
 
   // A status belongs to the booking, not to one of its rooms, so acting on a
   // chip acts on the reservation behind it.
   const act = async (stay: GridStay, status: ReservationStatus) => {
     const ask = ASKS_FIRST[status];
-    if (ask && !(await confirm({ ...ask, destructive: true, confirmLabel: STATUS_ACTION[status] })))
+    if (
+      ask &&
+      !(await confirm({
+        title: t(ask.titleKey as never),
+        description: t(ask.descriptionKey as never),
+        destructive: true,
+        confirmLabel: actionLabel(status),
+      }))
+    ) {
       return;
+    }
     setStatus.mutate({ propertyId, id: stay.reservationId, status });
   };
 
@@ -393,7 +671,7 @@ export function ReservationGrid({
         <Button
           variant="outline"
           size="icon"
-          aria-label="Previous month"
+          aria-label={t("grid.previousMonth")}
           onClick={() => setAnchor((current) => shiftMonths(current, -1))}
         >
           <ChevronLeft />
@@ -401,15 +679,34 @@ export function ReservationGrid({
         <Button
           variant="outline"
           size="icon"
-          aria-label="Next month"
+          aria-label={t("grid.nextMonth")}
           onClick={() => setAnchor((current) => shiftMonths(current, 1))}
         >
           <ChevronRight />
         </Button>
         <Button variant="ghost" onClick={() => setAnchor(monthWindowOf(new Date()).from)}>
-          Today
+          {t("grid.today")}
         </Button>
         <span className="text-sm font-medium">{monthFormat.format(month.from)}</span>
+
+        {/* The key to the marks. Without it the second cue is only decodable by
+            someone who already knows what the colours mean. */}
+        <ul className="text-muted-foreground ml-auto flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+          {STATUS_LEGEND.map((status) => (
+            <li key={status} className="flex items-center gap-1">
+              <span
+                aria-hidden
+                className={cn(
+                  "flex h-4 w-6 items-center justify-center rounded border text-[0.6rem]",
+                  STATUS_CLASS[status]
+                )}
+              >
+                {STATUS_MARK[status]}
+              </span>
+              {statusLabels[status]}
+            </li>
+          ))}
+        </ul>
       </div>
 
       {selected && (
@@ -438,7 +735,7 @@ export function ReservationGrid({
         <div className="overflow-x-auto rounded border">
           <div style={{ minWidth: width }}>
             <div className="bg-muted/60 flex border-b">
-              <RowLabel className="bg-muted/60 font-medium">Room</RowLabel>
+              <RowLabel className="bg-muted/60 font-medium">{t("grid.room")}</RowLabel>
               <NightArea nights={nights} lanes={1}>
                 {nights.map((night, index) => (
                   <div
@@ -494,17 +791,19 @@ export function ReservationGrid({
                   {band && (
                     <div className="flex border-b bg-amber-50/60">
                       <RowLabel className="text-muted-foreground bg-amber-50/60 text-xs">
-                        Unassigned
+                        {t("grid.unassigned")}
                       </RowLabel>
                       <NightArea nights={nights} lanes={band.lanes} onDropStay={drop(null)}>
                         {band.stays.map((stay) => (
                           <StayChip
                             key={stay.id}
                             stay={stay}
-                            onDragStart={setDraggingId}
+                            onDragStart={(id, grabNight) => setDragging({ id, grabNight })}
+                            onDragEnd={() => setDragging(null)}
                             onSelect={setSelectedId}
+                            onResize={resize}
                             selected={stay.id === selectedId}
-                            disabled={assign.isPending}
+                            disabled={assign.isPending || move.isPending}
                           />
                         ))}
                       </NightArea>
@@ -524,7 +823,7 @@ export function ReservationGrid({
                                 : "text-muted-foreground"
                             )}
                           >
-                            {ROOM_STATUS_LABELS[room.status as RoomStatus] ?? room.status}
+                            {labels[room.status as RoomStatus] ?? room.status}
                           </span>
                         )}
                       </RowLabel>
@@ -540,10 +839,12 @@ export function ReservationGrid({
                           <StayChip
                             key={stay.id}
                             stay={stay}
-                            onDragStart={setDraggingId}
+                            onDragStart={(id, grabNight) => setDragging({ id, grabNight })}
+                            onDragEnd={() => setDragging(null)}
                             onSelect={setSelectedId}
+                            onResize={resize}
                             selected={stay.id === selectedId}
-                            disabled={assign.isPending}
+                            disabled={assign.isPending || move.isPending}
                           />
                         ))}
                       </NightArea>

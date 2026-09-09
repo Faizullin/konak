@@ -1,7 +1,18 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { extraPersonMinor, sellRefusal, stayTotalMinor } from "./index";
+import { OrgRole } from "@/features/organizations";
+import {
+  canArchiveRatePlans,
+  canManageRatePlans,
+  canReadRates,
+  canSetRates,
+  extraPersonMinor,
+  MEAL_PLAN_VALUES,
+  refuseCancellationTerms,
+  sellRefusal,
+  stayTotalMinor,
+} from "./index";
 
 const pricing = { baseOccupancy: 2, extraAdultMinor: 2500, extraChildMinor: 1000 };
 const night = (day: number, priceMinor = 12000) => ({
@@ -75,4 +86,39 @@ test("closed beats every other reason", () => {
     }),
     "CLOSED"
   );
+});
+
+test("a non-refundable plan cannot also have a free-cancellation window", () => {
+  assert.equal(refuseCancellationTerms({ isRefundable: true, cancellationCutoffHours: 48 }), null);
+  assert.equal(
+    refuseCancellationTerms({ isRefundable: true, cancellationCutoffHours: null }),
+    null
+  );
+  assert.equal(
+    refuseCancellationTerms({ isRefundable: false, cancellationCutoffHours: null }),
+    null
+  );
+
+  assert.equal(
+    refuseCancellationTerms({ isRefundable: false, cancellationCutoffHours: 48 })?.code,
+    "rate_plan.non_refundable_window"
+  );
+  // Zero hours is still a window — free until the moment of arrival.
+  assert.equal(
+    refuseCancellationTerms({ isRefundable: false, cancellationCutoffHours: 0 })?.code,
+    "rate_plan.non_refundable_window"
+  );
+});
+
+test("a receptionist reads prices and does not write them", () => {
+  assert.equal(canReadRates(OrgRole.MEMBER), true);
+  assert.equal(canSetRates(OrgRole.MEMBER), false);
+  assert.equal(canManageRatePlans(OrgRole.MEMBER), false);
+
+  for (const role of [OrgRole.OWNER, OrgRole.ADMIN]) {
+    assert.equal(canSetRates(role), true, role);
+    assert.equal(canManageRatePlans(role), true, role);
+    assert.equal(canArchiveRatePlans(role), true, role);
+  }
+  assert.equal(canReadRates("GUEST"), false);
 });

@@ -12,8 +12,10 @@ top of the file.
 
 **Do:**
 
-- Use `useForm` with `zodResolver`, and take the schema from the feature's
-  `model/` — the same object the router validates against.
+- Use `useForm` with **`useZodResolver`** from `@/lib/form`, and take the schema
+  from the feature's `model/` — the same object the router validates against.
+  Not `zodResolver` directly: a Zod message in `model/` is a key, and the
+  wrapper is what turns it into a sentence in the current language.
 - **Zod defaults:** if you pass `defaultValues` to `useForm`, do **not** also
   use `.default()` in the schema. The schema default overrides the form default
   and the conflict is invisible until a field resets to the wrong value.
@@ -24,8 +26,10 @@ top of the file.
 
 ```tsx
 export function MyForm() {
+  const resolver = useZodResolver<CreateOrganizationInput>(createOrganizationSchema);
+
   const form = useForm<CreateOrganizationInput>({
-    resolver: zodResolver(createOrganizationSchema),
+    resolver,
     defaultValues: { name: "", slug: "", description: "" },
   });
 
@@ -103,15 +107,37 @@ one `AppError`, and the kind decides the destination:
 A 500's message is dropped rather than shown — it quotes a stack trace or a
 connection string at someone who cannot act on it. `errors.test.ts` pins that.
 
-**In a component**, that is two shapes:
+**In a component**, that is two shapes, both from a hook:
 
 ```ts
+const { handleError, handleFormError } = useErrorHandlers();
+
 // a mutation with a form behind it
 onError: (e) => handleFormError(form, e),
 
 // a mutation without one
 onError: (e) => handleError(e),
 ```
+
+The hook is what binds them to the current language. `handleError` and
+`handleFormError` stay exported and pure — their tests pass a translator
+directly and need no provider — but a component should not call them bare: it
+gets the server's English and no translation.
+
+**A Zod message is a key, not a sentence.** `z.email("email_invalid")`, resolved
+from `messages/en/validation.json`. The schemas are module-level constants the
+router and the form share, so they cannot be built per request with a translator
+— a factory would give the two sides different schemas, which is the drift
+`model/` exists to prevent. The server sends the key over the wire and
+`useErrorHandlers` resolves it there too, so both paths land on the same words.
+
+A refusal is worded by its **domain code**, not by the sentence the server sent.
+`messages/en/errors.json` is keyed by code, and the English at the throw site is
+the fallback for a code with no key. Five codes have no key on purpose: their
+sentence is computed by a rule in `model/` — `refuseStatusChange` and its
+siblings return the words, and which words depends on why. `error-messages.test.ts`
+pins that list, so one of them gaining a key is a test failure rather than a
+silently vaguer message.
 
 `handleFormError` always places field errors; a server field with no
 counterpart on the form falls through to the form-level error rather than
@@ -405,6 +431,56 @@ link renders the right sidebar on first paint:
 Adding a level is the same move: read another route param in `app-sidebar.tsx`
 and return another `NavGroup[]`. The frame knows how to *pick* a level; it does
 not know what any feature needs.
+
+---
+
+## Colour as data
+
+Where colour encodes a value rather than decorating one — reservation state on
+the grid, room status, anything Phase 12 will restyle — **colour is never the
+only cue.** Every pair of values has to differ by something else as well:
+a glyph, a border style, a fill.
+
+`reservation-grid.tsx` is the worked example. `STATUS_CLASS` carries the hue and
+`STATUS_MARK` carries a shape — hollow for a room still waiting, filled for a
+guest in it, a tick for a stay that is over — and enquiry and checked-out also
+differ by border style. Check the pairs, not the list: four states that all look
+distinct in a legend can still have two that differ by hue alone.
+
+The mark is `aria-hidden`. The chip's `title` already carries the status in
+words, so this is for the eye that cannot use the hue, not for the screen
+reader — a second announcement of the same fact is noise.
+
+**Both themes, always.** A palette written as fixed light values disappears at
+night, and front desks run dim. Pair every `bg-*`/`text-*` with its `dark:`
+variant; the project's dark mode is class-based (`@custom-variant dark` in
+`styles/globals.css`), so it is a variant, not a media query.
+
+**A legend where the marks are used.** A second cue nobody can decode is not a
+second cue.
+
+---
+
+## Strings
+
+Every user-visible string comes from `messages/<locale>/<namespace>.json`, never
+from a literal in a component.
+
+**Server Components** `await getTranslations("namespace.section")`;
+**Client Components** call `useTranslations("namespace")`. Both key into the
+same JSON, and the keys are typed from it — `AppConfig` in `lib/i18n.ts`
+augments next-intl with the shape of the messages, so a typo is a compile error
+rather than a string that renders as itself.
+
+**The provider goes where the client tree is, not at the root.** `(auth)/layout.tsx`
+mounts `NextIntlClientProvider` with `{ auth: messages.auth }` and nothing else:
+a route is given the namespaces it renders. Mounting it once at the root would
+put every string in every bundle, and it is measurable — next-intl cost the two
+auth routes 39 kB each and the shared chunk nothing at all.
+
+**There is no locale in the URL.** The language comes from a cookie, resolved in
+`lib/i18n.ts`. See `plans/internationalisation.md` for why, and for what is
+still English: the 77 domain codes and the 171 Zod messages.
 
 ---
 

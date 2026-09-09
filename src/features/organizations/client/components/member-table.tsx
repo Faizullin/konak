@@ -1,6 +1,7 @@
 "use client";
 
-import { zodResolver } from "@hookform/resolvers/zod";
+import { useEnumLabels } from "@/lib/labels";
+import { useTranslations } from "next-intl";
 import { LoaderIcon, UserPlus } from "lucide-react";
 import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
@@ -27,13 +28,14 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
-  ORG_ROLE_LABELS,
+  ORG_ROLE_VALUES,
   OrgRole,
   addMemberFormSchema,
   canManageMembers,
   type AddMemberFormInput,
 } from "@/features/organizations";
-import { handleError, handleFormError } from "@/lib/errors";
+import { useErrorHandlers } from "@/lib/errors";
+import { useZodResolver } from "@/lib/form";
 import { trpc } from "@/utils/trpc";
 
 /**
@@ -53,12 +55,17 @@ export function MemberTable({
   currentUserRole: OrgRole;
   currentUserId?: string;
 }) {
+  const labels = useEnumLabels("orgRole", ORG_ROLE_VALUES);
+  const t = useTranslations("organizations");
+  const { handleError, handleFormError } = useErrorHandlers();
   const utils = trpc.useUtils();
 
   // Bound to the router's own schema, so a typo'd email is refused here with a
   // message under the field rather than as a toast after a round trip.
+  const resolver = useZodResolver<AddMemberFormInput>(addMemberFormSchema);
+
   const form = useForm<AddMemberFormInput>({
-    resolver: zodResolver(addMemberFormSchema),
+    resolver,
     defaultValues: { email: "", role: OrgRole.MEMBER },
   });
 
@@ -76,7 +83,7 @@ export function MemberTable({
 
   const addMember = trpc.organization.addMember.useMutation({
     onSuccess: async () => {
-      toast.success("Member added");
+      toast.success(t("members.added"));
       form.reset();
       await refresh();
     },
@@ -87,7 +94,7 @@ export function MemberTable({
 
   const updateRole = trpc.organization.updateMemberRole.useMutation({
     onSuccess: async () => {
-      toast.success("Role updated");
+      toast.success(t("members.roleUpdated"));
       await refresh();
     },
     onError: (e) => handleError(e),
@@ -95,7 +102,7 @@ export function MemberTable({
 
   const removeMember = trpc.organization.removeMember.useMutation({
     onSuccess: async () => {
-      toast.success("Member removed");
+      toast.success(t("members.removed"));
       await refresh();
     },
     onError: (e) => handleError(e),
@@ -106,7 +113,7 @@ export function MemberTable({
       title: `Remove ${name}?`,
       description:
         "They lose access to this organization immediately. You can add them back later.",
-      confirmLabel: "Remove",
+      confirmLabel: t("members.remove"),
       destructive: true,
     });
     if (ok) removeMember.mutate({ organizationId, userId });
@@ -128,8 +135,8 @@ export function MemberTable({
               <Field data-invalid={!!fieldState.error} className="min-w-56 flex-1">
                 <Input
                   type="email"
-                  placeholder="person@example.com"
-                  aria-label="Email of the person to add"
+                  placeholder={t("members.emailPlaceholder")}
+                  aria-label={t("members.emailLabel")}
                   disabled={addMember.isPending}
                   {...field}
                 />
@@ -142,7 +149,7 @@ export function MemberTable({
             name="role"
             render={({ field }) => (
               <Select
-                items={ORG_ROLE_LABELS}
+                items={labels}
                 value={field.value}
                 onValueChange={field.onChange}
                 disabled={addMember.isPending}
@@ -151,8 +158,8 @@ export function MemberTable({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value={OrgRole.MEMBER}>Member</SelectItem>
-                  <SelectItem value={OrgRole.ADMIN}>Admin</SelectItem>
+                  <SelectItem value={OrgRole.MEMBER}>{labels[OrgRole.MEMBER]}</SelectItem>
+                  <SelectItem value={OrgRole.ADMIN}>{labels[OrgRole.ADMIN]}</SelectItem>
                 </SelectContent>
               </Select>
             )}
@@ -174,9 +181,9 @@ export function MemberTable({
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Member</TableHead>
-              <TableHead>Role</TableHead>
-              <TableHead className="w-24 text-right">Actions</TableHead>
+              <TableHead>{t("members.member")}</TableHead>
+              <TableHead>{t("members.role")}</TableHead>
+              <TableHead className="w-24 text-right">{t("members.actions")}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -198,7 +205,7 @@ export function MemberTable({
                         through transfer, which changes both sides at once. */}
                     {canManage && !isOwner ? (
                       <Select
-                        items={ORG_ROLE_LABELS}
+                        items={labels}
                         value={member.role}
                         onValueChange={(v) =>
                           updateRole.mutate({
@@ -212,13 +219,13 @@ export function MemberTable({
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value={OrgRole.MEMBER}>Member</SelectItem>
-                          <SelectItem value={OrgRole.ADMIN}>Admin</SelectItem>
+                          <SelectItem value={OrgRole.MEMBER}>{labels[OrgRole.MEMBER]}</SelectItem>
+                          <SelectItem value={OrgRole.ADMIN}>{labels[OrgRole.ADMIN]}</SelectItem>
                         </SelectContent>
                       </Select>
                     ) : (
                       <Badge variant={isOwner ? "default" : "secondary"}>
-                        {ORG_ROLE_LABELS[member.role]}
+                        {labels[member.role]}
                       </Badge>
                     )}
                   </TableCell>

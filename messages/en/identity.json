@@ -1,0 +1,20 @@
+{
+  "account": {
+    "title": "Your account",
+    "description": "Your user row, as the server sees it.",
+    "name": "Name",
+    "email": "Email",
+    "role": "Role"
+  },
+  "table": {
+    "name": "Name",
+    "email": "Email",
+    "role": "Role",
+    "verified": "Verified",
+    "pending": "Pending",
+    "joined": "Joined",
+    "searchNames": "Search names…",
+    "searchEmails": "Search emails…",
+    "roleUpdated": "Role updated"
+  }
+}

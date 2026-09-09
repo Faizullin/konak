@@ -1,0 +1,14 @@
+{
+  "// i18n Ally": "Inline previews of message keys, and a tree of what is missing or unused. Community extension (lokalise.i18n-ally); next-intl does not ship one of its own.",
+  "i18n-ally.localesPaths": ["messages"],
+  "i18n-ally.pathMatcher": "{locale}/{namespace}.json",
+  "i18n-ally.enabledFrameworks": ["next-intl"],
+  "i18n-ally.enabledParsers": ["json"],
+  "i18n-ally.keystyle": "nested",
+  "i18n-ally.namespace": true,
+  "i18n-ally.sourceLanguage": "en",
+  "i18n-ally.displayLanguage": "en",
+  "// note": "The extension resolves namespaces from useTranslations() but not from getTranslations() — lokalise/i18n-ally#1170. Server Components will show keys as unresolved there; `npm test` is what actually checks them.",
+  "i18n-ally.sortKeys": true,
+  "i18n-ally.keepFulfilled": true
+}
