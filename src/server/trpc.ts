@@ -5,7 +5,7 @@ import { ZodError } from "zod";
 import { userCan } from "@/features/identity";
 import { auth } from "@/server/auth";
 import prisma from "./db";
-import { DomainError, FieldErrorCause } from "./errors";
+import { DomainError, ForbiddenError, SharedError, UnauthorizedError } from "./errors";
 
 export const createTRPCContext = async () => {
   const session = await auth.api.getSession({ headers: await headers() });
@@ -24,15 +24,10 @@ const t = initTRPC.context<typeof createTRPCContext>().create({
       data: {
         ...shape.data,
         // Which field failed, when the server knows. Zod fills the first for
-        // schema failures; `fieldError()` fills the second for the domain
-        // rules Zod cannot express. Both are read by `lib/errors.ts`.
+        // schema failures; a `DomainError` fills the second for the rules Zod
+        // cannot express. Both are read by `lib/errors.ts`.
         zodError: error.cause instanceof ZodError ? error.cause.flatten() : null,
-        field:
-          error.cause instanceof FieldErrorCause
-            ? error.cause.field
-            : error.cause instanceof DomainError
-              ? (error.cause.field ?? null)
-              : null,
+        field: error.cause instanceof DomainError ? (error.cause.field ?? null) : null,
         // The stable half of a refusal. A message can be reworded or
         // translated; this is what a test and a translation file key on.
         domainCode: error.cause instanceof DomainError ? error.cause.code : null,
@@ -76,7 +71,7 @@ export const publicProcedure = baseProcedure;
 /** A Better Auth session is present. `ctx.session.user` is non-null from here on. */
 export const protectedProcedure = baseProcedure.use(({ ctx, next }) => {
   if (!ctx.session) {
-    throw new TRPCError({ code: "UNAUTHORIZED", message: "You must be signed in" });
+    throw new UnauthorizedError(SharedError.NOT_SIGNED_IN, "You must be signed in");
   }
   return next({
     ctx: {
@@ -97,7 +92,7 @@ export const protectedProcedure = baseProcedure.use(({ ctx, next }) => {
  */
 export const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
   if (!userCan(ctx.session.user.role, { user: ["list", "set-role"] })) {
-    throw new TRPCError({ code: "FORBIDDEN", message: "This action requires an administrator" });
+    throw new ForbiddenError(SharedError.ADMIN_REQUIRED, "This action requires an administrator");
   }
   return next({ ctx });
 });

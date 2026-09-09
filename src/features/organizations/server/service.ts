@@ -1,10 +1,10 @@
 import "server-only";
 import { cache } from "react";
-import { TRPCError } from "@trpc/server";
-import { fieldError } from "@/server/errors";
+import { ConflictError, ForbiddenError, NotFoundError } from "@/server/errors";
 import prisma from "@/server/db";
 import {
   ORGANIZATION_ROUTE_SELECT,
+  OrganizationError,
   OrgRole,
   isOrgModuleEnabled,
   orgModule,
@@ -22,7 +22,7 @@ export async function assertSlugAvailable(
 ): Promise<void> {
   const existing = await db.organization.findUnique({ where: { slug } });
   if (existing && existing.id !== excludeId) {
-    throw fieldError("slug", "That slug is already taken", "CONFLICT");
+    throw new ConflictError(OrganizationError.SLUG_TAKEN, "That slug is already taken", "slug");
   }
 }
 
@@ -68,10 +68,10 @@ export async function transferOwnership(
     where: { organizationId_userId: { organizationId, userId: toUserId } },
   });
   if (!target) {
-    throw new TRPCError({
-      code: "NOT_FOUND",
-      message: "That person is not a member of this organization",
-    });
+    throw new NotFoundError(
+      OrganizationError.MEMBER_NOT_FOUND,
+      "That person is not a member of this organization"
+    );
   }
 
   return db.$transaction([
@@ -120,9 +120,9 @@ export async function requireOrgModule(organizationId: number, moduleId: OrgModu
   });
 
   if (!isOrgModuleEnabled(moduleId, toggles)) {
-    throw new TRPCError({
-      code: "FORBIDDEN",
-      message: `${orgModule(moduleId).label} is not enabled for this organization`,
-    });
+    throw new ForbiddenError(
+      OrganizationError.MODULE_DISABLED,
+      `${orgModule(moduleId).label} is not enabled for this organization`
+    );
   }
 }

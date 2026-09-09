@@ -1,12 +1,18 @@
 import "server-only";
-import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import type { Prisma } from "@/generated/prisma/client";
 import { requireOrgManager, requireOrgMember, requireOrgOwner, requireUser } from "@/server/auth";
-import { fieldError, memberNotFound } from "@/server/errors";
+import {
+  ConflictError,
+  ForbiddenError,
+  InvalidError,
+  NotFoundError,
+  memberNotFound,
+} from "@/server/errors";
 import { createTRPCRouter, protectedProcedure } from "@/server/trpc";
 import {
   OrgRole,
+  OrganizationError,
   addMemberSchema,
   assignableOrgRoleSchema,
   createOrganizationSchema,
@@ -157,7 +163,7 @@ export const organizationRouter = createTRPCRouter({
         select: { id: true },
       });
       if (!organization) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Organization not found" });
+        throw new NotFoundError(OrganizationError.NOT_FOUND, "Organization not found");
       }
 
       const { role } = await requireOrgMember(ctx, organization.id);
@@ -177,7 +183,7 @@ export const organizationRouter = createTRPCRouter({
       include: { _count: { select: { members: true } } },
     });
     if (!organization) {
-      throw new TRPCError({ code: "NOT_FOUND", message: "Organization not found" });
+      throw new NotFoundError(OrganizationError.NOT_FOUND, "Organization not found");
     }
 
     return {
@@ -230,10 +236,9 @@ export const organizationRouter = createTRPCRouter({
 
     const target = await ctx.db.user.findUnique({ where: { email: input.email } });
     if (!target) {
-      throw fieldError(
-        "email",
-        "No account with that email. They need to sign up first.",
-        "NOT_FOUND"
+      throw new NotFoundError(
+        OrganizationError.MEMBER_NO_ACCOUNT,
+        "No account with that email. They need to sign up first."
       );
     }
 
@@ -243,7 +248,11 @@ export const organizationRouter = createTRPCRouter({
       },
     });
     if (existing) {
-      throw fieldError("email", "They are already a member", "CONFLICT");
+      throw new ConflictError(
+        OrganizationError.MEMBER_ALREADY,
+        "They are already a member",
+        "email"
+      );
     }
 
     return ctx.db.organizationMember.create({
@@ -281,10 +290,10 @@ export const organizationRouter = createTRPCRouter({
       // The owner's role is not editable here — `transferOwnership` is the
       // only way it changes, and it moves both sides at once.
       if (target.role === OrgRole.OWNER) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "Transfer ownership instead of changing the owner's role",
-        });
+        throw new InvalidError(
+          OrganizationError.MEMBER_OWNER_ROLE_LOCKED,
+          "Transfer ownership instead of changing the owner's role"
+        );
       }
 
       return ctx.db.organizationMember.update({
@@ -305,10 +314,10 @@ export const organizationRouter = createTRPCRouter({
       const { user } = await requireOrgManager(ctx, input.organizationId);
 
       if (input.userId === user.id) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "Use “Leave organization” to remove yourself",
-        });
+        throw new InvalidError(
+          OrganizationError.MEMBER_REMOVE_SELF,
+          "Use “Leave organization” to remove yourself"
+        );
       }
 
       const target = await ctx.db.organizationMember.findUnique({
@@ -323,7 +332,10 @@ export const organizationRouter = createTRPCRouter({
         throw memberNotFound();
       }
       if (target.role === OrgRole.OWNER) {
-        throw new TRPCError({ code: "FORBIDDEN", message: "The owner cannot be removed" });
+        throw new ForbiddenError(
+          OrganizationError.MEMBER_OWNER_NOT_REMOVABLE,
+          "The owner cannot be removed"
+        );
       }
 
       return ctx.db.organizationMember.delete({
@@ -347,10 +359,10 @@ export const organizationRouter = createTRPCRouter({
       const { user, role } = await requireOrgMember(ctx, input.organizationId);
 
       if (role === OrgRole.OWNER) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "Transfer ownership or delete the organization before leaving",
-        });
+        throw new InvalidError(
+          OrganizationError.OWNER_CANNOT_LEAVE,
+          "Transfer ownership or delete the organization before leaving"
+        );
       }
 
       return ctx.db.organizationMember.delete({
@@ -369,7 +381,10 @@ export const organizationRouter = createTRPCRouter({
       const { user } = await requireOrgOwner(ctx, input.organizationId);
 
       if (input.toUserId === user.id) {
-        throw new TRPCError({ code: "BAD_REQUEST", message: "You already own this organization" });
+        throw new InvalidError(
+          OrganizationError.ALREADY_OWNER,
+          "You already own this organization"
+        );
       }
 
       await transferOwnership(ctx.db, input.organizationId, user.id, input.toUserId);

@@ -1,8 +1,7 @@
 import "server-only";
-import { TRPCError } from "@trpc/server";
 import type { Prisma } from "@/generated/prisma/client";
 import prisma from "@/server/db";
-import { fieldError } from "@/server/errors";
+import { ConflictError, ForbiddenError, InvalidError, NotFoundError } from "@/server/errors";
 import { requireOrgMember } from "@/server/auth";
 import { createTRPCRouter, protectedProcedure } from "@/server/trpc";
 // A room cannot be archived out from under a booking, and only reservations
@@ -11,6 +10,7 @@ import { createTRPCRouter, protectedProcedure } from "@/server/trpc";
 import { GRID_HIDDEN_STATUSES, todayAt } from "@/features/reservations";
 import {
   archiveInventorySchema,
+  PropertyError,
   canArchiveRooms,
   canArchiveRoomTypes,
   canManageRooms,
@@ -52,10 +52,9 @@ async function assertOwned(db: Db, kind: "roomType" | "room", id: number, proper
       : await db.roomType.count({ where: { id, propertyId } });
 
   if (found === 0) {
-    throw new TRPCError({
-      code: "NOT_FOUND",
-      message: kind === "room" ? "Room not found" : "Room type not found",
-    });
+    throw kind === "room"
+      ? new NotFoundError(PropertyError.ROOM_NOT_FOUND, "Room not found")
+      : new NotFoundError(PropertyError.ROOM_TYPE_NOT_FOUND, "Room type not found");
   }
 }
 
@@ -66,7 +65,11 @@ async function assertCodeFree(db: Db, propertyId: number, code: string, exceptId
     select: { id: true },
   });
   if (clash) {
-    throw fieldError("code", "That code is already used in this property", "CONFLICT");
+    throw new ConflictError(
+      PropertyError.ROOM_TYPE_CODE_TAKEN,
+      "That code is already used in this property",
+      "code"
+    );
   }
 }
 
@@ -77,7 +80,11 @@ async function assertNumberFree(db: Db, propertyId: number, number: string, exce
     select: { id: true },
   });
   if (clash) {
-    throw fieldError("number", "That room number is already used", "CONFLICT");
+    throw new ConflictError(
+      PropertyError.ROOM_NUMBER_TAKEN,
+      "That room number is already used",
+      "number"
+    );
   }
 }
 
@@ -134,7 +141,7 @@ export const propertyRouter = createTRPCRouter({
       select: PROPERTY_ROUTE_SELECT,
     });
     if (!property) {
-      throw new TRPCError({ code: "NOT_FOUND", message: "Property not found" });
+      throw new NotFoundError(PropertyError.NOT_FOUND, "Property not found");
     }
     return property;
   }),
@@ -202,12 +209,15 @@ export const propertyRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const { user, role } = await requirePropertyMember(ctx, input.propertyId);
       if (!canManageRoomTypes(role)) {
-        throw new TRPCError({ code: "FORBIDDEN", message: "You cannot add room types" });
+        throw new ForbiddenError(
+          PropertyError.ROOM_TYPE_CREATE_FORBIDDEN,
+          "You cannot add room types"
+        );
       }
 
       const refusal = refuseOccupancy(input);
       if (refusal) {
-        throw fieldError("maxOccupancy", refusal, "BAD_REQUEST");
+        throw new InvalidError(PropertyError.ROOM_TYPE_OCCUPANCY_INVALID, refusal, "maxOccupancy");
       }
       await assertCodeFree(ctx.db, input.propertyId, input.code);
 
@@ -221,12 +231,15 @@ export const propertyRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const { user, role } = await requirePropertyMember(ctx, input.propertyId);
       if (!canManageRoomTypes(role)) {
-        throw new TRPCError({ code: "FORBIDDEN", message: "You cannot edit room types" });
+        throw new ForbiddenError(
+          PropertyError.ROOM_TYPE_UPDATE_FORBIDDEN,
+          "You cannot edit room types"
+        );
       }
 
       const refusal = refuseOccupancy(input);
       if (refusal) {
-        throw fieldError("maxOccupancy", refusal, "BAD_REQUEST");
+        throw new InvalidError(PropertyError.ROOM_TYPE_OCCUPANCY_INVALID, refusal, "maxOccupancy");
       }
 
       const { id, propertyId, ...data } = input;
@@ -246,7 +259,10 @@ export const propertyRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const { user, role } = await requirePropertyMember(ctx, input.propertyId);
       if (!canArchiveRoomTypes(role)) {
-        throw new TRPCError({ code: "FORBIDDEN", message: "You cannot archive room types" });
+        throw new ForbiddenError(
+          PropertyError.ROOM_TYPE_ARCHIVE_FORBIDDEN,
+          "You cannot archive room types"
+        );
       }
       await assertOwned(ctx.db, "roomType", input.id, input.propertyId);
 
@@ -255,10 +271,10 @@ export const propertyRouter = createTRPCRouter({
           where: { roomTypeId: input.id, archivedAt: null },
         });
         if (live > 0) {
-          throw fieldError(
-            "id",
+          throw new ConflictError(
+            PropertyError.ROOM_TYPE_HAS_ROOMS,
             `Archive the ${live} room${live === 1 ? "" : "s"} on this type first`,
-            "CONFLICT"
+            "id"
           );
         }
       }
@@ -272,7 +288,7 @@ export const propertyRouter = createTRPCRouter({
   createRoom: protectedProcedure.input(createRoomSchema).mutation(async ({ ctx, input }) => {
     const { user, role } = await requirePropertyMember(ctx, input.propertyId);
     if (!canManageRooms(role)) {
-      throw new TRPCError({ code: "FORBIDDEN", message: "You cannot add rooms" });
+      throw new ForbiddenError(PropertyError.ROOM_CREATE_FORBIDDEN, "You cannot add rooms");
     }
 
     await assertOwned(ctx.db, "roomType", input.roomTypeId, input.propertyId);
@@ -286,7 +302,7 @@ export const propertyRouter = createTRPCRouter({
   updateRoom: protectedProcedure.input(updateRoomSchema).mutation(async ({ ctx, input }) => {
     const { user, role } = await requirePropertyMember(ctx, input.propertyId);
     if (!canManageRooms(role)) {
-      throw new TRPCError({ code: "FORBIDDEN", message: "You cannot edit rooms" });
+      throw new ForbiddenError(PropertyError.ROOM_UPDATE_FORBIDDEN, "You cannot edit rooms");
     }
 
     const { id, propertyId, ...data } = input;
@@ -295,7 +311,7 @@ export const propertyRouter = createTRPCRouter({
       select: { id: true, roomTypeId: true },
     });
     if (!room) {
-      throw new TRPCError({ code: "NOT_FOUND", message: "Room not found" });
+      throw new NotFoundError(PropertyError.ROOM_NOT_FOUND, "Room not found");
     }
     await assertOwned(ctx.db, "roomType", data.roomTypeId, propertyId);
     await assertNumberFree(ctx.db, propertyId, data.number, id);
@@ -304,7 +320,11 @@ export const propertyRouter = createTRPCRouter({
     // retyping a room that is already sold would break that pairing after the
     // fact rather than at the assignment.
     if (data.roomTypeId !== room.roomTypeId && (await hasLiveStays(ctx.db, propertyId, id))) {
-      throw fieldError("roomTypeId", "That room has bookings on its current type", "CONFLICT");
+      throw new ConflictError(
+        PropertyError.ROOM_RETYPE_BLOCKED,
+        "That room has bookings on its current type",
+        "roomTypeId"
+      );
     }
 
     return ctx.db.room.update({ where: { id }, data: { ...data, updatedById: user.id } });
@@ -313,12 +333,16 @@ export const propertyRouter = createTRPCRouter({
   archiveRoom: protectedProcedure.input(archiveInventorySchema).mutation(async ({ ctx, input }) => {
     const { user, role } = await requirePropertyMember(ctx, input.propertyId);
     if (!canArchiveRooms(role)) {
-      throw new TRPCError({ code: "FORBIDDEN", message: "You cannot archive rooms" });
+      throw new ForbiddenError(PropertyError.ROOM_ARCHIVE_FORBIDDEN, "You cannot archive rooms");
     }
     await assertOwned(ctx.db, "room", input.id, input.propertyId);
 
     if (input.archived && (await hasLiveStays(ctx.db, input.propertyId, input.id))) {
-      throw fieldError("id", "That room has bookings that have not left yet", "CONFLICT");
+      throw new ConflictError(
+        PropertyError.ROOM_ARCHIVE_BLOCKED,
+        "That room has bookings that have not left yet",
+        "id"
+      );
     }
 
     return ctx.db.room.update({

@@ -80,7 +80,7 @@ export const OrganizationFormNiceDialog = NiceModal.create(
         toast.success("Organization created");
         await close();
       },
-      // A taken slug arrives from `fieldError("slug", …)` and lands under the
+      // A taken slug arrives as a `ConflictError` naming "slug", and lands under the
       // slug box; anything else lands on the form.
       onError: (e) => handleFormError(form, e),
     });

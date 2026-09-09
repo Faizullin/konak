@@ -31,7 +31,7 @@ export type AppError = {
   kind: AppErrorKind;
   /** Safe to display, always. */
   message: string;
-  /** Field name → messages. Zod's map and `fieldError()`'s single name both land here. */
+  /** Field name → messages. Zod's map and a `DomainError`'s single name both land here. */
   fieldErrors?: Record<string, string[]>;
   /** Messages belonging to the submission as a whole. */
   formErrors?: string[];
@@ -113,7 +113,7 @@ export function normalizeError(error: unknown): AppError {
         if (list.length) fieldErrors[name] = list;
       }
     }
-    // `fieldError()` names one field for a rule Zod cannot express, and the
+    // A `DomainError` names one field for a rule Zod cannot express, and the
     // message for it is the error's own.
     if (typeof data.field === "string" && data.field) {
       fieldErrors[data.field] = [...(fieldErrors[data.field] ?? []), message];

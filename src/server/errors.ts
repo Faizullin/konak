@@ -1,22 +1,32 @@
-import { TRPCError } from "@trpc/server";
-
 /**
- * Errors thrown from more than one place. A message with a single caller stays
- * inline at the throw; these earned a name by having two.
+ * Errors thrown from more than one place, and the classes the domain throws.
+ *
+ * A message with a single caller stays inline at the throw; the two helpers at
+ * the bottom earned a name by having more.
  *
  * Reached by `auth.ts`, which `auth:generate` loads through jiti — so no `@/`
  * aliases here.
  */
 
-/** The signed-in caller has no `User` row: deleted mid-session, usually. */
-export function userNotFound() {
-  return new TRPCError({ code: "NOT_FOUND", message: "User not found" });
-}
-
-/** No `OrganizationMember` row joins that user to that organization. */
-export function memberNotFound() {
-  return new TRPCError({ code: "NOT_FOUND", message: "Member not found" });
-}
+/**
+ * Codes for the refusals this file owns.
+ *
+ * Features declare their own in `model/`; these two cannot, because `auth.ts`
+ * reaches this file and `auth:generate` loads it through jiti, which does not
+ * read tsconfig `paths`. The values match the feature catalogues that mean the
+ * same thing — it is one fact about one row, whoever refused it.
+ */
+export const SharedError = {
+  USER_NOT_FOUND: "user.not_found",
+  MEMBER_NOT_FOUND: "member.not_found",
+  /** Signed in, and not a member of the organization asked about. */
+  ORG_NO_ACCESS: "organization.no_access",
+  ORG_MANAGER_REQUIRED: "organization.manager_required",
+  ORG_OWNER_REQUIRED: "organization.owner_required",
+  /** No session at all. The client redirects rather than showing this. */
+  NOT_SIGNED_IN: "auth.not_signed_in",
+  ADMIN_REQUIRED: "auth.admin_required",
+} as const;
 
 /**
  * Carries a field name on the error's `cause`; `errorFormatter` copies it onto
@@ -95,6 +105,14 @@ export class InvalidError extends DomainError {
   }
 }
 
+/** No session. The client redirects on this rather than showing the message. */
+export class UnauthorizedError extends DomainError {
+  constructor(code: string, message: string) {
+    super("UNAUTHORIZED", code, message);
+    this.name = "UnauthorizedError";
+  }
+}
+
 /** Something that must exist first does not — a number series, a configuration. */
 export class PreconditionError extends DomainError {
   constructor(code: string, message: string, field?: string) {
@@ -103,11 +121,12 @@ export class PreconditionError extends DomainError {
   }
 }
 
-/** A `TRPCError` the client can render under `field`. */
-export function fieldError(
-  field: string,
-  message: string,
-  code: "BAD_REQUEST" | "CONFLICT" | "NOT_FOUND" = "BAD_REQUEST"
-) {
-  return new TRPCError({ code, message, cause: new FieldErrorCause(field) });
+/** The signed-in caller has no `User` row: deleted mid-session, usually. */
+export function userNotFound() {
+  return new NotFoundError(SharedError.USER_NOT_FOUND, "User not found");
+}
+
+/** No `OrganizationMember` row joins that user to that organization. */
+export function memberNotFound() {
+  return new NotFoundError(SharedError.MEMBER_NOT_FOUND, "Member not found");
 }

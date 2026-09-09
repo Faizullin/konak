@@ -1,12 +1,12 @@
 import "server-only";
-import { TRPCError } from "@trpc/server";
 import prisma from "@/server/db";
-import { fieldError } from "@/server/errors";
+import { ConflictError, ForbiddenError, InvalidError, NotFoundError } from "@/server/errors";
 import { createTRPCRouter, protectedProcedure } from "@/server/trpc";
 import { requirePropertyMember } from "@/features/properties/server";
 import { nightsOf, toStayDate } from "@/features/reservations";
 import {
   archiveRatePlanSchema,
+  RateError,
   canArchiveRatePlans,
   canManageRatePlans,
   canSetRates,
@@ -40,7 +40,7 @@ type Db = typeof prisma;
 async function assertPlanOwned(db: Db, id: number, propertyId: number) {
   const found = await db.ratePlan.count({ where: { id, propertyId } });
   if (found === 0) {
-    throw new TRPCError({ code: "NOT_FOUND", message: "Rate plan not found" });
+    throw new NotFoundError(RateError.PLAN_NOT_FOUND, "Rate plan not found");
   }
 }
 
@@ -51,7 +51,11 @@ async function assertPlanCodeFree(db: Db, propertyId: number, code: string, exce
     select: { id: true },
   });
   if (clash) {
-    throw fieldError("code", "That code is already used in this property", "CONFLICT");
+    throw new ConflictError(
+      RateError.PLAN_CODE_TAKEN,
+      "That code is already used in this property",
+      "code"
+    );
   }
 }
 
@@ -71,7 +75,7 @@ async function assertPlanShape(
 ) {
   const refusal = refuseCancellationTerms(plan);
   if (refusal) {
-    throw fieldError("cancellationCutoffHours", refusal, "BAD_REQUEST");
+    throw new InvalidError(RateError.PLAN_TERMS_INVALID, refusal, "cancellationCutoffHours");
   }
 
   if (plan.roomTypeId !== null) {
@@ -79,7 +83,10 @@ async function assertPlanShape(
       where: { id: plan.roomTypeId, propertyId: plan.propertyId },
     });
     if (found === 0) {
-      throw fieldError("roomTypeId", "That room type is not in this property", "NOT_FOUND");
+      throw new NotFoundError(
+        RateError.PLAN_ROOM_TYPE_MISMATCH,
+        "That room type is not in this property"
+      );
     }
   }
 }
@@ -119,12 +126,16 @@ export const rateRouter = createTRPCRouter({
   setRates: protectedProcedure.input(setRatesSchema).mutation(async ({ ctx, input }) => {
     const { role } = await requirePropertyMember(ctx, input.propertyId);
     if (!canSetRates(role)) {
-      throw new TRPCError({ code: "FORBIDDEN", message: "You cannot change prices" });
+      throw new ForbiddenError(RateError.PRICES_FORBIDDEN, "You cannot change prices");
     }
 
     const days = nightsOf({ checkIn: toStayDate(input.from), checkOut: toStayDate(input.to) });
     if (days.length === 0) {
-      throw fieldError("to", "The range must cover at least one day", "BAD_REQUEST");
+      throw new InvalidError(
+        RateError.RANGE_INVALID,
+        "The range must cover at least one day",
+        "to"
+      );
     }
 
     const plan = await ctx.db.ratePlan.findFirst({
@@ -132,7 +143,7 @@ export const rateRouter = createTRPCRouter({
       select: { id: true },
     });
     if (!plan) {
-      throw new TRPCError({ code: "NOT_FOUND", message: "Rate plan not found" });
+      throw new NotFoundError(RateError.PLAN_NOT_FOUND, "Rate plan not found");
     }
 
     // Replace the range rather than upserting a row at a time: a season is
@@ -165,12 +176,19 @@ export const rateRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const { role } = await requirePropertyMember(ctx, input.propertyId);
       if (!canSetRates(role)) {
-        throw new TRPCError({ code: "FORBIDDEN", message: "You cannot change restrictions" });
+        throw new ForbiddenError(
+          RateError.RESTRICTIONS_FORBIDDEN,
+          "You cannot change restrictions"
+        );
       }
 
       const days = nightsOf({ checkIn: toStayDate(input.from), checkOut: toStayDate(input.to) });
       if (days.length === 0) {
-        throw fieldError("to", "The range must cover at least one day", "BAD_REQUEST");
+        throw new InvalidError(
+          RateError.RANGE_INVALID,
+          "The range must cover at least one day",
+          "to"
+        );
       }
 
       const values = {
@@ -233,7 +251,7 @@ export const rateRouter = createTRPCRouter({
   createPlan: protectedProcedure.input(createRatePlanSchema).mutation(async ({ ctx, input }) => {
     const { user, role } = await requirePropertyMember(ctx, input.propertyId);
     if (!canManageRatePlans(role)) {
-      throw new TRPCError({ code: "FORBIDDEN", message: "You cannot add rate plans" });
+      throw new ForbiddenError(RateError.PLAN_CREATE_FORBIDDEN, "You cannot add rate plans");
     }
     await assertPlanShape(ctx.db, input);
     await assertPlanCodeFree(ctx.db, input.propertyId, input.code);
@@ -246,7 +264,7 @@ export const rateRouter = createTRPCRouter({
   updatePlan: protectedProcedure.input(updateRatePlanSchema).mutation(async ({ ctx, input }) => {
     const { user, role } = await requirePropertyMember(ctx, input.propertyId);
     if (!canManageRatePlans(role)) {
-      throw new TRPCError({ code: "FORBIDDEN", message: "You cannot edit rate plans" });
+      throw new ForbiddenError(RateError.PLAN_UPDATE_FORBIDDEN, "You cannot edit rate plans");
     }
 
     const { id, propertyId, ...data } = input;
@@ -265,7 +283,7 @@ export const rateRouter = createTRPCRouter({
   archivePlan: protectedProcedure.input(archiveRatePlanSchema).mutation(async ({ ctx, input }) => {
     const { user, role } = await requirePropertyMember(ctx, input.propertyId);
     if (!canArchiveRatePlans(role)) {
-      throw new TRPCError({ code: "FORBIDDEN", message: "You cannot archive rate plans" });
+      throw new ForbiddenError(RateError.PLAN_ARCHIVE_FORBIDDEN, "You cannot archive rate plans");
     }
     await assertPlanOwned(ctx.db, input.id, input.propertyId);
 

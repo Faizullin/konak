@@ -1,13 +1,13 @@
 import "server-only";
-import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import type { Prisma } from "@/generated/prisma/client";
 import { requireUser } from "@/server/auth";
-import { userNotFound } from "@/server/errors";
+import { InvalidError, userNotFound } from "@/server/errors";
 import { adminProcedure, createTRPCRouter, protectedProcedure } from "@/server/trpc";
 import {
   UserRole,
   couldRemoveLastAdmin,
+  IdentityError,
   isLastAdmin,
   listUsersInputSchema,
   updateProfileInputSchema,
@@ -90,10 +90,7 @@ export const userRouter = createTRPCRouter({
           where: { role: UserRole.ADMIN, id: { not: input.id } },
         });
         if (isLastAdmin(otherAdminCount)) {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: "Cannot demote the last admin",
-          });
+          throw new InvalidError(IdentityError.LAST_ADMIN, "Cannot demote the last admin");
         }
       }
 

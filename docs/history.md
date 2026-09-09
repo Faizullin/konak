@@ -720,3 +720,46 @@ carries no code, so converting it is the same sweep.
 Also: `todo.md` said forty-four `TRPCError` sites. There were sixty-two.
 
 140 unit tests, 114 integration.
+
+## 2026-09-09 — every refusal has a code now
+
+The sweep the previous entry left for later. All six remaining features are
+converted, and two things happened on the way that were not planned.
+
+**Seventy-seven codes across eight catalogues** — one per feature in `model/`,
+plus `SharedError` in `server/errors.ts` for the refusals `auth.ts` throws,
+which cannot live in a feature because jiti loads that file without tsconfig
+`paths`.
+
+**There is now exactly one `new TRPCError` in the tree**, in `mapDomainErrors`.
+That was not the goal and is the better outcome: the framework guards in
+`auth.ts` and `trpc.ts` were the last transport errors thrown by hand, and they
+are user-visible English like everything else.
+
+**`fieldError` and `FieldErrorCause` are gone.** Once every caller threw a
+`DomainError` carrying its own field, they were a second channel for a job with
+one occupant. Two client components still carried comments naming
+`fieldError("slug", …)`; a comment describing a function that no longer exists
+is worse than no comment.
+
+### What the failing tests were actually telling us
+
+Two directory tests broke, and they were right to. They call `requireOrgModule`
+**directly** — no procedure, so no boundary — and asserted it threw a
+`TRPCError`. It now throws a `ForbiddenError`, because the domain does not know
+about tRPC and should not.
+
+That is a real behaviour change, not a test detail: any service called from a
+Server Component now throws the domain's class. Nothing in `app/` depended on
+the old shape — pages use `organizationBySlug`, which returns `null` — but it
+had to be checked rather than assumed.
+
+`domainCodeOf` in the harness now reads the code from either shape, so a test
+asserts on the rule rather than on which side of the boundary it caught it.
+
+**The proof is still the tests that did not change.** 114 integration tests
+assert on tRPC codes through the new mapping and pass unchanged; the two that
+failed were asserting on the *pre*-boundary shape, which is the one thing the
+change was always going to move.
+
+140 unit tests, 114 integration.

@@ -298,12 +298,12 @@ rules the suffix implies.
 
 ## Errors
 
-`src/server/errors.ts` holds the `TRPCError`s thrown from more than one place —
-`userNotFound()` and `memberNotFound()` today. Everything else spells its
-`{ code, message }` out at the throw, and should: a message with a single
-caller reads better next to the condition that raises it than it does behind a
-name. Each helper *returns* the error rather than throwing it, so `throw` stays
-visible at the call site.
+`src/server/errors.ts` holds the error classes, plus the two refusals thrown
+from more than one place — `userNotFound()` and `memberNotFound()`. Everything
+else spells its code and message out at the throw, and should: a message with a
+single caller reads better next to the condition that raises it than it does
+behind a name. Each helper *returns* the error rather than throwing it, so
+`throw` stays visible at the call site.
 
 The threshold is the **third caller, not the second**. Two copies are a
 coincidence; three are a pattern, and only then does the wrapper pay for its
@@ -336,11 +336,16 @@ is the worked example. Not in `errors.ts`: that file is reached by `auth.ts` and
 may not import from `features/`, and a code in `model/` is also readable by the
 client that has to recognise it.
 
-`fieldError(field, message, code)` marks an error as belonging to one input.
-`errorFormatter` in `trpc.ts` copies the name onto `data.field`, and the client
-half — `src/lib/errors.ts` — turns it into an error under that field. That is
-the only way a rule needing the database ("that slug is taken") can render
-where a schema failure would.
+A `ConflictError` or `InvalidError` given a third argument marks the failure as
+belonging to one input. `errorFormatter` copies that name onto `data.field`, and
+the client half — `src/lib/errors.ts` — turns it into an error under that field.
+That is the only way a rule needing the database ("that slug is taken") can
+render where a schema failure would.
+
+**There is exactly one `new TRPCError` in the tree**, in `mapDomainErrors`.
+Anything else that refuses throws a `DomainError`, which also means a service
+called outside a procedure — from a Server Component, say — throws the domain's
+own class rather than a transport error it has no business knowing about.
 
 `errors.ts` must not import from `features/`. `auth.ts` reaches it, and
 `npm run auth:generate` loads `auth.ts` through jiti, which does not read

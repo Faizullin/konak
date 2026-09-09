@@ -23,11 +23,17 @@ export type TestUser = { id: string; email: string; name: string; role: string }
 /**
  * The stable half of a refusal, for a test that should not assert on prose.
  *
- * A procedure throws a `DomainError`; the boundary middleware wraps it in a
- * `TRPCError` and keeps it as `cause`. Over HTTP the same value arrives as
- * `data.domainCode`, so a test and a screen recognise the same refusal.
+ * A refusal has two shapes depending on where it is caught. Through a procedure
+ * it is a `TRPCError` with the `DomainError` as its `cause` — the boundary
+ * middleware did that, and over HTTP the same value arrives as
+ * `data.domainCode`. Called directly, a service throws the `DomainError`
+ * itself, because the domain does not know about tRPC.
+ *
+ * This reads the code from either, so a test asserts on the rule rather than on
+ * which side of the boundary it happened to catch it.
  */
 export function domainCodeOf(error: unknown): string | null {
+  if (error instanceof DomainError) return error.code;
   const cause = error instanceof TRPCError ? error.cause : null;
   return cause instanceof DomainError ? cause.code : null;
 }

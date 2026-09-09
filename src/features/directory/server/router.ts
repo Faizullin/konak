@@ -1,10 +1,9 @@
 import "server-only";
-import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import type { Prisma } from "@/generated/prisma/client";
 import { requireOrgMember } from "@/server/auth";
 import { requireOrgModule } from "@/features/organizations/server";
-import { fieldError } from "@/server/errors";
+import { ConflictError, ForbiddenError, NotFoundError } from "@/server/errors";
 import { createTRPCRouter, protectedProcedure } from "@/server/trpc";
 import {
   blankToNull,
@@ -14,6 +13,7 @@ import {
   canReadDirectory,
   createCompanySchema,
   createPersonSchema,
+  DirectoryError,
   linkPersonSchema,
   listCompaniesSchema,
   listPeopleSchema,
@@ -55,7 +55,7 @@ export const directoryRouter = createTRPCRouter({
     const { role } = await requireOrgMember(ctx, input.organizationId);
     await requireOrgModule(input.organizationId, "DIRECTORY");
     if (!canReadDirectory(role)) {
-      throw new TRPCError({ code: "FORBIDDEN", message: "No access to the directory" });
+      throw new ForbiddenError(DirectoryError.NO_ACCESS, "No access to the directory");
     }
 
     const { filter, orderBy, pagination } = input;
@@ -94,7 +94,7 @@ export const directoryRouter = createTRPCRouter({
       const { role } = await requireOrgMember(ctx, input.organizationId);
       await requireOrgModule(input.organizationId, "DIRECTORY");
       if (!canReadDirectory(role)) {
-        throw new TRPCError({ code: "FORBIDDEN", message: "No access to the directory" });
+        throw new ForbiddenError(DirectoryError.NO_ACCESS, "No access to the directory");
       }
 
       // The organization is part of the lookup, not checked after it: a row
@@ -104,7 +104,7 @@ export const directoryRouter = createTRPCRouter({
         include: { address: true, companies: { include: { company: true } } },
       });
       if (!person) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Person not found" });
+        throw new NotFoundError(DirectoryError.PERSON_NOT_FOUND, "Person not found");
       }
       return person;
     }),
@@ -113,7 +113,7 @@ export const directoryRouter = createTRPCRouter({
     const { user, role } = await requireOrgMember(ctx, input.organizationId);
     await requireOrgModule(input.organizationId, "DIRECTORY");
     if (!canManagePeople(role)) {
-      throw new TRPCError({ code: "FORBIDDEN", message: "You cannot add people" });
+      throw new ForbiddenError(DirectoryError.PERSON_CREATE_FORBIDDEN, "You cannot add people");
     }
 
     const email = normalizeEmail(input.email);
@@ -123,10 +123,10 @@ export const directoryRouter = createTRPCRouter({
         select: { id: true },
       });
       if (existing) {
-        throw fieldError(
-          "email",
+        throw new ConflictError(
+          DirectoryError.PERSON_EMAIL_TAKEN,
           "Someone with that email is already in the directory",
-          "CONFLICT"
+          "email"
         );
       }
     }
@@ -153,7 +153,7 @@ export const directoryRouter = createTRPCRouter({
       const { user, role } = await requireOrgMember(ctx, input.organizationId);
       await requireOrgModule(input.organizationId, "DIRECTORY");
       if (!canManagePeople(role)) {
-        throw new TRPCError({ code: "FORBIDDEN", message: "You cannot edit people" });
+        throw new ForbiddenError(DirectoryError.PERSON_UPDATE_FORBIDDEN, "You cannot edit people");
       }
 
       const person = await ctx.db.person.findFirst({
@@ -161,7 +161,7 @@ export const directoryRouter = createTRPCRouter({
         select: { id: true },
       });
       if (!person) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Person not found" });
+        throw new NotFoundError(DirectoryError.PERSON_NOT_FOUND, "Person not found");
       }
 
       const email = input.email === undefined ? undefined : normalizeEmail(input.email);
@@ -171,7 +171,11 @@ export const directoryRouter = createTRPCRouter({
           select: { id: true },
         });
         if (clash) {
-          throw fieldError("email", "Someone else already uses that email", "CONFLICT");
+          throw new ConflictError(
+            DirectoryError.PERSON_EMAIL_TAKEN,
+            "Someone else already uses that email",
+            "email"
+          );
         }
       }
 
@@ -195,7 +199,10 @@ export const directoryRouter = createTRPCRouter({
       const { user, role } = await requireOrgMember(ctx, input.organizationId);
       await requireOrgModule(input.organizationId, "DIRECTORY");
       if (!canArchivePeople(role)) {
-        throw new TRPCError({ code: "FORBIDDEN", message: "Only managers can archive people" });
+        throw new ForbiddenError(
+          DirectoryError.PERSON_ARCHIVE_FORBIDDEN,
+          "Only managers can archive people"
+        );
       }
 
       const person = await ctx.db.person.findFirst({
@@ -203,7 +210,7 @@ export const directoryRouter = createTRPCRouter({
         select: { id: true },
       });
       if (!person) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Person not found" });
+        throw new NotFoundError(DirectoryError.PERSON_NOT_FOUND, "Person not found");
       }
 
       return ctx.db.person.update({
@@ -216,7 +223,7 @@ export const directoryRouter = createTRPCRouter({
     const { role } = await requireOrgMember(ctx, input.organizationId);
     await requireOrgModule(input.organizationId, "DIRECTORY");
     if (!canReadDirectory(role)) {
-      throw new TRPCError({ code: "FORBIDDEN", message: "No access to the directory" });
+      throw new ForbiddenError(DirectoryError.NO_ACCESS, "No access to the directory");
     }
 
     const { filter, orderBy, pagination } = input;
@@ -244,7 +251,7 @@ export const directoryRouter = createTRPCRouter({
     const { user, role } = await requireOrgMember(ctx, input.organizationId);
     await requireOrgModule(input.organizationId, "DIRECTORY");
     if (!canManageCompanies(role)) {
-      throw new TRPCError({ code: "FORBIDDEN", message: "You cannot add companies" });
+      throw new ForbiddenError(DirectoryError.COMPANY_CREATE_FORBIDDEN, "You cannot add companies");
     }
 
     const taxId = blankToNull(input.taxId);
@@ -254,7 +261,11 @@ export const directoryRouter = createTRPCRouter({
         select: { id: true },
       });
       if (existing) {
-        throw fieldError("taxId", "A company with that tax id already exists", "CONFLICT");
+        throw new ConflictError(
+          DirectoryError.COMPANY_TAX_ID_TAKEN,
+          "A company with that tax id already exists",
+          "taxId"
+        );
       }
     }
 
@@ -281,7 +292,10 @@ export const directoryRouter = createTRPCRouter({
       const { user, role } = await requireOrgMember(ctx, input.organizationId);
       await requireOrgModule(input.organizationId, "DIRECTORY");
       if (!canManageCompanies(role)) {
-        throw new TRPCError({ code: "FORBIDDEN", message: "You cannot edit companies" });
+        throw new ForbiddenError(
+          DirectoryError.COMPANY_UPDATE_FORBIDDEN,
+          "You cannot edit companies"
+        );
       }
 
       const company = await ctx.db.company.findFirst({
@@ -289,7 +303,7 @@ export const directoryRouter = createTRPCRouter({
         select: { id: true },
       });
       if (!company) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Company not found" });
+        throw new NotFoundError(DirectoryError.COMPANY_NOT_FOUND, "Company not found");
       }
 
       return ctx.db.company.update({
@@ -312,7 +326,10 @@ export const directoryRouter = createTRPCRouter({
       const { role } = await requireOrgMember(ctx, input.organizationId);
       await requireOrgModule(input.organizationId, "DIRECTORY");
       if (!canManagePeople(role)) {
-        throw new TRPCError({ code: "FORBIDDEN", message: "You cannot change directory links" });
+        throw new ForbiddenError(
+          DirectoryError.LINK_FORBIDDEN,
+          "You cannot change directory links"
+        );
       }
 
       // Both sides are checked against the caller's organization: without this
@@ -328,7 +345,10 @@ export const directoryRouter = createTRPCRouter({
         }),
       ]);
       if (!person || !company) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Person or company not found" });
+        throw new NotFoundError(
+          DirectoryError.LINK_SUBJECT_NOT_FOUND,
+          "Person or company not found"
+        );
       }
 
       return ctx.db.personCompany.upsert({

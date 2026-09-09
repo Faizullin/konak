@@ -45,7 +45,7 @@ export function PersonFormDialog({
       await utils.directory.listPeople.invalidate();
       onOpenChange(false);
     },
-    // A duplicate email arrives from `fieldError("email", …)` and lands under
+    // A duplicate email arrives as a `ConflictError` naming "email", and lands under
     // the email box; anything else lands on the form.
     onError: (e) => handleFormError(form, e),
   });

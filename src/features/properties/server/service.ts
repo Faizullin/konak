@@ -1,6 +1,7 @@
 import "server-only";
-import { TRPCError } from "@trpc/server";
+import { NotFoundError } from "@/server/errors";
 import { requireOrgMember, type AuthedContext } from "@/server/auth";
+import { PropertyError } from "../model";
 
 /**
  * Properties — the guard every property-scoped procedure starts with.
@@ -22,7 +23,7 @@ export async function requirePropertyMember(ctx: AuthedContext, propertyId: numb
     select: { id: true, organizationId: true },
   });
   if (!property) {
-    throw new TRPCError({ code: "NOT_FOUND", message: "Property not found" });
+    throw new NotFoundError(PropertyError.NOT_FOUND, "Property not found");
   }
 
   const member = await requireOrgMember(ctx, property.organizationId);

@@ -1,13 +1,13 @@
 import "server-only";
-import { TRPCError } from "@trpc/server";
 import { requireOrgMember } from "@/server/auth";
 import { newStorageKey } from "../model";
-import { fieldError } from "@/server/errors";
+import { ConflictError, InvalidError, NotFoundError } from "@/server/errors";
 import { createTRPCRouter, protectedProcedure } from "@/server/trpc";
 import prisma from "@/server/db";
 import {
   createActivitySchema,
   createAttachmentSchema,
+  PlatformError,
   listAttachmentsSchema,
   createTagSchema,
   hasExactlyOneSubject,
@@ -28,10 +28,10 @@ import {
 /** Every subject must belong to the caller's organization; a stray id is a leak. */
 async function assertSubjectInOrg(organizationId: number, ref: SubjectRef) {
   if (!hasExactlyOneSubject(ref)) {
-    throw fieldError(
-      "personId",
+    throw new InvalidError(
+      PlatformError.SUBJECT_AMBIGUOUS,
       "Attach this to exactly one person, company or property",
-      "BAD_REQUEST"
+      "personId"
     );
   }
 
@@ -44,7 +44,7 @@ async function assertSubjectInOrg(organizationId: number, ref: SubjectRef) {
         : await prisma.property.findFirst({ where: { id: subject.id, organizationId } });
 
   if (!found) {
-    throw new TRPCError({ code: "NOT_FOUND", message: "That subject was not found" });
+    throw new NotFoundError(PlatformError.SUBJECT_NOT_FOUND, "That subject was not found");
   }
   return subject;
 }
@@ -160,7 +160,7 @@ export const platformRouter = createTRPCRouter({
       select: { id: true },
     });
     if (existing) {
-      throw fieldError("name", "That tag already exists", "CONFLICT");
+      throw new ConflictError(PlatformError.TAG_NAME_TAKEN, "That tag already exists", "name");
     }
 
     return ctx.db.tag.create({
@@ -181,7 +181,7 @@ export const platformRouter = createTRPCRouter({
       select: { id: true },
     });
     if (!tag) {
-      throw new TRPCError({ code: "NOT_FOUND", message: "Tag not found" });
+      throw new NotFoundError(PlatformError.TAG_NOT_FOUND, "Tag not found");
     }
 
     const already = await ctx.db.entityTag.findFirst({
