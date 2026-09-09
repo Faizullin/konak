@@ -10,6 +10,7 @@ import {
   memberNotFound,
 } from "@/server/errors";
 import { createTRPCRouter, protectedProcedure } from "@/server/trpc";
+import { enqueueStorageRemoval } from "@/features/platform/server";
 import {
   OrgRole,
   OrganizationError,
@@ -208,8 +209,19 @@ export const organizationRouter = createTRPCRouter({
     .input(z.object({ id: z.number() }))
     .mutation(async ({ ctx, input }) => {
       await requireOrgOwner(ctx, input.id);
-      // Members cascade — see `onDelete: Cascade` in organizations.prisma.
-      return ctx.db.organization.delete({ where: { id: input.id } });
+
+      return ctx.db.$transaction(async (tx) => {
+        // Rows cascade — `onDelete: Cascade` in organizations.prisma — but bytes
+        // do not, and afterwards nothing knows the keys. Filed first, and with a
+        // null organizationId; `enqueueStorageRemoval` says why.
+        const attachments = await tx.attachment.findMany({
+          where: { organizationId: input.id },
+          select: { id: true, storageKey: true, provider: true, providerId: true },
+        });
+        await enqueueStorageRemoval(tx, attachments);
+
+        return tx.organization.delete({ where: { id: input.id } });
+      });
     }),
 
   listMembers: protectedProcedure

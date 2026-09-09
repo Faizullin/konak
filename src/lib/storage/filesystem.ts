@@ -1,11 +1,14 @@
+import "server-only";
+import { mkdir, open, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { dirname, resolve, sep } from "node:path";
 import {
-  StorageNotImplementedError,
   StorageProvider,
   type StorageCapabilities,
   type StorageObject,
   type UploadLimits,
   type UploadTicket,
 } from "./provider";
+import { SNIFF_BYTES, sniffMimeType } from "./sniff";
 
 /**
  * A directory on disk. The development default, and a sound answer for a
@@ -41,40 +44,90 @@ export class FilesystemStorage extends StorageProvider {
   }
 
   /**
-   * `mkdir` the key's directory, then `writeFile`. The key is checked against
-   * `isUnguessableStorageKey` by the caller, and resolved against `root` with a
-   * prefix assertion here — a key containing `..` must not escape the root,
-   * whatever validated it upstream.
+   * A key is untrusted input all the way down here, whatever validated it
+   * upstream. `resolve` collapses `..`, so comparing the result against the
+   * root is what actually stops an escape — checking the key for `..` first
+   * would not, because encodings differ.
    */
-  put(_key: string, _body: Buffer, _meta: { mimeType: string }): Promise<StorageObject> {
-    throw new StorageNotImplementedError(this.name, "put");
+  private pathFor(key: string): string {
+    const full = resolve(this.config.root, key);
+    if (!full.startsWith(this.config.root + sep)) {
+      throw new Error(`storage key escapes the root: ${key}`);
+    }
+    return full;
+  }
+
+  async put(key: string, body: Buffer, meta: { mimeType: string }): Promise<StorageObject> {
+    const path = this.pathFor(key);
+    await mkdir(dirname(path), { recursive: true });
+    await writeFile(path, body);
+
+    // Sniffed, not echoed. A provider reporting back what it was told is the
+    // hole `confirmUpload` exists to close, and this one can read the bytes.
+    return {
+      providerId: key,
+      sizeBytes: body.byteLength,
+      mimeType: sniffMimeType(body.subarray(0, SNIFF_BYTES)) ?? meta.mimeType,
+    };
   }
 
   /** Always `null`. There is no address a browser could post to but ours. */
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- no direct upload, by nature
   async ticket(_key: string, _limits: UploadLimits): Promise<UploadTicket | null> {
     return null;
   }
 
-  /**
-   * `stat()` for the size. The mime type is not on disk, so it comes from the
-   * row — the one place this provider cannot observe what it stores, and worth
-   * knowing before choosing it for anything a stranger uploads.
-   */
-  stat(_providerId: string): Promise<StorageObject | null> {
-    throw new StorageNotImplementedError(this.name, "stat");
+  async stat(providerId: string): Promise<StorageObject | null> {
+    const path = this.pathFor(providerId);
+
+    let size: number;
+    try {
+      const info = await stat(path);
+      if (!info.isFile()) return null;
+      size = info.size;
+    } catch (error) {
+      // Only "it is not there" is an answer. Anything else — a permission
+      // problem, a full disk — must not read as an absent file.
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+      throw error;
+    }
+
+    const head = Buffer.alloc(SNIFF_BYTES);
+    const handle = await open(path, "r");
+    try {
+      await handle.read(head, 0, SNIFF_BYTES, 0);
+    } finally {
+      await handle.close();
+    }
+
+    return {
+      providerId,
+      sizeBytes: size,
+      mimeType: sniffMimeType(head) ?? "application/octet-stream",
+    };
   }
 
   /**
-   * `${servePath}/${providerId}`, which is a route handler and not a file URL.
-   * It does not expire; the check happens per request instead, which is
-   * stricter than a TTL — access revoked at noon stops working at noon.
+   * Our own route, not a file URL. It does not expire; the membership check
+   * happens per request instead, which is stricter than a TTL — access revoked
+   * at noon stops working at noon.
    */
-  url(_providerId: string, _ttlSeconds: number): Promise<string> {
-    throw new StorageNotImplementedError(this.name, "url");
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- nothing expires; see `capabilities`
+  async url(providerId: string, _ttlSeconds: number): Promise<string> {
+    return `${this.config.servePath}/${providerId}`;
   }
 
-  /** `rm` with `force`, so removing a file that is already gone is not an error. */
-  remove(_providerId: string): Promise<void> {
-    throw new StorageNotImplementedError(this.name, "remove");
+  async read(providerId: string): Promise<Buffer | null> {
+    try {
+      return await readFile(this.pathFor(providerId));
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+      throw error;
+    }
+  }
+
+  /** `force`, so removing a file that is already gone is not an error — the sweeper retries. */
+  async remove(providerId: string): Promise<void> {
+    await rm(this.pathFor(providerId), { force: true });
   }
 }

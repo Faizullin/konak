@@ -81,18 +81,35 @@ model EntityTag {
 // `revokedAt` withdrawal, `expiresAt` when it must be purged. Withdrawal hides
 // the file without deleting the record that it existed.
 model Attachment {
-  id             Int       @id @default(autoincrement())
+  id             Int     @id @default(autoincrement())
   organizationId Int
-  kind           String    @default("FILE") // FILE, CONSENT, IDENTITY_DOCUMENT, CONTRACT
+  kind           String  @default("FILE") // FILE, CONSENT, IDENTITY_DOCUMENT, CONTRACT
   fileName       String
   storageKey     String
   mimeType       String?
   sizeBytes      Int?
-  signedAt       DateTime?
-  revokedAt      DateTime?
-  expiresAt      DateTime?
-  uploadedById   String?
-  createdAt      DateTime  @default(now())
+
+  // The upload lifecycle. A row is PENDING from the moment a ticket is issued
+  // and READY only once storage has been asked what it actually holds — which
+  // is why `sizeBytes` and `mimeType` above are nullable and worthless until
+  // then. Bytes can exist without a READY row; a READY row without bytes cannot.
+  status        String    @default("PENDING") // PENDING, READY
+  provider      String? // which storage holds the bytes
+  providerId    String? // its own name for them, which is not always storageKey
+  // What an unconfirmed row costs the quota. The caller's claim, replaced by
+  // the observed size at confirmation and released when swept — otherwise a
+  // thousand tickets nobody uses would each cost nothing until it was too late.
+  reservedBytes Int       @default(0)
+  // When the reservation lapses. The same shape as `InventoryHold.releaseAt`,
+  // and swept by the same kind of pass.
+  releaseAt     DateTime?
+  uploadedAt    DateTime?
+
+  signedAt     DateTime?
+  revokedAt    DateTime?
+  expiresAt    DateTime?
+  uploadedById String?
+  createdAt    DateTime  @default(now())
 
   personId   Int?
   companyId  Int?
@@ -104,9 +121,16 @@ model Attachment {
   property          Property?          @relation(fields: [propertyId], references: [id], onDelete: Cascade)
   identityDocuments IdentityDocument[]
 
+  // The read and write routes address a file by this key, so it is looked up
+  // on every request — and unique because two rows sharing one object would
+  // mean deleting either deletes both.
+  @@unique([storageKey])
   @@index([organizationId, kind])
+  @@index([organizationId, status])
   @@index([personId])
   @@index([expiresAt])
+  // The sweeper's predicate: unconfirmed rows whose window has passed.
+  @@index([status, releaseAt])
   @@map("attachments")
 }
 

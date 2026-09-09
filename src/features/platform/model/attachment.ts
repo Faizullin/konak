@@ -1,18 +1,13 @@
+import { z } from "zod";
 import type { StorageCapabilities } from "@/lib/storage/provider";
 import type { Refused } from "@/lib/refusal";
 import { PlatformError } from "./errors";
-import { ATTACHMENT_KINDS } from "./schemas";
+import { ATTACHMENT_KINDS, subjectInputSchema } from "./schemas";
 
 /**
- * What a kind of file needs of wherever it is stored.
- *
- * The storage adapters are in `lib/`, which may not import a feature — so the
- * capabilities are declared there and this, the domain half, is here. A
- * provider says what it *can* do; this says what a passport scan *requires*;
- * `refuseProviderForKind` is the only place the two meet.
- *
- * The point is that a misconfiguration is a boot failure with a sentence rather
- * than an identity document quietly sitting on a public CDN.
+ * What a kind of file needs of wherever it is stored. Here rather than in
+ * `lib/storage` because `lib/` may not import a feature, and asked at startup
+ * so a misconfiguration is a sentence, not a passport scan on a public CDN.
  */
 export type AttachmentKind = (typeof ATTACHMENT_KINDS)[number];
 
@@ -22,19 +17,19 @@ export const KIND_REQUIRES: Record<AttachmentKind, Partial<StorageCapabilities>>
   CONSENT: { privateObjects: true },
   CONTRACT: { privateObjects: true },
   /**
-   * `signedReads` as well as privacy: a passport scan is shown to a receptionist
-   * through a URL that stops working, never one that can be pasted into a chat.
+   * Privacy, and only privacy. An earlier version of this also demanded
+   * `signedReads`, which refused the filesystem — the provider that serves
+   * nothing publicly and checks membership on every single read. That is
+   * *stricter* than an expiring link, not weaker. How a private object reaches
+   * a browser is the provider's business; that it is private is ours.
    */
-  IDENTITY_DOCUMENT: { privateObjects: true, signedReads: true },
+  IDENTITY_DOCUMENT: { privateObjects: true },
 };
 
 /**
- * Whether this provider may hold this kind. Pure, so the same answer serves the
- * startup check and a test.
- *
- * Refuses on the first capability that falls short, naming it — a message that
- * says which flag is wrong is the difference between a five-minute fix and an
- * afternoon.
+ * One question, deliberately: can a stranger with the URL open it. Who signs
+ * and who does direct upload are matters of *how*, and a rule that confuses
+ * them with *may* refuses the wrong providers.
  */
 export function refuseProviderForKind(
   capabilities: StorageCapabilities,
@@ -50,14 +45,6 @@ export function refuseProviderForKind(
     };
   }
 
-  if (required.signedReads && !capabilities.signedReads) {
-    return {
-      code: PlatformError.ATTACHMENT_PROVIDER_UNSIGNED,
-      values: { kind },
-      message: "this storage provider cannot issue expiring read URLs",
-    };
-  }
-
   return null;
 }
 
@@ -68,3 +55,170 @@ export function refuseProviderForKind(
 export function kindsRefusedBy(capabilities: StorageCapabilities): AttachmentKind[] {
   return ATTACHMENT_KINDS.filter((kind) => refuseProviderForKind(capabilities, kind) !== null);
 }
+
+/* --- What may be uploaded ------------------------------------------------- */
+
+/**
+ * A row is PENDING from the moment a ticket is issued and READY only once
+ * storage has been asked what it actually holds.
+ */
+export const AttachmentStatus = {
+  PENDING: "PENDING",
+  READY: "READY",
+} as const;
+
+export type AttachmentStatus = (typeof AttachmentStatus)[keyof typeof AttachmentStatus];
+
+const MB = 1024 * 1024;
+
+/**
+ * A cap and an allowlist per kind — a passport scan is not a video. An
+ * allowlist, because a denylist is a list of the attacks somebody thought of.
+ * `image/heic` is here because that is what an iPhone photographs with.
+ */
+export const KIND_LIMITS: Record<
+  AttachmentKind,
+  { maxBytes: number; mimeTypes: readonly string[] }
+> = {
+  FILE: {
+    maxBytes: 20 * MB,
+    mimeTypes: [
+      "image/jpeg",
+      "image/png",
+      "image/webp",
+      "image/heic",
+      "image/heif",
+      "application/pdf",
+    ],
+  },
+  CONSENT: {
+    maxBytes: 10 * MB,
+    mimeTypes: ["application/pdf", "image/jpeg", "image/png"],
+  },
+  /** Signed paperwork, which arrives as a PDF or it is not the signed copy. */
+  CONTRACT: {
+    maxBytes: 20 * MB,
+    mimeTypes: ["application/pdf"],
+  },
+  IDENTITY_DOCUMENT: {
+    maxBytes: 10 * MB,
+    mimeTypes: ["image/jpeg", "image/png", "image/heic", "image/heif", "application/pdf"],
+  },
+};
+
+/** The widest cap any kind allows — the cheap early rejection before the kind is known. */
+export const MAX_UPLOAD_BYTES = Math.max(...Object.values(KIND_LIMITS).map((l) => l.maxBytes));
+
+/**
+ * Asked twice on purpose: with what the caller *claims*, so a doomed ticket is
+ * never issued, and with what storage *reports*, which is what decides.
+ */
+export function refuseAttachment(file: {
+  kind: AttachmentKind;
+  sizeBytes: number;
+  mimeType: string;
+}): Refused {
+  const limit = KIND_LIMITS[file.kind];
+
+  if (file.sizeBytes <= 0) {
+    return {
+      code: PlatformError.ATTACHMENT_EMPTY,
+      message: "an empty file is not a file",
+    };
+  }
+
+  if (file.sizeBytes > limit.maxBytes) {
+    return {
+      code: PlatformError.ATTACHMENT_TOO_LARGE,
+      values: { kind: file.kind, max: Math.floor(limit.maxBytes / MB) },
+      message: "larger than this kind of file is allowed to be",
+    };
+  }
+
+  // Compared bare: `image/jpeg; charset=binary` is a header, not a type.
+  const type = file.mimeType.split(";")[0]!.trim().toLowerCase();
+  if (!limit.mimeTypes.includes(type)) {
+    return {
+      code: PlatformError.ATTACHMENT_TYPE_REFUSED,
+      values: { kind: file.kind },
+      message: "this file type is not accepted for this kind",
+    };
+  }
+
+  return null;
+}
+
+/**
+ * The reservation, not the kind's cap: a ticket is signed for what the quota
+ * was charged, so our own route has to refuse at the same number.
+ */
+export function uploadByteLimit(kind: AttachmentKind, reservedBytes: number): number {
+  return Math.min(KIND_LIMITS[kind].maxBytes, reservedBytes);
+}
+
+/* --- What the organization may hold --------------------------------------- */
+
+/**
+ * `usedBytes` must already include everything reserved but unconfirmed, or a
+ * thousand simultaneous requests each see room and all succeed.
+ */
+export function refuseQuota(usage: {
+  quotaBytes: number;
+  usedBytes: number;
+  incomingBytes: number;
+}): Refused {
+  const free = usage.quotaBytes - usage.usedBytes;
+  if (usage.incomingBytes <= free) return null;
+
+  return {
+    code: PlatformError.ATTACHMENT_QUOTA_EXCEEDED,
+    values: {
+      // Rounded for a person to read. `free` can be negative if a quota was
+      // lowered below what is already stored, and "-3 MB free" is not a
+      // sentence, so it floors at zero.
+      available: Math.max(0, Math.floor(free / MB)),
+      needed: Math.ceil(usage.incomingBytes / MB),
+    },
+    message: "this organization has no room left for it",
+  };
+}
+
+/* --- How long an unconfirmed upload holds its reservation ----------------- */
+
+/**
+ * Fifteen minutes: long enough for a slow phone on hotel wifi to finish a 10 MB
+ * scan, short enough that an abandoned tab does not hold quota for an afternoon.
+ */
+export const UPLOAD_WINDOW_MS = 15 * 60 * 1000;
+
+export function uploadReleaseAt(now: Date): Date {
+  return new Date(now.getTime() + UPLOAD_WINDOW_MS);
+}
+
+/* --- What a caller sends -------------------------------------------------- */
+
+/**
+ * `mimeType` and `sizeBytes` are required, unlike the row's columns: a ticket
+ * cannot be sized without them. They stay **claims** — `confirmUpload`
+ * overwrites both with what storage reports.
+ */
+export const requestUploadSchema = subjectInputSchema.extend({
+  organizationId: z.number(),
+  kind: z.enum(ATTACHMENT_KINDS).default("FILE"),
+  fileName: z.string().min(1, "file_name_required").max(200),
+  mimeType: z.string().min(1, "mime_type_required").max(120),
+  sizeBytes: z.number().int().positive().max(MAX_UPLOAD_BYTES),
+});
+
+export type RequestUploadInput = z.infer<typeof requestUploadSchema>;
+
+/** The key, not the id: it is what both routes address and it is unguessable. */
+export const confirmUploadSchema = z.object({
+  organizationId: z.number(),
+  storageKey: z.string().min(1, "storage_key_required"),
+});
+
+export const deleteAttachmentSchema = z.object({
+  organizationId: z.number(),
+  id: z.number(),
+});

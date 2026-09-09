@@ -9,6 +9,7 @@ import {
   OutboxStatus,
   type EnqueueOutboxInput,
 } from "../model";
+import { STORAGE_HANDLERS } from "./storage-sweep";
 
 /**
  * The outbox worker: claiming work, running it, and deciding what a failure
@@ -43,14 +44,19 @@ export type OutboxHandler = (
 export type OutboxHandlers = Record<string, OutboxHandler>;
 
 /**
- * Nothing talks to an external system yet, so this is empty on purpose.
+ * Every type the worker can run.
  *
- * It is not a placeholder: a type with no handler dead-letters immediately
- * rather than retrying, because retrying cannot make a handler appear. Code
- * that enqueues a type ships with the handler for it, and this is where an
- * absent one is found — at the first drain, not in production a week later.
+ * A type with no handler dead-letters immediately rather than retrying, because
+ * retrying cannot make a handler appear. Code that enqueues a type ships with
+ * the handler for it, and this is where an absent one is found — at the first
+ * drain, not in production a week later.
+ *
+ * `storage-sweep` imports only *types* from here, so composing its handlers
+ * into this object is not a cycle at runtime.
  */
-export const OUTBOX_HANDLERS: OutboxHandlers = {};
+export const OUTBOX_HANDLERS: OutboxHandlers = {
+  ...STORAGE_HANDLERS,
+};
 
 /** The client a caller's transaction hands us, or the plain one. */
 type Enqueuer = Pick<Prisma.TransactionClient, "outboxTask">;

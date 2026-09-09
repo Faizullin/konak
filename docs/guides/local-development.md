@@ -36,11 +36,16 @@ base64 — so a truncated paste fails at startup rather than at the first write.
 anything else, and there is no recovery path by design.
 
 **File storage needs nothing to start.** `STORAGE_PROVIDER` defaults to
-`filesystem`, writing under `.storage/` — outside `public/`, and gitignored.
-Only the selected provider's variables are required, so choosing `s3` without a
-bucket fails at startup naming each one; see
-[architecture.md](architecture.md#file-storage). The adapters are prepared, not
-yet implemented, so nothing uploads anything today.
+`filesystem`, writing under `.storage/` — outside `public/`, and gitignored. The
+seed puts a real PDF there. Only the selected provider's variables are required,
+so choosing `s3` without a bucket fails at startup naming each one; see
+[architecture.md](architecture.md#file-storage).
+
+A quota is a column, not a variable: `Organization.storageQuotaBytes`, 5 GiB by
+default, raised per tenant with an `UPDATE`. `npm run outbox` reports what the
+sweeps would remove and removes it with `--commit`; run it, or abandoned uploads
+hold quota forever. `npm run test:server` writes to `.storage-test/` instead, so
+a test run never touches the seeded files.
 
 ## Authentication
 
@@ -202,10 +207,13 @@ Write scripts as `.mts` — top-level `await` is not available in the `.ts` (CJS
 transform — and start them with `import "dotenv/config"`, because `env.mjs`
 reads `process.env` and nothing has populated it in a bare `tsx` process.
 
-`prisma/seed.ts` needs none of this. It reaches only `src/server/*` and
-`features/*/model/`, neither of which carries `server-only`, so it runs under
-plain `tsx`. Keep it that way: one import from `features/*/server/` would put
-the condition flag back in `package.json`.
+`prisma/seed.ts` carries the flag too, in `package.json` and again in
+`prisma.config.ts` so `prisma migrate reset` reseeds with it. It reached only
+`src/server/*` and `features/*/model/` until the seed began writing its demo
+attachment through `lib/storage` — which is `server-only`, like every adapter
+that moves bytes. That is the price of a seeded file that genuinely exists;
+a seed that wrote a path instead would be the lie the two-phase flow exists to
+prevent.
 
 Any script that changes data should take a `--commit` flag and be a dry run
 without it. Run the dry run first and read what it says it will do.

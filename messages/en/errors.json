@@ -1,6 +1,12 @@
 {
+  "attachment.empty": "That file is empty.",
+  "attachment.missing_object": "Nothing was uploaded before the link expired. Try again.",
+  "attachment.not_found": "That file is no longer here.",
+  "attachment.not_pending": "That upload was already finished, or it expired before it arrived.",
   "attachment.provider_public": "{kind, select, IDENTITY_DOCUMENT {Identity documents} CONSENT {Consent forms} CONTRACT {Contracts} other {These files}} cannot be kept where every stored file is served publicly. Choose a storage provider that keeps objects private.",
-  "attachment.provider_unsigned": "{kind, select, IDENTITY_DOCUMENT {Identity documents} other {These files}} must be opened through a link that expires, and this storage provider cannot issue one.",
+  "attachment.quota_exceeded": "Storage is full: {available} MB free, and this file needs {needed} MB. Delete something, or ask for more room.",
+  "attachment.too_large": "{kind, select, IDENTITY_DOCUMENT {An identity document} CONSENT {A consent form} CONTRACT {A contract} other {A file}} may be at most {max} MB.",
+  "attachment.type_refused": "{kind, select, CONTRACT {A contract must be a PDF.} IDENTITY_DOCUMENT {An identity document must be a photograph or a PDF.} other {That file type is not accepted here — use a photograph or a PDF.}}",
   "auth.admin_required": "This action requires an administrator",
   "auth.not_signed_in": "You must be signed in",
   "company.create_forbidden": "You cannot add companies",

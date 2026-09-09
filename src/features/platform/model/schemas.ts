@@ -50,20 +50,6 @@ export type TagSubjectInput = z.infer<typeof tagSubjectSchema>;
 
 export const ATTACHMENT_KINDS = ["FILE", "CONSENT", "IDENTITY_DOCUMENT", "CONTRACT"] as const;
 
-export const createAttachmentSchema = subjectInputSchema.extend({
-  organizationId: z.number(),
-  kind: z.enum(ATTACHMENT_KINDS).default("FILE"),
-  fileName: z.string().min(1, "file_name_required").max(200),
-  mimeType: z.string().max(120).optional(),
-  sizeBytes: z
-    .number()
-    .min(0)
-    .max(50 * 1024 * 1024)
-    .optional(),
-});
-
-export type CreateAttachmentInput = z.infer<typeof createAttachmentSchema>;
-
 export const listAttachmentsSchema = subjectInputSchema.extend({
   organizationId: z.number(),
 });

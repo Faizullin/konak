@@ -10,6 +10,7 @@
   "file_name_required": "A file name is required",
   "first_name_required": "First name is required",
   "last_name_required": "Last name is required",
+  "mime_type_required": "Tell us what kind of file this is.",
   "name_required": "A name is required",
   "password_required": "Password is required",
   "password_too_short": "Use at least 8 characters",
@@ -17,6 +18,7 @@
   "slug_format": "Slug can only contain lowercase letters, numbers, and hyphens",
   "slug_too_long": "Slug must be at most 48 characters",
   "slug_too_short": "Slug must be at least 2 characters",
+  "storage_key_required": "That upload link is not valid.",
   "subject_required": "A subject is required",
   "url_invalid": "Enter a valid URL"
 }

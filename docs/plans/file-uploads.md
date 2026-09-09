@@ -3,32 +3,40 @@
 The `Attachment` table records files that do not exist. This is what it would
 take for them to.
 
-**Phase 1 has landed: the classes exist, the bytes do not.** `lib/storage/` now
-holds the base class, all four adapters and the registry; `env.mjs` selects one
-and validates only its variables; `platform/model/attachment.ts` decides which
-kinds a provider may hold. Every method that would actually move bytes throws
-`StorageNotImplementedError`. What is left is below, under
-[What is still missing](#what-is-still-missing) — the SDKs, the two procedures,
-the migration and the route handler.
+**Uploads work, on the filesystem.** The two-phase flow, the per-kind limits,
+the per-organization quota, the sweeps and the route handler are written and
+tested; `filesystem` is implemented and is the default. `s3`, `cloudinary` and
+`vercel-blob` are still prepared-only — real capability flags, no SDK. What is
+left is under [What is still missing](#what-is-still-missing).
 
-## The state of it
+**One design correction, worth recording.** `KIND_REQUIRES` originally demanded
+`signedReads` for `IDENTITY_DOCUMENT`. That refused the filesystem — the
+provider that serves nothing publicly and checks membership on *every* read,
+which is stricter than an expiring link, not weaker. An integration test caught
+it the first time the flow ran end to end. The rule now asks one question,
+`privateObjects`: can a stranger with the URL open it. `directUpload` and
+`signedReads` describe *how* a provider works and are not requirements.
 
-`platform.createAttachment` writes a row and calls `newStorageKey` to invent a
-path. Nothing ever puts anything at that path. There is **no bucket, no disk
-path, no SDK and no upload endpoint**. (`env.mjs` has variables now; the SDKs
-and the endpoint are still absent.)
+## The state it was in
 
-Worse than absent: `fileName`, `mimeType` and `sizeBytes` are all supplied by
-the caller and never checked against anything. A row can claim a 2 KB PDF and
-correspond to nothing at all.
+Kept because it is the reason for every decision below.
 
-What *was* built first is the part that is easy to get wrong, and it was already right.
-`platform/model/storage.ts` makes a key unguessable, strips a filename back to
-something safe, and refuses a key built from ids — `architecture.md` lists that
-last one among the invariants: *"A passport scan at a path built from integers
-is readable by anyone who can count."*
+`platform.createAttachment` wrote a row and called `newStorageKey` to invent a
+path. **Nothing ever put anything at that path.** There was no bucket, no disk
+path, no SDK and no upload endpoint.
 
-So the gap is the transport and the storage, not the naming.
+Worse than absent: `fileName`, `mimeType` and `sizeBytes` were all supplied by
+the caller and never checked against anything. A row could claim a 2 KB PDF and
+correspond to nothing at all. That procedure is gone, replaced by the pair in
+[Two phases](#two-phases-and-why-they-survive-a-provider-without-direct-upload).
+
+What *was* built first is the part that is easy to get wrong, and it was already
+right. `platform/model/storage.ts` makes a key unguessable, strips a filename
+back to something safe, and refuses a key built from ids — `architecture.md`
+lists that last one among the invariants: *"A passport scan at a path built from
+integers is readable by anyone who can count."*
+
+So the gap was the transport and the storage, not the naming.
 
 ## Where the product needs it
 
@@ -126,13 +134,14 @@ export const KIND_REQUIRES: Record<AttachmentKind, Partial<StorageCapabilities>>
   FILE:              {},                      // a room photograph; a CDN suits it
   CONSENT:           { privateObjects: true },
   CONTRACT:          { privateObjects: true },
-  IDENTITY_DOCUMENT: { privateObjects: true, signedReads: true },
+  IDENTITY_DOCUMENT: { privateObjects: true },
 };
 ```
 
 `FILE` requires nothing, so it is `{}` rather than `{ privateObjects: false }` —
 a kind states what it *needs*, never what it forbids, or adding a capability
-would mean revisiting every kind.
+would mean revisiting every kind. And it needs *privacy* only: see the
+correction at the top of this file.
 
 So configuring Cloudinary-with-public-delivery and then storing a passport is a
 **boot failure with a sentence**, not a quiet exposure discovered later. That is
@@ -194,22 +203,30 @@ would exercise the S3 path before deploying onto it; it is not written yet.
   `platform/server/`.** The split already used everywhere else, and the reason
   the naming survived a year without a bucket.
 
-## What is still missing
+## What landed
 
-Phase 1 stopped at the seam on purpose: everything above is decided and typed,
-and nothing below it is guessed at.
+| | |
+|---|---|
+| `lib/storage/` | base class, four adapters, registry, magic-byte sniffer. `filesystem` implemented |
+| `Attachment` | `status`, `provider`, `providerId`, `reservedBytes`, `releaseAt`, `uploadedAt`, unique `storageKey` |
+| `Organization` | `storageQuotaBytes`, defaulting to 5 GiB |
+| `model/attachment.ts` | `KIND_LIMITS`, `KIND_REQUIRES`, `refuseAttachment`, `refuseQuota`, `uploadReleaseAt` |
+| `server/attachments.ts` | `requestUpload`, `confirmUpload`, `storageUsage`, `enqueueStorageRemoval` |
+| `server/storage-sweep.ts` | the `storage.remove` handler, and the two sweeps |
+| `api/uploads/[...key]` | receive and serve, membership checked on both verbs, body capped at the reservation |
+| `organization.delete` | files removal tasks with `organizationId: null` before the cascade |
+
+## What is still missing
 
 | | Why it waits |
 |---|---|
-| **The SDKs** — `@aws-sdk/client-s3`, `cloudinary`, `@vercel/blob` | Four dependencies for one provider in use. Added with the adapter that needs one, not before. |
-| **The migration** — `provider`, `providerId`, and a pending/ready state on `Attachment` | A column added before the flow that fills it is a column that holds the wrong thing. |
-| **`requestUpload` / `confirmUpload`** in `platform/server/` | The orchestration. Needs the columns above. |
-| **The route handlers** — `/api/uploads` to receive, and to stream back with a membership check | Only the filesystem needs the receiving half, and it is the only provider that cannot be tested against a real vendor locally. |
-| **The startup check** calling `kindsRefusedBy` | Written and tested as a pure rule; nothing calls it until a provider is real. |
-
-The pure parts — the capability flags, `KIND_REQUIRES`, the refusal — are
-tested now, because they are the parts a wrong answer is expensive in and the
-only parts testable without a vendor.
+| **The three SDKs** — `@aws-sdk/client-s3`, `cloudinary`, `@vercel/blob` | Three dependencies for providers nothing uses. Added with the deployment that needs one. |
+| **A client** — a file input, progress, the two calls around it | No screen collects a file yet. The procedures are what a screen would call. |
+| **Rate limiting on `requestUpload`** | A quota bounds the bytes; it does not bound the *tickets*. Phase 8's external API needs rate limiting anyway, so it is built once, there. |
+| **Room photographs** | Still the open question below: a column on `RoomType`, or an `Attachment` with `propertyId`. |
+| **`IdentityDocument.purgeAfter`** | Phase 9. The sweeper it will run in now exists — `sweepExpiredRetention` is the shape, and needs only the second predicate. |
+| **Image downscaling** | The real waste in a hotel: room photographs at 4000px. Direct upload means the server never sees the bytes, so it belongs client-side. |
+| **Deduplication by content hash** | Worth it only once the same contract is genuinely uploaded twice. |
 
 ## Open
 

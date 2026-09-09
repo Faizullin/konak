@@ -5,6 +5,7 @@ import {
   outboxSummary,
   OUTBOX_HANDLERS,
 } from "../src/features/platform/server/outbox";
+import { countSweepable, sweepStorage } from "../src/features/platform/server/storage-sweep";
 
 /**
  * The worker that drains `OutboxTask`.
@@ -19,8 +20,10 @@ import {
  * A dry run by default, per `local-development.md`: this changes data, so
  * seeing what it intends to do has to be possible without doing it.
  *
- * Nothing registers a handler yet — the first external system is Phase 7 — so a
- * commit run today dead-letters whatever it finds, on purpose and loudly.
+ * It also runs the storage sweeps, which are not tasks: an outbox task records
+ * an intent that must survive a transaction, and "look for things nobody
+ * confirmed" is a periodic question with no transaction behind it. This is the
+ * periodic process, so this is where it belongs.
  */
 
 const args = new Set(process.argv.slice(2));
@@ -46,10 +49,18 @@ async function once() {
   const due = await report();
 
   if (!commit) {
+    const [abandoned, expired] = await Promise.all([
+      countSweepable("uploads"),
+      countSweepable("retention"),
+    ]);
     console.log(
       due === 0
-        ? "Dry run: nothing to do."
-        : `Dry run: would claim up to ${Math.min(due, limit)} task(s). Re-run with --commit.`
+        ? "Dry run: no tasks due."
+        : `Dry run: would claim up to ${Math.min(due, limit)} task(s).`
+    );
+    console.log(
+      `Dry run: would sweep ${abandoned} abandoned upload(s) and ${expired} past retention.` +
+        (due + abandoned + expired > 0 ? " Re-run with --commit." : "")
     );
     return;
   }
@@ -57,6 +68,14 @@ async function once() {
   const result = await drainOutbox({ limit });
   console.log(
     `claimed ${result.claimed} · done ${result.done} · retried ${result.retried} · dead-lettered ${result.deadLettered}`
+  );
+
+  const swept = await sweepStorage();
+  console.log(
+    `swept: ${swept.uploads.removed} abandoned upload(s), ${swept.retention.removed} past retention` +
+      (swept.uploads.failed + swept.retention.failed > 0
+        ? ` · ${swept.uploads.failed + swept.retention.failed} left for the next pass`
+        : "")
   );
 }
 

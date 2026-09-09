@@ -208,6 +208,7 @@ test("every message is valid ICU, and names only placeholders it is given", asyn
     count: 2,
     max: 62,
     available: 3,
+    needed: 4,
     hours: 48,
     name: "Acme",
     number: "101",

@@ -1,3 +1,7 @@
+/* eslint-disable @typescript-eslint/no-unused-vars -- Prepared, not written:
+   the @vercel/blob SDK is not a dependency yet, so every method below declares the signature callers are
+   typed against and throws. The parameters go when the bodies arrive. */
+import "server-only";
 import {
   StorageNotImplementedError,
   StorageProvider,
@@ -71,6 +75,11 @@ export class VercelBlobStorage extends StorageProvider {
    */
   url(_providerId: string, _ttlSeconds: number): Promise<string> {
     throw new StorageNotImplementedError(this.name, "url");
+  }
+
+  /** Fetch the public URL. There is no read API beyond the CDN. */
+  read(_providerId: string): Promise<Buffer | null> {
+    throw new StorageNotImplementedError(this.name, "read");
   }
 
   /** `del(pathname)`. */

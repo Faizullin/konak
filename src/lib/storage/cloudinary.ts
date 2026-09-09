@@ -1,3 +1,7 @@
+/* eslint-disable @typescript-eslint/no-unused-vars -- Prepared, not written:
+   the Cloudinary SDK is not a dependency yet, so every method below declares the signature callers are
+   typed against and throws. The parameters go when the bodies arrive. */
+import "server-only";
 import {
   StorageNotImplementedError,
   StorageProvider,
@@ -75,6 +79,11 @@ export class CloudinaryStorage extends StorageProvider {
    */
   url(_providerId: string, _ttlSeconds: number): Promise<string> {
     throw new StorageNotImplementedError(this.name, "url");
+  }
+
+  /** Fetch the delivery URL. Cloudinary has no SDK method that returns bytes. */
+  read(_providerId: string): Promise<Buffer | null> {
+    throw new StorageNotImplementedError(this.name, "read");
   }
 
   /** `cloudinary.uploader.destroy(public_id)`. */

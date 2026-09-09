@@ -106,5 +106,16 @@ export abstract class StorageProvider {
    */
   abstract url(providerId: string, ttlSeconds: number): Promise<string>;
 
+  /**
+   * The bytes back, through this server.
+   *
+   * Needed because a provider that cannot sign a read URL has to be served by
+   * us, and the route serving it must not know which provider it is talking to.
+   * Buffered rather than streamed: `KIND_LIMITS` caps a file at 20 MB, so the
+   * memory is bounded, and a streaming variant can be added the day something
+   * larger is allowed.
+   */
+  abstract read(providerId: string): Promise<Buffer | null>;
+
   abstract remove(providerId: string): Promise<void>;
 }

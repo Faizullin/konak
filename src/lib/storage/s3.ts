@@ -1,3 +1,7 @@
+/* eslint-disable @typescript-eslint/no-unused-vars -- Prepared, not written:
+   S3's own SDK is not a dependency yet, so every method below declares the signature callers are
+   typed against and throws. The parameters go when the bodies arrive. */
+import "server-only";
 import {
   StorageNotImplementedError,
   StorageProvider,
@@ -65,6 +69,11 @@ export class S3Storage extends StorageProvider {
   /** `getSignedUrl(GetObjectCommand, { expiresIn })`. */
   url(_providerId: string, _ttlSeconds: number): Promise<string> {
     throw new StorageNotImplementedError(this.name, "url");
+  }
+
+  /** `GetObjectCommand`, then collect `Body` — a stream — into a buffer. */
+  read(_providerId: string): Promise<Buffer | null> {
+    throw new StorageNotImplementedError(this.name, "read");
   }
 
   /** `DeleteObjectCommand`. S3 does not report whether the key existed. */

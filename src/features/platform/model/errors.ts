@@ -11,7 +11,16 @@ export const PlatformError = {
 
   /** Refused at startup, not at upload — see `model/attachment.ts`. */
   ATTACHMENT_PROVIDER_PUBLIC: "attachment.provider_public",
-  ATTACHMENT_PROVIDER_UNSIGNED: "attachment.provider_unsigned",
+
+  ATTACHMENT_NOT_FOUND: "attachment.not_found",
+  ATTACHMENT_EMPTY: "attachment.empty",
+  ATTACHMENT_TOO_LARGE: "attachment.too_large",
+  ATTACHMENT_TYPE_REFUSED: "attachment.type_refused",
+  ATTACHMENT_QUOTA_EXCEEDED: "attachment.quota_exceeded",
+  /** Confirming a row that was already confirmed, or already swept. */
+  ATTACHMENT_NOT_PENDING: "attachment.not_pending",
+  /** A ticket was issued and nothing was ever uploaded against it. */
+  ATTACHMENT_MISSING_OBJECT: "attachment.missing_object",
 } as const;
 
 export type PlatformError = (typeof PlatformError)[keyof typeof PlatformError];

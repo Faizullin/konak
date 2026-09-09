@@ -47,16 +47,24 @@ and the day lists are one bounded query each. A mutation on either invalidates
 both, so two views of one booking cannot disagree. If a change seems not to
 appear, it is a stale 30 seconds, not a lost write.
 
-**File storage is prepared, not working.** `lib/storage/` has the base class,
-four adapters (S3, Cloudinary, Vercel Blob, filesystem) and a registry that
-imports only the selected one. **Every method that would move bytes throws
-`StorageNotImplementedError`** — deliberately, so the interface could be settled
-without four SDKs. `STORAGE_PROVIDER` defaults to `filesystem` and needs no
-configuration, and `env.mjs` asks only for the chosen provider's variables.
-Which kinds a provider may hold is a domain rule, not an adapter's —
-`platform/model/attachment.ts`, tested. See
-[guides/architecture.md](guides/architecture.md#file-storage) for how a caller
-uses it and `plans/file-uploads.md` for what is left.
+**Files upload, and storage cannot be filled.** Two phases:
+`platform.requestUpload` reserves a row, a key and quota; the bytes go to the
+provider or to `POST /api/uploads/<key>`; `platform.confirmUpload` asks storage
+what it actually holds and writes **that**. A file whose bytes are not what was
+claimed loses the file, not just the claim.
+
+Four bounds, because each leaks alone: per-kind caps and type allowlists,
+a per-organization quota (`Organization.storageQuotaBytes`, 5 GiB by default)
+checked **when the ticket is issued**, unconfirmed reservations counted against
+it, and sweeps that release abandoned uploads and purge expired retention.
+`npm run outbox` runs both sweeps beside the drain, and is still a dry run
+without `--commit`.
+
+`STORAGE_PROVIDER` defaults to `filesystem`, which is implemented and needs no
+configuration; S3, Cloudinary and Vercel Blob declare real capabilities and
+throw `StorageNotImplementedError`. **No screen collects a file yet** — the
+procedures are what one would call. See
+[guides/architecture.md](guides/architecture.md#file-storage).
 
 **Where to start.** `docs/todo.md`, top entry.
 

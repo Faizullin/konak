@@ -13,14 +13,15 @@ scoped API keys is what a booking engine, a channel manager and the Phase 8
 widget all need — and Phase 8 needs the rate limiting it forces anyway.
 `plans/external-api.md` has the shape, the scopes and what must exist first.
 
-## File uploads
-`Attachment` rows point at storage keys that were never written to, and
-`fileName`, `mimeType` and `sizeBytes` are caller claims nothing verifies.
-**The provider layer is prepared** — `lib/storage/` has the base class, all four
-adapters and the registry, and `KIND_REQUIRES` keeps a passport scan off a
-public CDN — but every method that moves bytes throws. What remains is the SDKs,
-the `provider`/`providerId` migration, `requestUpload`/`confirmUpload`, and the
-route handler. `plans/file-uploads.md` § What is still missing.
+## File uploads — done, except a screen
+Two phases, so nothing about a file is believed until storage is asked; per-kind
+size caps and type allowlists; a per-organization quota that counts unconfirmed
+reservations; sweeps for abandoned uploads and expired retention; and bytes that
+die with their row, including through an organization cascade. `filesystem` is
+implemented and is the default; S3, Cloudinary and Vercel Blob declare their
+capabilities and throw. **What is left is a client** — no screen collects a file
+yet — plus the SDK for whichever provider production uses.
+`plans/file-uploads.md` § What is still missing.
 
 ## Visual design and motion
 Once the product works. Density, colour-as-data, keyboard rules, and

@@ -5,6 +5,13 @@ import { newStorageKey } from "../src/features/platform/model";
 import { env } from "../src/env.mjs";
 import { auth } from "../src/server/auth";
 import prisma from "../src/server/db";
+import { storage } from "../src/lib/storage";
+
+/** The smallest thing that is genuinely a PDF, so the sniffer agrees with the row. */
+const DEMO_PDF = Buffer.from(
+  "%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF\n",
+  "latin1"
+);
 
 /**
  * Demo data for a fresh clone: a clone with an empty database and a
@@ -513,17 +520,30 @@ async function main() {
     });
   }
 
-  // An attachment, with a storage key generated the way the code must generate
-  // them: random, never derived from a row id.
+  // An attachment with bytes actually behind it, and a storage key generated the
+  // way the code must generate them: random, never derived from a row id.
+  //
+  // Written through the provider rather than to a path, so seeding onto S3 puts
+  // it on S3. Both halves matter: a READY row with nothing behind it is exactly
+  // the lie the two-phase flow exists to prevent.
   if (!(await prisma.attachment.findFirst({ where: { personId: guest.id } }))) {
+    const storageKey = newStorageKey(`org/${organization.id}/attachments`, "marketing-consent.pdf");
+    const store = await storage();
+    const object = await store.put(storageKey, DEMO_PDF, { mimeType: "application/pdf" });
+
     await prisma.attachment.create({
       data: {
         organizationId: organization.id,
         personId: guest.id,
         kind: "CONSENT",
         fileName: "marketing-consent.pdf",
-        storageKey: newStorageKey(`org/${organization.id}/attachments`, "marketing-consent.pdf"),
-        mimeType: "application/pdf",
+        storageKey,
+        status: "READY",
+        provider: store.name,
+        providerId: object.providerId,
+        mimeType: object.mimeType,
+        sizeBytes: object.sizeBytes,
+        uploadedAt: new Date(),
         signedAt: new Date(),
         uploadedById: owner.id,
       },

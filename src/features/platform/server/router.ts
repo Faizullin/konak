@@ -1,14 +1,17 @@
 import "server-only";
+import { z } from "zod";
 import { requireOrgMember } from "@/server/auth";
-import { newStorageKey } from "../model";
 import { ConflictError, InvalidError, NotFoundError } from "@/server/errors";
 import { createTRPCRouter, protectedProcedure } from "@/server/trpc";
 import prisma from "@/server/db";
 import {
+  AttachmentStatus,
+  confirmUploadSchema,
   createActivitySchema,
-  createAttachmentSchema,
+  deleteAttachmentSchema,
   PlatformError,
   listAttachmentsSchema,
+  requestUploadSchema,
   createTagSchema,
   hasExactlyOneSubject,
   listActivitiesSchema,
@@ -16,6 +19,7 @@ import {
   tagSubjectSchema,
   type SubjectRef,
 } from "../model";
+import { confirmUpload, enqueueStorageRemoval, requestUpload, storageUsage } from "./attachments";
 
 /**
  * The substrate: what happened, and what things are called.
@@ -108,6 +112,9 @@ export const platformRouter = createTRPCRouter({
         personId: input.personId ?? undefined,
         companyId: input.companyId ?? undefined,
         propertyId: input.propertyId ?? undefined,
+        // A reservation nobody uploaded against is not a file yet, and a
+        // revoked one is a record that a file existed.
+        status: AttachmentStatus.READY,
         revokedAt: null,
       },
       orderBy: { createdAt: "desc" },
@@ -115,31 +122,56 @@ export const platformRouter = createTRPCRouter({
   }),
 
   /**
-   * Reserves the row and its storage key. **The key is generated here**, never
-   * accepted from a caller — that is the only way "random, not derived from an
-   * id" can be guaranteed. The upload itself happens separately against the
-   * returned key.
+   * Phase one. Reserves the row, the key and the quota, and answers with either
+   * a ticket for the provider or our own URL to post at.
+   *
+   * **The key is generated in the service**, never accepted from a caller —
+   * that is the only way "random, not derived from an id" can be guaranteed.
    */
-  createAttachment: protectedProcedure
-    .input(createAttachmentSchema)
-    .mutation(async ({ ctx, input }) => {
-      const { user } = await requireOrgMember(ctx, input.organizationId);
-      await assertSubjectInOrg(input.organizationId, input);
+  requestUpload: protectedProcedure.input(requestUploadSchema).mutation(async ({ ctx, input }) => {
+    const { user } = await requireOrgMember(ctx, input.organizationId);
+    await assertSubjectInOrg(input.organizationId, input);
 
-      return ctx.db.attachment.create({
-        data: {
-          organizationId: input.organizationId,
-          kind: input.kind,
-          fileName: input.fileName,
-          storageKey: newStorageKey(`org/${input.organizationId}/attachments`, input.fileName),
-          mimeType: input.mimeType,
-          sizeBytes: input.sizeBytes,
-          personId: input.personId,
-          companyId: input.companyId,
-          propertyId: input.propertyId,
-          uploadedById: user.id,
-        },
+    return requestUpload({ ...input, uploadedById: user.id });
+  }),
+
+  /** Phase two. Believes storage, not the caller. */
+  confirmUpload: protectedProcedure.input(confirmUploadSchema).mutation(async ({ ctx, input }) => {
+    await requireOrgMember(ctx, input.organizationId);
+    return confirmUpload(input);
+  }),
+
+  /**
+   * The row goes now; the bytes go when the worker runs. Both are decided in
+   * one transaction, which is the whole reason the outbox exists.
+   */
+  deleteAttachment: protectedProcedure
+    .input(deleteAttachmentSchema)
+    .mutation(async ({ ctx, input }) => {
+      await requireOrgMember(ctx, input.organizationId);
+
+      const attachment = await ctx.db.attachment.findFirst({
+        where: { id: input.id, organizationId: input.organizationId },
+        select: { id: true, storageKey: true, provider: true, providerId: true },
       });
+      if (!attachment) {
+        throw new NotFoundError(PlatformError.ATTACHMENT_NOT_FOUND, "Attachment not found");
+      }
+
+      await ctx.db.$transaction(async (tx) => {
+        await enqueueStorageRemoval(tx, [attachment]);
+        await tx.attachment.delete({ where: { id: attachment.id } });
+      });
+
+      return { id: attachment.id };
+    }),
+
+  /** What this organization is holding, and what is left. */
+  storageUsage: protectedProcedure
+    .input(z.object({ organizationId: z.number() }))
+    .query(async ({ ctx, input }) => {
+      await requireOrgMember(ctx, input.organizationId);
+      return storageUsage(ctx.db, input.organizationId);
     }),
 
   listTags: protectedProcedure
