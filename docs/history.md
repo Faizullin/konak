@@ -334,3 +334,242 @@ families import it. Kept: the alternative is a second confirmation dialog, and
 that is the cost of having one.
 
 101 unit tests, 67 integration.
+
+## 2026-09-09 — the day the desk runs, and the two things Phase 4 owed
+
+Phase 4's **Done when** was a receptionist running a whole day. The grid drew
+the month and the status machine moved a booking, but the day itself did not
+exist: no list of who arrives, and nothing in the UI that creates a booking at
+all — a walk-in meant SQL.
+
+**Three lists, one query.** A stay touching a date is an arrival, a departure or
+a night in between, and `dayRoleOf` in `model/` decides which from two dates. So
+`reservation.day` reads the stays that touch the day once and sorts them in
+memory rather than asking three times. The bounds are the only place `checkOut`
+is inclusive: a departure is not a night, but it is the morning's work.
+
+**Unassigned sorts first.** A stay with no room is the work; buried under fifty
+assigned rows it is what gets missed. The rest run in corridor order, which is
+`compareRoomNumbers` again rather than a second opinion about how to read "10".
+
+**A walk-in is one transaction, not three writes.** `create` then `assignRoom`
+then `setStatus` is three round trips where the second can fail after the first
+succeeded, leaving a booking nobody decided to make. `reservation.walkIn` does
+all of it or none of it, and the guest record is written inside the same
+transaction — an integration test asserts that a refused walk-in leaves no
+orphan person behind.
+
+Its status rules are satisfied **by construction rather than re-checked**: the
+schema requires a room, and the arrival is `todayAt(property.timezone)`. Those
+are exactly the two things `refuseStatusChange` asks of a check-in, so the
+walk-in cannot create a state the desk could not have reached by hand.
+
+**The dates are not fields.** A walk-in arrives on the property's own day, which
+the server knows and the browser does not, so the form asks how many nights.
+
+**`createGuestPerson` is directory's, not reservations'.** A booking's guest is
+a booking artifact, so it is deliberately not `directory.createPerson` — that is
+a management action gated on the DIRECTORY module and on `canManagePeople`, and
+a hotel running no directory still takes walk-ins. Directory gained the
+`server/service.ts` the architecture threshold asked for, and reservations
+imports it through the feature's server door.
+
+### The server half of the optimisation gate
+
+The client and data halves had been made; this was the half that had not, and it
+had something to find. **The grid was reading the same rows twice** — room types
+once to name them and again inside `availability` to count them, and every stay
+in the window once to draw and again to count. Same property, same window, two
+scans with different projections.
+
+`availability` now takes what the caller already read. The grid is **seven
+queries to five**, in the same two waves. Passing a superset is safe and the
+type says so: only `occupiesInventory` statuses are counted, and types outside
+`roomTypeIds` are never emitted — which is why excluding cancelled stays from
+the grid's read cannot change a count.
+
+Indexes were checked and needed nothing: tenant column first on every shape the
+phase added.
+
+### Real-time, decided
+
+**Polling, not a subscription.** Two receptionists on one desk go stale in
+seconds, and a 30-second `refetchInterval` on the grid and the day lists closes
+that without a transport we would have to own — a Next route handler does not
+hold a socket, and both surfaces are one bounded query each. A mutation on
+either invalidates both, so the two views of the same booking cannot disagree.
+
+Revisit when a channel manager starts writing bookings nobody at the desk made:
+that is when 30 seconds stops being fast enough, and it is Phase 7.
+
+**Measured.** `/dashboard/orgs/[orgSlug]/front-desk/[propertySlug]` 410 → 425 kB
+for the lists and the dialog it renders. Shared JS unchanged at 244 kB, and no
+other route moved — the growth is on the route that draws it.
+
+105 unit tests, 80 integration.
+
+## 2026-09-09 — moving a stay, and Phase 4 closed
+
+A drag moved a booking between rooms and nothing moved it between nights.
+`assignRoom` answered "which room"; there was no procedure for "which nights",
+so a guest staying an extra night meant SQL.
+
+**One procedure for both, because one drag changes both.** `reservation.moveStay`
+takes the new nights and, optionally, a new room. Two calls would let the room
+land while the dates were refused, which is a booking in a room nobody chose.
+
+**`refuseStayMove` is the same shape as `refuseStatusChange`** — a sentence, not
+a boolean, so a disabled edge and the server's refusal cannot disagree. What it
+holds is what the exclusion constraint cannot know:
+
+- **An arrived guest arrived when they arrived.** A checked-in stay moves its
+  departure and not its arrival; correcting an arrival is a different decision
+  with its own record, the same way an undone status is.
+- **A booking is not moved into nights that have gone.** Onto today is fine —
+  that is a guest arriving now.
+- **Leaving today is not the past.** `checkOut` is exclusive, so departing on
+  today's date means last night was the final one: an ordinary early checkout,
+  and the rule says so rather than refusing it.
+
+The overlap itself is deliberately *not* checked in `model/`. The exclusion
+constraint is the only answer that stays true when two clerks drag at once, and
+it surfaces as a sentence on the field rather than a 500.
+
+**Only the added nights are asked about.** Availability counts a stay against
+itself, so asking about the whole new range would find the booking already there
+and refuse its own move. `addedNights` is the set difference, and it is a pure
+function with its own tests.
+
+**A moved stay is re-quoted.** The nights changed, so the price did; the
+reservation's total is recomputed from its stays in the same transaction, or the
+header would disagree with the folio.
+
+### The drag
+
+**The grabbed night goes under the cursor.** Picking a five-night chip up by its
+middle and dropping it must not shift it four days, so `dragstart` records which
+night was grabbed and the drop moves by the difference.
+
+**A drop is one of two decisions, and which one is arithmetic.** Landing on the
+night the chip already occupied is a room change — `assignRoom`, cheaper. Landing
+anywhere else is a date move, room included.
+
+**The column is read from the pointer, not from a per-cell handler.** A chip sits
+above the night cells, and dropping onto one still has to say which night it was.
+
+**A clipped edge is not a resize handle.** `model/grid.ts` already distinguished
+a drawn edge from a real one for the rounded caps; the handles reuse it. Dragging
+an edge the grid cannot see would move a date nobody could read.
+
+The optimistic update recomputes the span with **`spanInWindow`** — the same
+function the server laid the grid out with — so an optimistic chip cannot land a
+column away from where the refetch puts it. A stay dragged clean out of the month
+returns the grid untouched and lets the refetch remove it.
+
+**Measured.** The front desk route 425 → 426 kB. Shared JS unchanged at 244 kB.
+
+Phase 4's **Done when** was already met; this finishes the grid section that sat
+beside it. 111 unit tests, 88 integration.
+
+## 2026-09-09 — the second cue, and where Phase 3 went
+
+**There is no Phase 3, and the gap was reading as a finished phase.**
+*Phase 3 — Design direction* was folded into Phase 12 in "where styles live";
+what was never written down is that `roadmap.md`'s own rule — "phases already
+finished are not listed" — made its absence say the opposite. Two readers lost
+the same ten minutes to it, so the roadmap now says so in a sentence.
+
+**The deferral's premise had been spent.** Phase 3's whole argument was its
+position: *before* the grid, because the grid is the largest piece of UI and the
+hardest to rework, and decisions not made in advance get made by accident inside
+it. The grid is now built, so that bet was called — and one of the things Phase 3
+existed to prevent had happened. `STATUS_CLASS` separated confirmed, checked-in
+and checked-out by **hue alone**; only enquiry carried a second cue.
+
+That is an accessibility floor rather than visual polish, so it did not wait for
+Phase 12. What waits is the palette; what did not is that there is a second cue
+at all.
+
+**Shapes, not letters.** A one-night chip is 2.5rem wide, and `C` against `O` at
+that size is a guess. Hollow is a room still waiting, filled is a guest in it, a
+tick is a stay that is over — and enquiry and checked-out also differ by border
+style. The test is pairwise, not per-state: four states that each look distinct
+in a legend can still contain two that differ only by hue.
+
+The mark is `aria-hidden`. The chip's `title` already says the status in words,
+and a second announcement of the same fact is noise.
+
+**Dark variants, because front desks run dim.** The palette was fixed light
+values while `next-themes` had been installed since the template.
+
+**A legend, because a cue nobody can decode is not a cue.**
+
+The rule is now in `ui-patterns.md` § Colour as data rather than only in the one
+file that follows it — a convention enforced in a single screen is broken by the
+next one. Phase 12 keeps the palette and loses the floor.
+
+**Measured, because the printed number moved.** `First Load JS shared by all`
+read 244 kB and now reads 245. Building with the marks and legend stripped
+printed 245 as well, so this change did not cause it: the exact shared bytes are
+902,063 against 902,177, and the cues cost **114 bytes**. The kilobyte was
+rounding crossing a boundary. Floor re-recorded at 245 kB — which is what the
+"re-record when a phase ends" line exists to prevent, one phase late.
+
+## 2026-09-09 — setting a property up without SQL
+
+Room types, rooms and rate plans were seeded and readable and had no screens, so
+a new property could only be built with `psql`. It now has one, at
+`/front-desk/<propertySlug>/setup`, behind the same module toggle as the desk.
+
+**The rules went in `model/` first, and they are sentences.** `refuseOccupancy`
+names the pair that clashes — a base above the maximum would quote a room it
+cannot sleep — and `refuseCancellationTerms` refuses a non-refundable plan that
+also advertises a free window, which is the kind of contradiction a guest finds
+at the worst possible moment. Both are pure and tested without a database, and
+both are the same sentence on the field and at the router.
+
+**Two permission tables, and one decision that had been left open.**
+`propertyStatements` and `rateStatements` follow `orgStatements`: declared once,
+granted per role, asked by name. A MEMBER is a receptionist — they read both
+axes all day because the grid is drawn from them, and they add no room type
+mid-shift.
+
+The rates router carried a comment saying that whether setting a season's prices
+should require a manager was "a decision about roles, not a rename". It is now
+decided: `setRates` and `setRestrictions` require `canSetRates`, which withholds
+MEMBER. A wrong nightly rate is money, and it reaches every channel the moment
+it is written.
+
+**Nothing is archived out from under a booking.** A room type with live rooms is
+not withdrawn, it is hidden, so it is refused until the rooms go first. A room
+that still owes someone a night is neither archived nor retyped — retyping would
+break the pairing `assignRoom` enforces, after the fact rather than at the
+assignment. A departed stay blocks nothing.
+
+**Archiving is a value, not a procedure.** `{ archived: boolean }` rather than
+`archive` and `unarchive`, because withdrawing something from sale is reversible
+and two procedures would drift.
+
+**A code is unique inside its property, not across the install.** Two hotels in
+one organization may both sell a "DBL", and a test says so.
+
+### Two things found on the way
+
+**`FieldError` children silently replace `errors`.** A hint written as children
+would have swallowed every validation message on that field — exactly the class
+of failure `CLAUDE.md` lists. The hint is a `FieldDescription` and the rest of
+the tree was checked for the same shape; there was none.
+
+**The integration tests were racing, and adding a sixth file exposed it.**
+`identity.test.ts` reads every ADMIN in the database, parks them, and asserts
+that the fixture's admin is the last one. Node runs test *files* in parallel, so
+a fixture created by another file mid-assertion made that false — it passed
+alone and failed in the suite. Integration tests share one database and one of
+them edits global state, so `test:server` now runs with `--test-concurrency=1`.
+Serial is the honest answer: the alternative is every future fixture having to
+know what every other test counts.
+
+**Measured.** The new route is 424 kB; the desk went 426 → 427 kB for the link
+to it. Shared JS unchanged at 245 kB.
+
+119 unit tests, 101 integration.

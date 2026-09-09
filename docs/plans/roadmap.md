@@ -8,6 +8,11 @@ Phases already finished are not listed — they are in [history](../history.md).
 A phase is done when its **Done when** is true, not when its work feels
 complete.
 
+**A gap in the numbering is not always a finished phase.** *Phase 3 — Design
+direction* was folded into **Phase 12**, which now carries its `Done when`
+unchanged: the product wears shadcn's defaults until the end, where they cost
+least to replace. The reasoning is in history under "where styles live".
+
 Two rules hold across every phase:
 
 - **The rule before the router.** Anything provable without a database goes in
@@ -18,52 +23,6 @@ Two rules hold across every phase:
   not exist yet is a screen built on a guess.
 
 ---
-
-## Phase 4 — The front desk
-
-The reservation grid, and the day a receptionist actually works. Everything
-underneath it exists: `availability`, `create`, `setStatus`, `assignRoom`,
-`quote`. This is the first screen with nothing missing beneath it.
-
-### The grid
-
-Rooms down the vertical axis, dates across the horizontal, one month visible.
-**Not the `DataTable` stack** — that is paginated rows over one axis, and this
-is a fixed two-axis surface where both axes scroll and the cells are spans, not
-rows. It wants its own component and its own data contract.
-
-- One query for a window: rooms, the stays that touch it, and the availability
-  per type per night. Not one query per room.
-- Drag to move a stay between rooms and dates; resize an edge to extend it. Both
-  land on `assignRoom` and a date change, and both can be refused.
-- **A refused drag says why, in place.** The room is taken; the type is wrong;
-  the night is closed. The exclusion constraint already produces the first as a
-  field error.
-- Colour by state, and the palette is temporary — Phase 12 replaces it.
-- Optimistic movement with a revert, because a drag that waits for a round trip
-  feels broken. The server stays the authority.
-
-### The day's work
-
-- **Arrivals and departures** for a date, and a walk-in that books and checks in
-  in one action.
-- **Assignment** — an unassigned stay is normal for a future booking; assigning
-  is a check-in step, not a booking step.
-- **Check in and out**, driving the status machine, which drives housekeeping.
-
-### Decide during this phase, not before
-
-- **Real-time.** Two receptionists on one grid go stale. Cheapest to add here,
-  where the need is visible, rather than designed in advance.
-- **A denormalised read model.** A month for sixty rooms crosses reservations,
-  stays, rooms and rate calendar. Decide against a real query plan, not a
-  feeling.
-- **Virtualisation.** Sixty rooms by thirty-one days is 1,860 cells. Measure
-  before reaching for a windowing library.
-
-**Done when** a receptionist can run a day — arrivals, assignment, check-in,
-check-out — without touching SQL, and a drag that would overlap is refused with
-the reason shown.
 
 ## Phase 5 — Guests and housekeeping
 
@@ -153,8 +112,10 @@ good enough to run a hotel and cheap to replace.
 
 - A density scale for screens read all day — a forty-room grid is not a
   marketing page.
-- Colour as data: reservation state needs a scale that survives dark mode and
-  does not rely on hue alone.
+- Colour as data: a **scale**, replacing the grid's placeholder palette. The
+  accessibility floor is already met and is not this phase's to redo — the rule
+  and its worked example are in `ui-patterns.md` § Colour as data, because a
+  grid that reads only in colour could not wait for the last phase.
 - Keyboard rules for the repetitive work: check-in, assignment, search.
 - Motion, last of all, and only where it explains something — a row moving, a
   panel opening. Animation that decorates is animation that delays.
@@ -195,22 +156,22 @@ barrels sound heavy.
 Carried until the phase that touches them, so they are not rediscovered as
 surprises:
 
-- **The grid will want a denormalised read model.** A month for sixty rooms is
-  a range query across reservations, stays, rooms and rate calendar. Decide it
-  against a real query plan in **Phase 4**, not in advance.
 - **`RoomTypeInventory` has no computed availability.** Sold is derived on every
   read by design — correct, and the first thing to measure when a channel push
   is doing it for ninety days at once in **Phase 7**.
-- **Bundle floor.** `First Load JS shared by all` is 242 kB, and `/dashboard` is
-  402 kB. Anything that moves those without adding a screen is a regression, and
-  the build prints both.
+- **Bundle floor.** `First Load JS shared by all` is 245 kB, and `/dashboard` is
+  403 kB. Anything that moves those without adding a screen is a regression, and
+  the build prints both. Re-record them when a phase ends: a floor left behind
+  by two phases reads as a regression that never happened.
 
 ## Not phases
 
 These have no natural slot and land when the phase that needs them arrives:
 
-- **Real-time push.** The grid and the housekeeping board both go stale without
-  it. Cheapest to add during Phase 4, when the grid exposes the need.
+- **Real-time push.** Decided in Phase 4: the desk polls every 30 seconds
+  rather than holding a socket a route handler cannot hold. Revisit when a
+  channel manager starts writing bookings nobody at the desk made — that is
+  **Phase 7**, and it is when 30 seconds stops being fast enough.
 - **JSON columns.** Postgres has a real `Json` type; `customFields`, `options`
   and `diffJson` are `String` from the SQLite era. A migration that earns itself
   the first time one needs filtering.

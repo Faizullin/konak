@@ -408,6 +408,33 @@ not know what any feature needs.
 
 ---
 
+## Colour as data
+
+Where colour encodes a value rather than decorating one — reservation state on
+the grid, room status, anything Phase 12 will restyle — **colour is never the
+only cue.** Every pair of values has to differ by something else as well:
+a glyph, a border style, a fill.
+
+`reservation-grid.tsx` is the worked example. `STATUS_CLASS` carries the hue and
+`STATUS_MARK` carries a shape — hollow for a room still waiting, filled for a
+guest in it, a tick for a stay that is over — and enquiry and checked-out also
+differ by border style. Check the pairs, not the list: four states that all look
+distinct in a legend can still have two that differ by hue alone.
+
+The mark is `aria-hidden`. The chip's `title` already carries the status in
+words, so this is for the eye that cannot use the hue, not for the screen
+reader — a second announcement of the same fact is noise.
+
+**Both themes, always.** A palette written as fixed light values disappears at
+night, and front desks run dim. Pair every `bg-*`/`text-*` with its `dark:`
+variant; the project's dark mode is class-based (`@custom-variant dark` in
+`styles/globals.css`), so it is a variant, not a media query.
+
+**A legend where the marks are used.** A second cue nobody can decode is not a
+second cue.
+
+---
+
 ## General guidelines
 
 - **tRPC** for all API calls. `trpc.useUtils()` for invalidation.

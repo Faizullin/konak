@@ -89,3 +89,104 @@ export const listRoomTypesSchema = z.object({
 });
 
 export type ListRoomTypesInput = z.infer<typeof listRoomTypesSchema>;
+
+/**
+ * Whether the four occupancy numbers can all be true at once, or the sentence
+ * saying which pair cannot.
+ *
+ * A room type sells `baseOccupancy` at the plan's nightly rate and prices
+ * anyone beyond it as an extra person, so a base above the maximum would quote
+ * a room it cannot sleep. The rest is arithmetic a form should not let someone
+ * past — and it is the same sentence on the field and at the router.
+ */
+export function refuseOccupancy(type: {
+  baseOccupancy: number;
+  maxOccupancy: number;
+  maxAdults: number;
+  maxChildren: number;
+}): string | null {
+  if (type.maxAdults < 1) {
+    return "A room type sleeps at least one adult";
+  }
+  if (type.baseOccupancy > type.maxOccupancy) {
+    return "The base occupancy cannot be more than the maximum";
+  }
+  if (type.maxAdults > type.maxOccupancy) {
+    return "More adults than the room type sleeps in total";
+  }
+  if (type.maxChildren > type.maxOccupancy) {
+    return "More children than the room type sleeps in total";
+  }
+  return null;
+}
+
+/**
+ * A code a channel manager maps to an OTA's own id, so it outlives renaming
+ * the type. Upper case and punctuation-free for the same reason: it travels
+ * through systems that will not preserve a space.
+ */
+export const inventoryCodeSchema = z
+  .string()
+  .min(2, "At least two characters")
+  .max(16, "At most sixteen characters")
+  .regex(/^[A-Z0-9-]+$/, "Capitals, digits and hyphens only");
+
+const occupancyField = z.number().int().min(0).max(20);
+
+export const createRoomTypeSchema = z.object({
+  propertyId: z.number(),
+  name: z.string().min(1, "A name is required").max(120),
+  code: inventoryCodeSchema,
+  description: z.string().max(2000).optional(),
+  baseOccupancy: occupancyField,
+  maxOccupancy: occupancyField,
+  maxAdults: occupancyField,
+  maxChildren: occupancyField,
+  sizeSqm: z.number().int().min(0).max(10_000).optional(),
+  position: z.number().int().min(0).max(999),
+});
+
+export type CreateRoomTypeInput = z.infer<typeof createRoomTypeSchema>;
+
+/** The dialog's half: the property comes from the route, not a field. */
+export const roomTypeFormSchema = createRoomTypeSchema.omit({ propertyId: true });
+
+export type RoomTypeFormInput = z.infer<typeof roomTypeFormSchema>;
+
+export const updateRoomTypeSchema = roomTypeFormSchema.extend({
+  propertyId: z.number(),
+  id: z.number(),
+});
+
+export type UpdateRoomTypeInput = z.infer<typeof updateRoomTypeSchema>;
+
+export const createRoomSchema = z.object({
+  propertyId: z.number(),
+  roomTypeId: z.number(),
+  number: z.string().min(1, "A room number is required").max(24),
+  floor: z.string().max(24).optional(),
+  status: roomStatusSchema,
+  notes: z.string().max(2000).optional(),
+});
+
+export type CreateRoomInput = z.infer<typeof createRoomSchema>;
+
+export const roomFormSchema = createRoomSchema.omit({ propertyId: true });
+
+export type RoomFormInput = z.infer<typeof roomFormSchema>;
+
+export const updateRoomSchema = roomFormSchema.extend({
+  propertyId: z.number(),
+  id: z.number(),
+});
+
+export type UpdateRoomInput = z.infer<typeof updateRoomSchema>;
+
+/** Archiving is reversible, so it is a value rather than a separate procedure. */
+export const archiveInventorySchema = z.object({
+  propertyId: z.number(),
+  id: z.number(),
+  archived: z.boolean(),
+});
+
+export type ArchiveInventoryInput = z.infer<typeof archiveInventorySchema>;

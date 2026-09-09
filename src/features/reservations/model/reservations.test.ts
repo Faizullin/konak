@@ -2,8 +2,12 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
+  addedNights,
   appearsOnGrid,
   assignLanes,
+  DAY_ROLE_LABELS,
+  DayRole,
+  dayRoleOf,
   availableRooms,
   canTransition,
   GRID_MAX_NIGHTS,
@@ -17,6 +21,7 @@ import {
   nightsOf,
   occupiesInventory,
   refuseStatusChange,
+  refuseStayMove,
   RESERVATION_STATUS_LABELS,
   RESERVATION_STATUS_VALUES,
   ReservationStatus,
@@ -354,4 +359,150 @@ test("every status has a label, so the grid never draws a raw column value", () 
   for (const status of RESERVATION_STATUS_VALUES) {
     assert.equal(typeof RESERVATION_STATUS_LABELS[status], "string", status);
   }
+});
+
+test("a day sorts a stay into exactly one of the desk's three lists", () => {
+  const stay = {
+    checkIn: new Date(Date.UTC(2027, 2, 3)),
+    checkOut: new Date(Date.UTC(2027, 2, 6)),
+  };
+  const on = (n: number) => dayRoleOf(stay, new Date(Date.UTC(2027, 2, n)));
+
+  assert.equal(on(2), null);
+  assert.equal(on(3), DayRole.ARRIVAL);
+  assert.equal(on(4), DayRole.IN_HOUSE);
+  assert.equal(on(5), DayRole.IN_HOUSE);
+  // The departure day is not a night, and is still the morning's work.
+  assert.equal(on(6), DayRole.DEPARTURE);
+  assert.equal(on(7), null);
+});
+
+test("a one-night stay arrives and departs, and is in house on neither day", () => {
+  const stay = {
+    checkIn: new Date(Date.UTC(2027, 2, 3)),
+    checkOut: new Date(Date.UTC(2027, 2, 4)),
+  };
+
+  assert.equal(dayRoleOf(stay, new Date(Date.UTC(2027, 2, 3))), DayRole.ARRIVAL);
+  assert.equal(dayRoleOf(stay, new Date(Date.UTC(2027, 2, 4))), DayRole.DEPARTURE);
+});
+
+test("the day roles read against a time of day, not only a midnight", () => {
+  const stay = {
+    checkIn: new Date(Date.UTC(2027, 2, 3)),
+    checkOut: new Date(Date.UTC(2027, 2, 6)),
+  };
+  // The desk asks with whatever `todayAt` produced; a stray time must not
+  // move a booking out of its list.
+  assert.equal(dayRoleOf(stay, new Date(Date.UTC(2027, 2, 4, 23, 59))), DayRole.IN_HOUSE);
+});
+
+test("every day role has a label, so a list never draws a raw value", () => {
+  for (const role of Object.values(DayRole)) {
+    assert.equal(typeof DAY_ROLE_LABELS[role], "string", role);
+  }
+});
+
+const march = (n: number) => new Date(Date.UTC(2027, 2, n));
+
+test("a stay must still be a stay after it moves", () => {
+  const move = {
+    status: ReservationStatus.CONFIRMED,
+    from: { checkIn: march(10), checkOut: march(12) },
+    to: { checkIn: march(10), checkOut: march(10) },
+    today: march(1),
+  };
+
+  assert.equal(refuseStayMove(move), "A stay is at least one night");
+});
+
+test("a booking that has ended does not move", () => {
+  for (const status of [
+    ReservationStatus.CHECKED_OUT,
+    ReservationStatus.CANCELLED,
+    ReservationStatus.NO_SHOW,
+  ]) {
+    const refusal = refuseStayMove({
+      status,
+      from: { checkIn: march(10), checkOut: march(12) },
+      to: { checkIn: march(11), checkOut: march(13) },
+      today: march(1),
+    });
+    assert.match(refusal ?? "", /cannot move/, status);
+  }
+});
+
+test("an arrived guest arrived when they arrived — only the departure moves", () => {
+  const from = { checkIn: march(10), checkOut: march(12) };
+  const checkedIn = { status: ReservationStatus.CHECKED_IN, from, today: march(13) };
+
+  // Extending the stay is the ordinary case, and is allowed.
+  assert.equal(
+    refuseStayMove({ ...checkedIn, to: { checkIn: march(10), checkOut: march(14) } }),
+    null
+  );
+
+  assert.equal(
+    refuseStayMove({ ...checkedIn, to: { checkIn: march(11), checkOut: march(14) } }),
+    "The guest has already arrived, so only the departure can move"
+  );
+  // Their last night would be the 11th, and it is already the 13th.
+  assert.equal(
+    refuseStayMove({ ...checkedIn, to: { checkIn: march(10), checkOut: march(12) } }),
+    "That would end the stay before today"
+  );
+});
+
+test("a guest may check out today, which is not the past", () => {
+  // checkOut is exclusive: leaving on the 11th means the 10th was the last
+  // night, and that is an ordinary early departure rather than a refusal.
+  assert.equal(
+    refuseStayMove({
+      status: ReservationStatus.CHECKED_IN,
+      from: { checkIn: march(10), checkOut: march(14) },
+      to: { checkIn: march(10), checkOut: march(11) },
+      today: march(11),
+    }),
+    null
+  );
+});
+
+test("a booking that has not arrived cannot be moved into nights that have gone", () => {
+  const from = { checkIn: march(10), checkOut: march(12) };
+
+  assert.equal(
+    refuseStayMove({
+      status: ReservationStatus.CONFIRMED,
+      from,
+      to: { checkIn: march(3), checkOut: march(5) },
+      today: march(5),
+    }),
+    "A booking cannot be moved into nights that have passed"
+  );
+  // Onto today itself is allowed — that is a guest arriving now.
+  assert.equal(
+    refuseStayMove({
+      status: ReservationStatus.CONFIRMED,
+      from,
+      to: { checkIn: march(5), checkOut: march(7) },
+      today: march(5),
+    }),
+    null
+  );
+});
+
+test("only genuinely new nights are asked about, so a stay never refuses itself", () => {
+  const from = { checkIn: march(10), checkOut: march(12) };
+
+  // Extending by one: the 10th and 11th are already held, the 12th is new.
+  assert.deepEqual(addedNights(from, { checkIn: march(10), checkOut: march(13) }), [march(12)]);
+  // Shortening adds nothing.
+  assert.deepEqual(addedNights(from, { checkIn: march(10), checkOut: march(11) }), []);
+  // A move that overlaps itself only asks about the part that moved.
+  assert.deepEqual(addedNights(from, { checkIn: march(11), checkOut: march(13) }), [march(12)]);
+  // A move clear of the original asks about all of it.
+  assert.deepEqual(addedNights(from, { checkIn: march(20), checkOut: march(22) }), [
+    march(20),
+    march(21),
+  ]);
 });

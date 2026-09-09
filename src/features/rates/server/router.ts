@@ -1,14 +1,23 @@
 import "server-only";
 import { TRPCError } from "@trpc/server";
+import prisma from "@/server/db";
 import { fieldError } from "@/server/errors";
 import { createTRPCRouter, protectedProcedure } from "@/server/trpc";
 import { requirePropertyMember } from "@/features/properties/server";
 import { nightsOf, toStayDate } from "@/features/reservations";
 import {
+  archiveRatePlanSchema,
+  canArchiveRatePlans,
+  canManageRatePlans,
+  canSetRates,
+  createRatePlanSchema,
+  listRatePlansSchema,
   quoteInputSchema,
   rateCalendarInputSchema,
+  refuseCancellationTerms,
   setRatesSchema,
   setRestrictionsSchema,
+  updateRatePlanSchema,
 } from "../model";
 import { quoteStay, refusalMessage } from "./service";
 
@@ -20,9 +29,60 @@ import { quoteStay, refusalMessage } from "./service";
  *
  * The local guard here was named `requirePropertyManager` but only ever checked
  * membership; it is now the shared `requirePropertyMember`, which is what it
- * did. Whether setting a season's prices should require a manager is a decision
- * about roles, not a rename.
+ * did. Whether setting a season's prices should require a manager was left open
+ * at that rename and is now decided: it does. `canSetRates` grants OWNER and
+ * ADMIN and withholds MEMBER, because a wrong nightly rate is money and it
+ * reaches every channel the moment it is written.
  */
+
+type Db = typeof prisma;
+
+async function assertPlanOwned(db: Db, id: number, propertyId: number) {
+  const found = await db.ratePlan.count({ where: { id, propertyId } });
+  if (found === 0) {
+    throw new TRPCError({ code: "NOT_FOUND", message: "Rate plan not found" });
+  }
+}
+
+/** `@@unique([propertyId, code])`, refused as a sentence rather than a 500. */
+async function assertPlanCodeFree(db: Db, propertyId: number, code: string, exceptId?: number) {
+  const clash = await db.ratePlan.findFirst({
+    where: { propertyId, code, ...(exceptId ? { id: { not: exceptId } } : {}) },
+    select: { id: true },
+  });
+  if (clash) {
+    throw fieldError("code", "That code is already used in this property", "CONFLICT");
+  }
+}
+
+/**
+ * The two things a plan's own fields cannot check: that its terms agree with
+ * each other, and that a plan scoped to a room type is scoped to one of *this*
+ * property's.
+ */
+async function assertPlanShape(
+  db: Db,
+  plan: {
+    propertyId: number;
+    roomTypeId: number | null;
+    isRefundable: boolean;
+    cancellationCutoffHours: number | null;
+  }
+) {
+  const refusal = refuseCancellationTerms(plan);
+  if (refusal) {
+    throw fieldError("cancellationCutoffHours", refusal, "BAD_REQUEST");
+  }
+
+  if (plan.roomTypeId !== null) {
+    const found = await db.roomType.count({
+      where: { id: plan.roomTypeId, propertyId: plan.propertyId },
+    });
+    if (found === 0) {
+      throw fieldError("roomTypeId", "That room type is not in this property", "NOT_FOUND");
+    }
+  }
+}
 
 export const rateRouter = createTRPCRouter({
   /** A price and a verdict. `refusal` is why it may not be sold, if it may not. */
@@ -57,7 +117,10 @@ export const rateRouter = createTRPCRouter({
   }),
 
   setRates: protectedProcedure.input(setRatesSchema).mutation(async ({ ctx, input }) => {
-    await requirePropertyMember(ctx, input.propertyId);
+    const { role } = await requirePropertyMember(ctx, input.propertyId);
+    if (!canSetRates(role)) {
+      throw new TRPCError({ code: "FORBIDDEN", message: "You cannot change prices" });
+    }
 
     const days = nightsOf({ checkIn: toStayDate(input.from), checkOut: toStayDate(input.to) });
     if (days.length === 0) {
@@ -100,7 +163,10 @@ export const rateRouter = createTRPCRouter({
   setRestrictions: protectedProcedure
     .input(setRestrictionsSchema)
     .mutation(async ({ ctx, input }) => {
-      await requirePropertyMember(ctx, input.propertyId);
+      const { role } = await requirePropertyMember(ctx, input.propertyId);
+      if (!canSetRates(role)) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "You cannot change restrictions" });
+      }
 
       const days = nightsOf({ checkIn: toStayDate(input.from), checkOut: toStayDate(input.to) });
       if (days.length === 0) {
@@ -135,6 +201,79 @@ export const rateRouter = createTRPCRouter({
 
       return { days: days.length };
     }),
+
+  /** The plans a stay can be quoted on. The axis every rate screen is drawn against. */
+  listPlans: protectedProcedure.input(listRatePlansSchema).query(async ({ ctx, input }) => {
+    await requirePropertyMember(ctx, input.propertyId);
+
+    return ctx.db.ratePlan.findMany({
+      where: {
+        propertyId: input.propertyId,
+        ...(input.includeArchived ? {} : { archivedAt: null }),
+      },
+      orderBy: [{ name: "asc" }],
+      select: {
+        id: true,
+        roomTypeId: true,
+        name: true,
+        code: true,
+        currencyCode: true,
+        mealPlan: true,
+        isRefundable: true,
+        cancellationCutoffHours: true,
+        cancellationPolicy: true,
+        extraAdultMinor: true,
+        extraChildMinor: true,
+        defaultMinLengthOfStay: true,
+        archivedAt: true,
+      },
+    });
+  }),
+
+  createPlan: protectedProcedure.input(createRatePlanSchema).mutation(async ({ ctx, input }) => {
+    const { user, role } = await requirePropertyMember(ctx, input.propertyId);
+    if (!canManageRatePlans(role)) {
+      throw new TRPCError({ code: "FORBIDDEN", message: "You cannot add rate plans" });
+    }
+    await assertPlanShape(ctx.db, input);
+    await assertPlanCodeFree(ctx.db, input.propertyId, input.code);
+
+    return ctx.db.ratePlan.create({
+      data: { ...input, createdById: user.id, updatedById: user.id },
+    });
+  }),
+
+  updatePlan: protectedProcedure.input(updateRatePlanSchema).mutation(async ({ ctx, input }) => {
+    const { user, role } = await requirePropertyMember(ctx, input.propertyId);
+    if (!canManageRatePlans(role)) {
+      throw new TRPCError({ code: "FORBIDDEN", message: "You cannot edit rate plans" });
+    }
+
+    const { id, propertyId, ...data } = input;
+    await assertPlanOwned(ctx.db, id, propertyId);
+    await assertPlanShape(ctx.db, { propertyId, ...data });
+    await assertPlanCodeFree(ctx.db, propertyId, data.code, id);
+
+    return ctx.db.ratePlan.update({ where: { id }, data: { ...data, updatedById: user.id } });
+  }),
+
+  /**
+   * Archiving withdraws a plan from sale and keeps it: the stays sold on it
+   * still quote from its terms, and a folio that lost its plan cannot explain
+   * its own total.
+   */
+  archivePlan: protectedProcedure.input(archiveRatePlanSchema).mutation(async ({ ctx, input }) => {
+    const { user, role } = await requirePropertyMember(ctx, input.propertyId);
+    if (!canArchiveRatePlans(role)) {
+      throw new TRPCError({ code: "FORBIDDEN", message: "You cannot archive rate plans" });
+    }
+    await assertPlanOwned(ctx.db, input.id, input.propertyId);
+
+    return ctx.db.ratePlan.update({
+      where: { id: input.id },
+      data: { archivedAt: input.archived ? new Date() : null, updatedById: user.id },
+    });
+  }),
 });
 
 export { refusalMessage };

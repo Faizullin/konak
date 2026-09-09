@@ -4,14 +4,17 @@ import { PageHeader } from "@/components/common/page-header";
 import { Button } from "@/components/ui/button";
 import { isOrgModuleEnabled } from "@/features/organizations";
 import { organizationBySlug } from "@/features/organizations/server";
-import { formatDayMinutes, propertySlugSchema } from "@/features/properties";
-import { FrontDeskDay } from "@/features/reservations/client/components/front-desk-day";
-import { ReservationGrid } from "@/features/reservations/client/components/reservation-grid";
+import { propertySlugSchema } from "@/features/properties";
+import {
+  RoomsPanel,
+  RoomTypesPanel,
+} from "@/features/properties/client/components/inventory-panels";
+import { RatePlansPanel } from "@/features/rates/client/components/rate-plans-panel";
 import prisma from "@/server/db";
 
 type Params = { params: Promise<{ orgSlug: string; propertySlug: string }> };
 
-export default async function PropertyGridPage({ params }: Params) {
+export default async function PropertySetupPage({ params }: Params) {
   const { orgSlug, propertySlug } = await params;
   if (!propertySlugSchema.safeParse(propertySlug).success) {
     notFound();
@@ -30,36 +33,40 @@ export default async function PropertyGridPage({ params }: Params) {
     notFound();
   }
 
-  // The organization is part of the lookup rather than checked after it:
-  // another tenant's slug has to be absent here, not forbidden.
   const property = await prisma.property.findFirst({
     where: { organizationId: organization.id, slug: propertySlug, archivedAt: null },
-    select: { id: true, name: true, timezone: true, checkInMinutes: true, checkOutMinutes: true },
+    select: { id: true, name: true, currencyCode: true },
   });
   if (!property) {
     notFound();
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <PageHeader
-        title={property.name}
-        description={`Check-in from ${formatDayMinutes(property.checkInMinutes)}, check-out by ${formatDayMinutes(property.checkOutMinutes)}.`}
+        title={`${property.name} setup`}
+        description="Room types, the rooms behind them, and the plans a stay is quoted on."
         actions={
           <Button
             nativeButton={false}
             variant="outline"
-            render={<Link href={`/dashboard/orgs/${orgSlug}/front-desk/${propertySlug}/setup`} />}
+            render={<Link href={`/dashboard/orgs/${orgSlug}/front-desk/${propertySlug}`} />}
           >
-            Setup
+            Back to the desk
           </Button>
         }
       />
-      {/* The desk's day, not the browser's: whether a booking has arrived is
-          answered in the hotel's timezone. Today's work first, the month under
-          it — the order a receptionist reads them in. */}
-      <FrontDeskDay propertyId={property.id} timezone={property.timezone} />
-      <ReservationGrid propertyId={property.id} timezone={property.timezone} />
+
+      {/* Types before rooms, and both before plans: a room needs a type, and a
+          plan is quoted against one. The order on screen is the order a
+          property is actually set up in. */}
+      <RoomTypesPanel propertyId={property.id} organizationId={organization.id} />
+      <RoomsPanel propertyId={property.id} organizationId={organization.id} />
+      <RatePlansPanel
+        propertyId={property.id}
+        organizationId={organization.id}
+        currencyCode={property.currencyCode}
+      />
     </div>
   );
 }

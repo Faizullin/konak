@@ -3,24 +3,31 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { fieldError } from "@/server/errors";
 import { createTRPCRouter, protectedProcedure } from "@/server/trpc";
+import { createGuestPerson } from "@/features/directory/server";
+import { isRoomSellable, ROOM_STATUS_LABELS, type RoomStatus } from "@/features/properties";
 import { requirePropertyMember } from "@/features/properties/server";
 import {
   assignRoomSchema,
   availabilityInputSchema,
   holdInputSchema,
   releaseHoldSchema,
+  addedNights,
   createReservationSchema,
+  frontDeskDaySchema,
   gridWindowSchema,
   isValidStayRange,
+  moveStaySchema,
   nightsOf,
   refuseStatusChange,
+  refuseStayMove,
   ReservationStatus,
   setReservationStatusSchema,
   todayAt,
   toStayDate,
+  walkInSchema,
 } from "../model";
 import { quoteStay, refusalMessage } from "@/features/rates/server";
-import { availability, frontDeskGrid, nextSeriesNumber } from "./service";
+import { availability, frontDeskDay, frontDeskGrid, nextSeriesNumber } from "./service";
 
 /**
  * Reservations — availability, and the four things a desk does to a booking.
@@ -46,6 +53,15 @@ export const reservationRouter = createTRPCRouter({
   grid: protectedProcedure.input(gridWindowSchema).query(async ({ ctx, input }) => {
     await requirePropertyMember(ctx, input.propertyId);
     return frontDeskGrid(input);
+  }),
+
+  /**
+   * Arrivals, departures and who is in house, for one day. The grid draws the
+   * month; this is the list a receptionist actually works down.
+   */
+  day: protectedProcedure.input(frontDeskDaySchema).query(async ({ ctx, input }) => {
+    await requirePropertyMember(ctx, input.propertyId);
+    return frontDeskDay(input);
   }),
 
   list: protectedProcedure
@@ -335,6 +351,295 @@ export const reservationRouter = createTRPCRouter({
       // Nothing else can raise it on this update.
       if (String(error).includes("room_stays_no_overlap")) {
         throw fieldError("roomId", "That room is taken for part of this stay", "CONFLICT");
+      }
+      throw error;
+    }
+  }),
+
+  /**
+   * A guest at the desk: booked, given a room and checked in, in one action.
+   *
+   * Not `create` then `assignRoom` then `setStatus` — that is three round trips
+   * where the second can fail after the first succeeded, leaving a booking
+   * nobody decided to make. One transaction, or none of it.
+   *
+   * The status rules are satisfied by construction rather than re-checked: the
+   * schema requires a room, and the arrival is the property's own today, which
+   * is exactly what `refuseStatusChange` asks of a check-in.
+   */
+  walkIn: protectedProcedure.input(walkInSchema).mutation(async ({ ctx, input }) => {
+    const { property: scope, user } = await requirePropertyMember(ctx, input.propertyId);
+
+    const property = await ctx.db.property.findUniqueOrThrow({
+      where: { id: input.propertyId },
+      select: { currencyCode: true, timezone: true },
+    });
+
+    // The hotel's day, not the browser's: a walk-in at 01:00 is still tonight.
+    const checkIn = todayAt(property.timezone);
+    const checkOut = toStayDate(new Date(checkIn.getTime() + input.nights * 86_400_000));
+
+    const room = await ctx.db.room.findFirst({
+      where: { id: input.roomId, propertyId: input.propertyId, archivedAt: null },
+      select: {
+        id: true,
+        roomTypeId: true,
+        status: true,
+        roomType: { select: { maxOccupancy: true } },
+      },
+    });
+    if (!room) {
+      throw new TRPCError({ code: "NOT_FOUND", message: "Room not found" });
+    }
+    if (room.roomTypeId !== input.roomTypeId) {
+      throw fieldError("roomId", "That room is a different type", "BAD_REQUEST");
+    }
+    if (!isRoomSellable(room.status)) {
+      const label = ROOM_STATUS_LABELS[room.status as RoomStatus] ?? room.status;
+      throw fieldError(
+        "roomId",
+        `That room is ${label.toLowerCase()} and cannot be sold`,
+        "CONFLICT"
+      );
+    }
+    if (input.adults + input.children > room.roomType.maxOccupancy) {
+      throw fieldError("adults", "That is more people than the room type sleeps", "BAD_REQUEST");
+    }
+
+    const nights = await availability({
+      propertyId: input.propertyId,
+      roomTypeId: input.roomTypeId,
+      from: checkIn,
+      to: checkOut,
+    });
+    const soldOut = nights.find((night) => night.available < 1);
+    if (soldOut) {
+      throw fieldError(
+        "nights",
+        `No rooms of that type free on ${soldOut.date.toISOString().slice(0, 10)}`,
+        "CONFLICT"
+      );
+    }
+
+    let currencyCode = property.currencyCode;
+    let totalMinor = 0;
+    if (input.ratePlanId) {
+      const quote = await quoteStay({
+        propertyId: input.propertyId,
+        roomTypeId: input.roomTypeId,
+        ratePlanId: input.ratePlanId,
+        checkIn,
+        checkOut,
+        adults: input.adults,
+        children: input.children,
+      });
+      if (quote.refusal || quote.totalMinor === null) {
+        throw fieldError("ratePlanId", refusalMessage(quote.refusal ?? "NO_PRICE"), "CONFLICT");
+      }
+      currencyCode = quote.currencyCode;
+      totalMinor = quote.totalMinor;
+    }
+
+    try {
+      return await ctx.db.$transaction(async (tx) => {
+        const reference = await nextSeriesNumber(tx, {
+          organizationId: scope.organizationId,
+          propertyId: scope.id,
+          kind: "RESERVATION",
+        });
+
+        // The guest is part of the booking, so it is written with it — the
+        // directory feature owns the write, this owns the transaction.
+        const booker = await createGuestPerson(
+          tx,
+          {
+            organizationId: scope.organizationId,
+            firstName: input.firstName,
+            lastName: input.lastName,
+            email: input.email,
+            phone: input.phone,
+          },
+          user.id
+        );
+
+        return tx.reservation.create({
+          data: {
+            propertyId: input.propertyId,
+            reference,
+            status: ReservationStatus.CHECKED_IN,
+            source: "WALK_IN",
+            bookerPersonId: booker.id,
+            currencyCode,
+            totalMinor,
+            notes: input.notes,
+            createdById: user.id,
+            updatedById: user.id,
+            stays: {
+              create: [
+                {
+                  roomTypeId: input.roomTypeId,
+                  ratePlanId: input.ratePlanId,
+                  roomId: input.roomId,
+                  status: ReservationStatus.CHECKED_IN,
+                  checkIn,
+                  checkOut,
+                  adults: input.adults,
+                  children: input.children,
+                  currencyCode,
+                  totalMinor,
+                },
+              ],
+            },
+          },
+          include: { stays: true },
+        });
+      });
+    } catch (error) {
+      // Someone else took the room between the availability read and the write.
+      if (String(error).includes("room_stays_no_overlap")) {
+        throw fieldError("roomId", "That room is taken for part of this stay", "CONFLICT");
+      }
+      throw error;
+    }
+  }),
+
+  /**
+   * Move a stay's nights, and its room in the same drag.
+   *
+   * `assignRoom` answers "which room" and this answers "which nights" — one
+   * procedure for both because a grid drag changes both at once, and two calls
+   * would let the room land while the dates were refused.
+   *
+   * The rule is `refuseStayMove` in `model/`; the overlap is the exclusion
+   * constraint, which is the only answer that stays true under two clerks.
+   */
+  moveStay: protectedProcedure.input(moveStaySchema).mutation(async ({ ctx, input }) => {
+    await requirePropertyMember(ctx, input.propertyId);
+
+    const stay = await ctx.db.roomStay.findFirst({
+      where: { id: input.stayId, reservation: { propertyId: input.propertyId } },
+      select: {
+        id: true,
+        status: true,
+        roomId: true,
+        roomTypeId: true,
+        ratePlanId: true,
+        checkIn: true,
+        checkOut: true,
+        adults: true,
+        children: true,
+        currencyCode: true,
+        reservationId: true,
+        reservation: { select: { property: { select: { timezone: true } } } },
+      },
+    });
+    if (!stay) {
+      throw new TRPCError({ code: "NOT_FOUND", message: "Stay not found" });
+    }
+
+    const to = { checkIn: toStayDate(input.checkIn), checkOut: toStayDate(input.checkOut) };
+    const from = { checkIn: stay.checkIn, checkOut: stay.checkOut };
+
+    const refusal = refuseStayMove({
+      status: stay.status,
+      from,
+      to,
+      today: todayAt(stay.reservation.property.timezone),
+    });
+    if (refusal) {
+      throw fieldError("checkOut", refusal, "BAD_REQUEST");
+    }
+
+    // `undefined` leaves the room alone; `null` puts the stay back on its type.
+    const roomId = input.roomId === undefined ? stay.roomId : input.roomId;
+    if (roomId !== null && roomId !== stay.roomId) {
+      const room = await ctx.db.room.findFirst({
+        where: { id: roomId, propertyId: input.propertyId },
+        select: { id: true, roomTypeId: true },
+      });
+      if (!room) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Room not found" });
+      }
+      if (room.roomTypeId !== stay.roomTypeId) {
+        throw fieldError("roomId", "That room is a different type", "BAD_REQUEST");
+      }
+    }
+
+    // Only the nights the move adds are asked about. Over the whole new range
+    // the stay would find itself already there and refuse its own move.
+    const added = addedNights(from, to);
+    if (added.length > 0) {
+      const nights = await availability({
+        propertyId: input.propertyId,
+        roomTypeId: stay.roomTypeId,
+        from: to.checkIn,
+        to: to.checkOut,
+      });
+      const wanted = new Set(added.map((night) => night.getTime()));
+      const soldOut = nights.find(
+        (night) => wanted.has(night.date.getTime()) && night.available < 1
+      );
+      if (soldOut) {
+        throw fieldError(
+          "checkIn",
+          `No rooms of that type free on ${soldOut.date.toISOString().slice(0, 10)}`,
+          "CONFLICT"
+        );
+      }
+    }
+
+    // The nights changed, so the price did. A priced stay is re-quoted rather
+    // than carried across, which is what makes a move a decision.
+    let currencyCode = stay.currencyCode;
+    let totalMinor: number | undefined;
+    if (stay.ratePlanId) {
+      const quote = await quoteStay({
+        propertyId: input.propertyId,
+        roomTypeId: stay.roomTypeId,
+        ratePlanId: stay.ratePlanId,
+        checkIn: to.checkIn,
+        checkOut: to.checkOut,
+        adults: stay.adults,
+        children: stay.children,
+      });
+      if (quote.refusal || quote.totalMinor === null) {
+        throw fieldError("checkIn", refusalMessage(quote.refusal ?? "NO_PRICE"), "CONFLICT");
+      }
+      currencyCode = quote.currencyCode;
+      totalMinor = quote.totalMinor;
+    }
+
+    try {
+      return await ctx.db.$transaction(async (tx) => {
+        const moved = await tx.roomStay.update({
+          where: { id: stay.id },
+          data: {
+            checkIn: to.checkIn,
+            checkOut: to.checkOut,
+            roomId,
+            ...(totalMinor === undefined ? {} : { currencyCode, totalMinor }),
+          },
+        });
+
+        // The reservation's total is the sum of its stays, so a re-quoted stay
+        // that left the header behind would make the folio disagree with itself.
+        if (totalMinor !== undefined) {
+          const stays = await tx.roomStay.findMany({
+            where: { reservationId: stay.reservationId },
+            select: { totalMinor: true },
+          });
+          await tx.reservation.update({
+            where: { id: stay.reservationId },
+            data: { totalMinor: stays.reduce((sum, row) => sum + row.totalMinor, 0) },
+          });
+        }
+
+        return moved;
+      });
+    } catch (error) {
+      // The exclusion constraint, surfacing as a sentence rather than a 500.
+      if (String(error).includes("room_stays_no_overlap")) {
+        throw fieldError("roomId", "That room is taken for part of those nights", "CONFLICT");
       }
       throw error;
     }
