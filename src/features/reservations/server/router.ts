@@ -1,10 +1,10 @@
 import "server-only";
 import { z } from "zod";
-import { ConflictError, InvalidError, NotFoundError } from "@/server/errors";
+import { ConflictError, InvalidError, NotFoundError, refused } from "@/server/errors";
 import { createTRPCRouter, protectedProcedure } from "@/server/trpc";
 import { ReservationError } from "../model";
 import { createGuestPerson } from "@/features/directory/server";
-import { isRoomSellable, ROOM_STATUS_LABELS, type RoomStatus } from "@/features/properties";
+import { isRoomSellable, RoomStatus } from "@/features/properties";
 import { requirePropertyMember } from "@/features/properties/server";
 import {
   assignRoomSchema,
@@ -159,7 +159,7 @@ export const reservationRouter = createTRPCRouter({
           ReservationError.STAY_NO_PRICE,
           refusalMessage(quote.refusal ?? "NO_PRICE"),
           "ratePlanId"
-        );
+        ).with({ reason: quote.refusal ?? "NO_PRICE" });
       }
       currencyCode = quote.currencyCode;
       totalMinor = quote.totalMinor;
@@ -309,7 +309,7 @@ export const reservationRouter = createTRPCRouter({
         today: todayAt(reservation.property.timezone),
       });
       if (refusal) {
-        throw new InvalidError(ReservationError.STATUS_REFUSED, refusal);
+        throw refused(refusal);
       }
 
       return ctx.db.$transaction(async (tx) => {
@@ -423,12 +423,20 @@ export const reservationRouter = createTRPCRouter({
       );
     }
     if (!isRoomSellable(room.status)) {
-      const label = ROOM_STATUS_LABELS[room.status as RoomStatus] ?? room.status;
-      throw new ConflictError(
-        ReservationError.ROOM_NOT_SELLABLE,
-        `That room is ${label.toLowerCase()} and cannot be sold`,
-        "roomId"
-      ).with({ status: label.toLowerCase() });
+      // Two reasons, two codes. `isRoomSellable` is false for a room that is
+      // out of order and for a status this build does not know, and saying
+      // "out of order" about the second would be a guess.
+      throw room.status === RoomStatus.OUT_OF_ORDER
+        ? new ConflictError(
+            ReservationError.ROOM_OUT_OF_ORDER,
+            "That room is out of order and cannot be sold",
+            "roomId"
+          )
+        : new ConflictError(
+            ReservationError.ROOM_NOT_SELLABLE,
+            "That room cannot be sold",
+            "roomId"
+          );
     }
     if (input.adults + input.children > room.roomType.maxOccupancy) {
       throw new InvalidError(
@@ -470,7 +478,7 @@ export const reservationRouter = createTRPCRouter({
           ReservationError.STAY_NO_PRICE,
           refusalMessage(quote.refusal ?? "NO_PRICE"),
           "ratePlanId"
-        );
+        ).with({ reason: quote.refusal ?? "NO_PRICE" });
       }
       currencyCode = quote.currencyCode;
       totalMinor = quote.totalMinor;
@@ -587,7 +595,7 @@ export const reservationRouter = createTRPCRouter({
       today: todayAt(stay.reservation.property.timezone),
     });
     if (refusal) {
-      throw new InvalidError(ReservationError.STAY_MOVE_REFUSED, refusal, "checkOut");
+      throw refused(refusal, "invalid", "checkOut");
     }
 
     // `undefined` leaves the room alone; `null` puts the stay back on its type.
@@ -651,7 +659,7 @@ export const reservationRouter = createTRPCRouter({
           ReservationError.STAY_NO_PRICE,
           refusalMessage(quote.refusal ?? "NO_PRICE"),
           "checkIn"
-        );
+        ).with({ reason: quote.refusal ?? "NO_PRICE" });
       }
       currencyCode = quote.currencyCode;
       totalMinor = quote.totalMinor;

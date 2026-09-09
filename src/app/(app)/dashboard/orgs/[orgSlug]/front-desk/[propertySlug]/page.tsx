@@ -1,3 +1,4 @@
+import { getTranslations } from "next-intl/server";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { PageHeader } from "@/components/common/page-header";
@@ -12,6 +13,7 @@ import prisma from "@/server/db";
 type Params = { params: Promise<{ orgSlug: string; propertySlug: string }> };
 
 export default async function PropertyGridPage({ params }: Params) {
+  const t = await getTranslations("pages");
   const { orgSlug, propertySlug } = await params;
   if (!propertySlugSchema.safeParse(propertySlug).success) {
     notFound();
@@ -44,14 +46,17 @@ export default async function PropertyGridPage({ params }: Params) {
     <div className="space-y-6">
       <PageHeader
         title={property.name}
-        description={`Check-in from ${formatDayMinutes(property.checkInMinutes)}, check-out by ${formatDayMinutes(property.checkOutMinutes)}.`}
+        description={t("property.description", {
+          checkIn: formatDayMinutes(property.checkInMinutes),
+          checkOut: formatDayMinutes(property.checkOutMinutes),
+        })}
         actions={
           <Button
             nativeButton={false}
             variant="outline"
             render={<Link href={`/dashboard/orgs/${orgSlug}/front-desk/${propertySlug}/setup`} />}
           >
-            Setup
+            {t("property.setup")}
           </Button>
         }
       />

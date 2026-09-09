@@ -1,5 +1,7 @@
 "use client";
 
+import { useEnumLabels } from "@/lib/labels";
+import { useTranslations } from "next-intl";
 import NiceModal, { useModal } from "@ebay/nice-modal-react";
 import { useEffect } from "react";
 import { Controller, useForm } from "react-hook-form";
@@ -14,7 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { isRoomSellable, ROOM_STATUS_LABELS, type RoomStatus } from "@/features/properties";
+import { isRoomSellable, ROOM_STATUS_VALUES, type RoomStatus } from "@/features/properties";
 import { walkInFormSchema, type WalkInFormInput } from "@/features/reservations";
 import { useErrorHandlers } from "@/lib/errors";
 import { useZodResolver } from "@/lib/form";
@@ -49,6 +51,8 @@ const EMPTY: WalkInFormInput = {
 
 export const WalkInFormNiceDialog = NiceModal.create(
   ({ propertyId }: WalkInFormNiceDialogProps) => {
+    const labels = useEnumLabels("roomStatus", ROOM_STATUS_VALUES);
+    const t = useTranslations("reservations");
     const { handleFormError } = useErrorHandlers();
     const modal = useModal();
     const utils = trpc.useUtils();
@@ -99,7 +103,7 @@ export const WalkInFormNiceDialog = NiceModal.create(
     const roomItems = Object.fromEntries(
       sellable.map((room) => [
         String(room.id),
-        `${room.number} · ${ROOM_STATUS_LABELS[room.status as RoomStatus] ?? room.status}`,
+        `${room.number} · ${labels[room.status as RoomStatus] ?? room.status}`,
       ])
     );
 
@@ -107,12 +111,12 @@ export const WalkInFormNiceDialog = NiceModal.create(
       <FormDialog
         open={modal.visible}
         onOpenChange={(open) => !open && modal.hide()}
-        title="Walk-in"
-        description="Books tonight, assigns the room and checks the guest in."
+        title={t("walkIn.title")}
+        description={t("walkIn.description")}
         onSubmit={form.handleSubmit((values) => walkIn.mutate({ ...values, propertyId }))}
         error={form.formState.errors.root?.message}
         isLoading={walkIn.isPending}
-        submitText="Book and check in"
+        submitText={t("walkIn.submit")}
       >
         <FieldGroup>
           <div className="grid gap-4 sm:grid-cols-2">
@@ -121,7 +125,7 @@ export const WalkInFormNiceDialog = NiceModal.create(
               name="firstName"
               render={({ field, fieldState }) => (
                 <Field data-invalid={!!fieldState.error}>
-                  <FieldLabel htmlFor="firstName">First name</FieldLabel>
+                  <FieldLabel htmlFor="firstName">{t("walkIn.firstName")}</FieldLabel>
                   <Input id="firstName" {...field} disabled={walkIn.isPending} />
                   <FieldError errors={[fieldState.error]} />
                 </Field>
@@ -132,7 +136,7 @@ export const WalkInFormNiceDialog = NiceModal.create(
               name="lastName"
               render={({ field, fieldState }) => (
                 <Field data-invalid={!!fieldState.error}>
-                  <FieldLabel htmlFor="lastName">Last name</FieldLabel>
+                  <FieldLabel htmlFor="lastName">{t("walkIn.lastName")}</FieldLabel>
                   <Input id="lastName" {...field} disabled={walkIn.isPending} />
                   <FieldError errors={[fieldState.error]} />
                 </Field>
@@ -146,7 +150,7 @@ export const WalkInFormNiceDialog = NiceModal.create(
               name="email"
               render={({ field, fieldState }) => (
                 <Field data-invalid={!!fieldState.error}>
-                  <FieldLabel htmlFor="email">Email</FieldLabel>
+                  <FieldLabel htmlFor="email">{t("walkIn.email")}</FieldLabel>
                   <Input
                     id="email"
                     type="email"
@@ -163,7 +167,7 @@ export const WalkInFormNiceDialog = NiceModal.create(
               name="phone"
               render={({ field, fieldState }) => (
                 <Field data-invalid={!!fieldState.error}>
-                  <FieldLabel htmlFor="phone">Phone</FieldLabel>
+                  <FieldLabel htmlFor="phone">{t("walkIn.phone")}</FieldLabel>
                   <Input
                     id="phone"
                     {...field}
@@ -181,7 +185,7 @@ export const WalkInFormNiceDialog = NiceModal.create(
             name="roomTypeId"
             render={({ field, fieldState }) => (
               <Field data-invalid={!!fieldState.error}>
-                <FieldLabel>Room type</FieldLabel>
+                <FieldLabel>{t("walkIn.roomType")}</FieldLabel>
                 <Select
                   items={typeItems}
                   value={field.value ? String(field.value) : ""}
@@ -194,7 +198,7 @@ export const WalkInFormNiceDialog = NiceModal.create(
                   disabled={walkIn.isPending}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Choose a type" />
+                    <SelectValue placeholder={t("walkIn.chooseType")} />
                   </SelectTrigger>
                   <SelectContent>
                     {(roomTypes ?? [])
@@ -216,7 +220,7 @@ export const WalkInFormNiceDialog = NiceModal.create(
             name="roomId"
             render={({ field, fieldState }) => (
               <Field data-invalid={!!fieldState.error}>
-                <FieldLabel>Room</FieldLabel>
+                <FieldLabel>{t("walkIn.room")}</FieldLabel>
                 <Select
                   items={roomItems}
                   value={field.value ? String(field.value) : ""}
@@ -225,23 +229,22 @@ export const WalkInFormNiceDialog = NiceModal.create(
                 >
                   <SelectTrigger>
                     <SelectValue
-                      placeholder={roomTypeId < 1 ? "Choose a type first" : "Choose a room"}
+                      placeholder={
+                        roomTypeId < 1 ? t("walkIn.chooseTypeFirst") : t("walkIn.chooseRoom")
+                      }
                     />
                   </SelectTrigger>
                   <SelectContent>
                     {sellable.map((room) => (
                       <SelectItem key={room.id} value={String(room.id)}>
-                        {room.number} ·{" "}
-                        {ROOM_STATUS_LABELS[room.status as RoomStatus] ?? room.status}
+                        {room.number} · {labels[room.status as RoomStatus] ?? room.status}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
                 <FieldError errors={[fieldState.error]} />
                 {roomTypeId > 0 && sellable.length === 0 && (
-                  <p className="text-muted-foreground text-xs">
-                    No sellable room of that type. Another type, or free one first.
-                  </p>
+                  <p className="text-muted-foreground text-xs">{t("walkIn.noSellableRoom")}</p>
                 )}
               </Field>
             )}
@@ -255,9 +258,7 @@ export const WalkInFormNiceDialog = NiceModal.create(
                 name={name}
                 render={({ field, fieldState }) => (
                   <Field data-invalid={!!fieldState.error}>
-                    <FieldLabel htmlFor={name} className="capitalize">
-                      {name}
-                    </FieldLabel>
+                    <FieldLabel htmlFor={name}>{t(`walkIn.${name}`)}</FieldLabel>
                     <Input
                       id={name}
                       type="number"

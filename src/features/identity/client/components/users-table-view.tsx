@@ -1,5 +1,7 @@
 "use client";
 
+import { useEnumLabels } from "@/lib/labels";
+import { useTranslations } from "next-intl";
 import type { ColumnDef } from "@tanstack/react-table";
 import { Shield, ShieldHalf, User } from "lucide-react";
 import { useSearchParams } from "next/navigation";
@@ -18,12 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  USER_ROLE_LABELS,
-  USER_ROLE_VALUES,
-  UserRole,
-  type ListUsersInput,
-} from "@/features/identity";
+import { USER_ROLE_VALUES, UserRole, type ListUsersInput } from "@/features/identity";
 import type { GeneralRouterOutputs } from "@/server/types";
 import { useErrorHandlers } from "@/lib/errors";
 import { trpc } from "@/utils/trpc";
@@ -46,6 +43,8 @@ const ROLE_ICONS: Record<UserRole, typeof User> = {
  * merely declines to draw a door nobody may open.
  */
 export function UsersTableView() {
+  const labels = useEnumLabels("userRole", USER_ROLE_VALUES);
+  const t = useTranslations("identity");
   const { handleError } = useErrorHandlers();
   const utils = trpc.useUtils();
   const [{ page, perPage, sort, name, email, role }] = useUserTableParams();
@@ -71,7 +70,7 @@ export function UsersTableView() {
 
   const updateRole = trpc.user.updateRole.useMutation({
     onSuccess: async () => {
-      toast.success("Role updated");
+      toast.success(t("table.roleUpdated"));
       await utils.user.adminList.invalidate();
     },
     // The last-admin refusal arrives here as a BAD_REQUEST. Surfacing the
@@ -85,28 +84,28 @@ export function UsersTableView() {
       {
         id: "name",
         accessorKey: "name",
-        header: ({ column }) => <DataTableColumnHeader column={column} title="Name" />,
+        header: ({ column }) => <DataTableColumnHeader column={column} title={t("table.name")} />,
         cell: ({ row }) => <span className="font-medium">{row.original.name}</span>,
         enableSorting: true,
         enableColumnFilter: true,
         enableHiding: false,
-        meta: { label: "Name", placeholder: "Search names…", variant: "text" },
+        meta: { label: t("table.name"), placeholder: t("table.searchNames"), variant: "text" },
       },
       {
         id: "email",
         accessorKey: "email",
-        header: ({ column }) => <DataTableColumnHeader column={column} title="Email" />,
+        header: ({ column }) => <DataTableColumnHeader column={column} title={t("table.email")} />,
         cell: ({ row }) => (
           <span className="text-muted-foreground text-sm">{row.original.email}</span>
         ),
         enableSorting: true,
         enableColumnFilter: true,
-        meta: { label: "Email", placeholder: "Search emails…", variant: "text" },
+        meta: { label: t("table.email"), placeholder: t("table.searchEmails"), variant: "text" },
       },
       {
         id: "role",
         accessorKey: "role",
-        header: ({ column }) => <DataTableColumnHeader column={column} title="Role" />,
+        header: ({ column }) => <DataTableColumnHeader column={column} title={t("table.role")} />,
         cell: ({ row }) => (
           <Select
             value={row.original.role}
@@ -118,7 +117,7 @@ export function UsersTableView() {
             <SelectContent>
               {USER_ROLE_VALUES.map((value) => (
                 <SelectItem key={value} value={value}>
-                  {USER_ROLE_LABELS[value]}
+                  {labels[value]}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -127,10 +126,10 @@ export function UsersTableView() {
         enableSorting: true,
         enableColumnFilter: true,
         meta: {
-          label: "Role",
+          label: t("table.role"),
           variant: "select",
           options: USER_ROLE_VALUES.map((value) => ({
-            label: USER_ROLE_LABELS[value],
+            label: labels[value],
             value,
             icon: ROLE_ICONS[value] as React.FC<React.SVGProps<SVGSVGElement>>,
           })),
@@ -139,10 +138,10 @@ export function UsersTableView() {
       {
         id: "emailVerified",
         accessorKey: "emailVerified",
-        header: "Verified",
+        header: t("table.verified"),
         cell: ({ row }) => (
           <Badge variant={row.original.emailVerified ? "secondary" : "outline"}>
-            {row.original.emailVerified ? "Verified" : "Pending"}
+            {row.original.emailVerified ? t("table.verified") : t("table.pending")}
           </Badge>
         ),
         enableSorting: false,
@@ -150,7 +149,7 @@ export function UsersTableView() {
       {
         id: "createdAt",
         accessorKey: "createdAt",
-        header: ({ column }) => <DataTableColumnHeader column={column} title="Joined" />,
+        header: ({ column }) => <DataTableColumnHeader column={column} title={t("table.joined")} />,
         cell: ({ row }) => (
           <span className="text-muted-foreground text-sm">
             {new Date(row.original.createdAt).toLocaleDateString()}
@@ -159,7 +158,7 @@ export function UsersTableView() {
         enableSorting: true,
       },
     ],
-    [updateRole]
+    [updateRole, t]
   );
 
   const { table } = useDataTable({

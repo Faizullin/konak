@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import type { ColumnDef } from "@tanstack/react-table";
 import { Building2, Mail, Phone, Plus } from "lucide-react";
 import { useSearchParams } from "next/navigation";
@@ -29,6 +30,7 @@ const SORTABLE = ["lastName", "firstName", "createdAt"];
  * reopens it.
  */
 export function PeopleTableView({ organizationId }: { organizationId: number }) {
+  const t = useTranslations("directory");
   const [{ page, perPage, sort, search }] = usePeopleTableParams();
   // One component opens this dialog and nobody else needs to, so the state
   // lives here rather than in the NiceModal registry.
@@ -53,16 +55,16 @@ export function PeopleTableView({ organizationId }: { organizationId: number }) 
       {
         id: "lastName",
         accessorKey: "lastName",
-        header: ({ column }) => <DataTableColumnHeader column={column} title="Name" />,
+        header: ({ column }) => <DataTableColumnHeader column={column} title={t("table.name")} />,
         cell: ({ row }) => <span className="font-medium">{personDisplayName(row.original)}</span>,
         enableSorting: true,
         enableColumnFilter: true,
-        meta: { label: "Name", placeholder: "Search name or email…", variant: "text" },
+        meta: { label: t("table.name"), placeholder: t("table.search"), variant: "text" },
       },
       {
         id: "email",
         accessorKey: "email",
-        header: ({ column }) => <DataTableColumnHeader column={column} title="Email" />,
+        header: ({ column }) => <DataTableColumnHeader column={column} title={t("table.email")} />,
         cell: ({ row }) =>
           row.original.email ? (
             <span className="text-muted-foreground flex items-center gap-1.5 text-sm">
@@ -76,7 +78,7 @@ export function PeopleTableView({ organizationId }: { organizationId: number }) 
       {
         id: "phone",
         accessorKey: "phone",
-        header: ({ column }) => <DataTableColumnHeader column={column} title="Phone" />,
+        header: ({ column }) => <DataTableColumnHeader column={column} title={t("table.phone")} />,
         cell: ({ row }) =>
           row.original.phone ? (
             <span className="text-muted-foreground flex items-center gap-1.5 text-sm">
@@ -89,7 +91,9 @@ export function PeopleTableView({ organizationId }: { organizationId: number }) 
       },
       {
         id: "companies",
-        header: ({ column }) => <DataTableColumnHeader column={column} title="Companies" />,
+        header: ({ column }) => (
+          <DataTableColumnHeader column={column} title={t("table.companies")} />
+        ),
         cell: ({ row }) => {
           const links = row.original.companies;
           if (links.length === 0) return <span className="text-muted-foreground text-sm">—</span>;
@@ -108,7 +112,7 @@ export function PeopleTableView({ organizationId }: { organizationId: number }) 
       {
         id: "createdAt",
         accessorKey: "createdAt",
-        header: ({ column }) => <DataTableColumnHeader column={column} title="Added" />,
+        header: ({ column }) => <DataTableColumnHeader column={column} title={t("table.added")} />,
         cell: ({ row }) => (
           <span className="text-muted-foreground text-sm">
             {new Date(row.original.createdAt).toLocaleDateString()}
@@ -117,7 +121,7 @@ export function PeopleTableView({ organizationId }: { organizationId: number }) 
         enableSorting: true,
       },
     ],
-    []
+    [t]
   );
 
   const { table } = useDataTable({

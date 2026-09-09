@@ -1,4 +1,6 @@
 import { z } from "zod";
+import type { Refused } from "@/lib/refusal";
+import { RateError } from "./errors";
 import { inventoryCodeSchema } from "@/features/properties";
 
 /**
@@ -23,14 +25,6 @@ export const MEAL_PLAN_VALUES = Object.values(MealPlan);
 
 export const mealPlanSchema = z.enum(MEAL_PLAN_VALUES);
 
-export const MEAL_PLAN_LABELS: Record<MealPlan, string> = {
-  ROOM_ONLY: "Room only",
-  BREAKFAST: "Breakfast",
-  HALF_BOARD: "Half board",
-  FULL_BOARD: "Full board",
-  ALL_INCLUSIVE: "All inclusive",
-};
-
 /**
  * Why these cancellation terms cannot both be true, or `null`.
  *
@@ -42,10 +36,13 @@ export const MEAL_PLAN_LABELS: Record<MealPlan, string> = {
 export function refuseCancellationTerms(plan: {
   isRefundable: boolean;
   cancellationCutoffHours?: number | null;
-}): string | null {
+}): Refused {
   const cutoff = plan.cancellationCutoffHours;
   if (!plan.isRefundable && cutoff !== null && cutoff !== undefined) {
-    return "A non-refundable plan has no free-cancellation window";
+    return {
+      code: RateError.PLAN_NON_REFUNDABLE_WINDOW,
+      message: "A non-refundable plan has no free-cancellation window",
+    };
   }
   return null;
 }

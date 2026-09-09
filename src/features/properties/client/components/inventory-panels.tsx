@@ -1,5 +1,7 @@
 "use client";
 
+import { useEnumLabels } from "@/lib/labels";
+import { useTranslations } from "next-intl";
 import NiceModal from "@ebay/nice-modal-react";
 import { Archive, ArchiveRestore, Pencil, Plus } from "lucide-react";
 import { useState } from "react";
@@ -22,7 +24,7 @@ import {
   canArchiveRoomTypes,
   canManageRooms,
   canManageRoomTypes,
-  ROOM_STATUS_LABELS,
+  ROOM_STATUS_VALUES,
   RoomStatus,
   type RoomStatus as RoomStatusValue,
 } from "@/features/properties";
@@ -52,9 +54,11 @@ function ArchiveToggle({
   archived: boolean;
   onChange: (next: boolean) => void;
 }) {
+  const t = useTranslations("properties");
+
   return (
     <Button variant="ghost" size="sm" onClick={() => onChange(!archived)}>
-      {archived ? "Hide archived" : "Show archived"}
+      {archived ? t("archive.hide") : t("archive.show")}
     </Button>
   );
 }
@@ -66,6 +70,7 @@ export function RoomTypesPanel({
   propertyId: number;
   organizationId: number;
 }) {
+  const t = useTranslations("properties");
   const { handleError } = useErrorHandlers();
   const [includeArchived, setIncludeArchived] = useState(false);
   const role = useOrgRole(organizationId);
@@ -75,7 +80,7 @@ export function RoomTypesPanel({
 
   const archive = trpc.property.archiveRoomType.useMutation({
     onSuccess: (type) => {
-      toast.success(type.archivedAt ? "Room type archived" : "Room type restored");
+      toast.success(type.archivedAt ? t("types.archived") : t("types.restored"));
       utils.property.listRoomTypes.invalidate();
     },
     onError: (error) => handleError(error),
@@ -88,9 +93,9 @@ export function RoomTypesPanel({
     if (
       archived &&
       !(await confirm({
-        title: `Archive ${name}?`,
-        description: "It stops being sellable. Bookings already on it are untouched.",
-        confirmLabel: "Archive",
+        title: t("types.archiveTitle", { name }),
+        description: t("types.archiveDescription"),
+        confirmLabel: t("archive.confirm"),
       }))
     ) {
       return;
@@ -101,8 +106,8 @@ export function RoomTypesPanel({
   return (
     <section className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
-        <h2 className="text-lg font-medium">Room types</h2>
-        <span className="text-muted-foreground text-sm">What a guest books.</span>
+        <h2 className="text-lg font-medium">{t("types.heading")}</h2>
+        <span className="text-muted-foreground text-sm">{t("types.subtitle")}</span>
         <div className="ml-auto flex items-center gap-2">
           <ArchiveToggle archived={includeArchived} onChange={setIncludeArchived} />
           {mayEdit && (
@@ -111,7 +116,7 @@ export function RoomTypesPanel({
               onClick={() => NiceModal.show(RoomTypeFormNiceDialog, { propertyId })}
             >
               <Plus />
-              New type
+              {t("types.new")}
             </Button>
           )}
         </div>
@@ -123,10 +128,10 @@ export function RoomTypesPanel({
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead>Code</TableHead>
-              <TableHead>Sleeps</TableHead>
-              <TableHead>Base</TableHead>
+              <TableHead>{t("types.name")}</TableHead>
+              <TableHead>{t("types.code")}</TableHead>
+              <TableHead>{t("types.sleeps")}</TableHead>
+              <TableHead>{t("types.base")}</TableHead>
               <TableHead className="w-24" />
             </TableRow>
           </TableHeader>
@@ -134,7 +139,7 @@ export function RoomTypesPanel({
             {(data ?? []).length === 0 && (
               <TableRow>
                 <TableCell colSpan={5} className="text-muted-foreground">
-                  No room types yet. A property sells nothing until it has one.
+                  {t("types.empty")}
                 </TableCell>
               </TableRow>
             )}
@@ -157,7 +162,7 @@ export function RoomTypesPanel({
                       <Button
                         variant="ghost"
                         size="icon"
-                        aria-label={`Edit ${type.name}`}
+                        aria-label={t("types.editLabel", { name: type.name })}
                         onClick={() =>
                           NiceModal.show(RoomTypeFormNiceDialog, {
                             propertyId,
@@ -199,6 +204,8 @@ export function RoomsPanel({
   propertyId: number;
   organizationId: number;
 }) {
+  const labels = useEnumLabels("roomStatus", ROOM_STATUS_VALUES);
+  const t = useTranslations("properties");
   const { handleError } = useErrorHandlers();
   const [includeArchived, setIncludeArchived] = useState(false);
   const role = useOrgRole(organizationId);
@@ -212,7 +219,7 @@ export function RoomsPanel({
 
   const archive = trpc.property.archiveRoom.useMutation({
     onSuccess: (room) => {
-      toast.success(room.archivedAt ? "Room archived" : "Room restored");
+      toast.success(room.archivedAt ? t("rooms.archived") : t("rooms.restored"));
       utils.property.listRooms.invalidate();
       utils.reservation.grid.invalidate();
     },
@@ -226,9 +233,9 @@ export function RoomsPanel({
     if (
       archived &&
       !(await confirm({
-        title: `Archive room ${number}?`,
-        description: "It leaves the grid and stops being assignable.",
-        confirmLabel: "Archive",
+        title: t("rooms.archiveTitle", { number }),
+        description: t("rooms.archiveDescription"),
+        confirmLabel: t("archive.confirm"),
       }))
     ) {
       return;
@@ -239,14 +246,14 @@ export function RoomsPanel({
   return (
     <section className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
-        <h2 className="text-lg font-medium">Rooms</h2>
-        <span className="text-muted-foreground text-sm">The grid&apos;s vertical axis.</span>
+        <h2 className="text-lg font-medium">{t("rooms.heading")}</h2>
+        <span className="text-muted-foreground text-sm">{t("rooms.subtitle")}</span>
         <div className="ml-auto flex items-center gap-2">
           <ArchiveToggle archived={includeArchived} onChange={setIncludeArchived} />
           {mayEdit && (
             <Button size="sm" onClick={() => NiceModal.show(RoomFormNiceDialog, { propertyId })}>
               <Plus />
-              New room
+              {t("rooms.new")}
             </Button>
           )}
         </div>
@@ -258,10 +265,10 @@ export function RoomsPanel({
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Number</TableHead>
-              <TableHead>Type</TableHead>
-              <TableHead>Floor</TableHead>
-              <TableHead>Housekeeping</TableHead>
+              <TableHead>{t("rooms.number")}</TableHead>
+              <TableHead>{t("rooms.type")}</TableHead>
+              <TableHead>{t("rooms.floor")}</TableHead>
+              <TableHead>{t("rooms.housekeeping")}</TableHead>
               <TableHead className="w-24" />
             </TableRow>
           </TableHeader>
@@ -269,7 +276,7 @@ export function RoomsPanel({
             {(data ?? []).length === 0 && (
               <TableRow>
                 <TableCell colSpan={5} className="text-muted-foreground">
-                  No rooms yet.
+                  {t("rooms.empty")}
                 </TableCell>
               </TableRow>
             )}
@@ -289,7 +296,7 @@ export function RoomsPanel({
                   <Badge
                     variant={room.status === RoomStatus.OUT_OF_ORDER ? "destructive" : "outline"}
                   >
-                    {ROOM_STATUS_LABELS[room.status as RoomStatusValue] ?? room.status}
+                    {labels[room.status as RoomStatusValue] ?? room.status}
                   </Badge>
                 </TableCell>
                 <TableCell>
@@ -299,7 +306,7 @@ export function RoomsPanel({
                         <Button
                           variant="ghost"
                           size="icon"
-                          aria-label={`Edit room ${room.number}`}
+                          aria-label={t("rooms.editLabel", { number: room.number })}
                           onClick={() =>
                             NiceModal.show(RoomFormNiceDialog, { propertyId, roomId: room.id })
                           }

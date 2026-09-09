@@ -13,7 +13,10 @@ export const PropertyError = {
   ROOM_TYPE_NOT_FOUND: "room_type.not_found",
   ROOM_TYPE_CODE_TAKEN: "room_type.code_taken",
   /** The four occupancy numbers cannot all be true at once. */
-  ROOM_TYPE_OCCUPANCY_INVALID: "room_type.occupancy_invalid",
+  ROOM_TYPE_NEEDS_ONE_ADULT: "room_type.needs_one_adult",
+  ROOM_TYPE_BASE_OVER_MAX: "room_type.base_over_max",
+  ROOM_TYPE_ADULTS_OVER_MAX: "room_type.adults_over_max",
+  ROOM_TYPE_CHILDREN_OVER_MAX: "room_type.children_over_max",
   /** A type with rooms on it is not withdrawn from sale, it is hidden. */
   ROOM_TYPE_HAS_ROOMS: "room_type.has_rooms",
   ROOM_TYPE_CREATE_FORBIDDEN: "room_type.create_forbidden",

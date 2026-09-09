@@ -79,21 +79,15 @@ test("an occupancy a room type cannot honour is refused with the pair that clash
   assert.equal(refuseOccupancy(occupancy), null);
 
   assert.equal(
-    refuseOccupancy({ ...occupancy, baseOccupancy: 5 }),
-    "The base occupancy cannot be more than the maximum"
+    refuseOccupancy({ ...occupancy, baseOccupancy: 5 })?.code,
+    "room_type.base_over_max"
   );
+  assert.equal(refuseOccupancy({ ...occupancy, maxAdults: 5 })?.code, "room_type.adults_over_max");
   assert.equal(
-    refuseOccupancy({ ...occupancy, maxAdults: 5 }),
-    "More adults than the room type sleeps in total"
+    refuseOccupancy({ ...occupancy, maxChildren: 5 })?.code,
+    "room_type.children_over_max"
   );
-  assert.equal(
-    refuseOccupancy({ ...occupancy, maxChildren: 5 }),
-    "More children than the room type sleeps in total"
-  );
-  assert.equal(
-    refuseOccupancy({ ...occupancy, maxAdults: 0 }),
-    "A room type sleeps at least one adult"
-  );
+  assert.equal(refuseOccupancy({ ...occupancy, maxAdults: 0 })?.code, "room_type.needs_one_adult");
 });
 
 test("base may equal max, and children may fill the room", () => {

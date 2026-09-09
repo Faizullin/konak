@@ -17,11 +17,7 @@ export const DayRole = {
 
 export type DayRole = (typeof DayRole)[keyof typeof DayRole];
 
-export const DAY_ROLE_LABELS: Record<DayRole, string> = {
-  ARRIVAL: "Arrivals",
-  DEPARTURE: "Departures",
-  IN_HOUSE: "In house",
-};
+export const DAY_ROLE_VALUES = Object.values(DayRole);
 
 /**
  * Which list a stay belongs to on `day`, or `null` when it does not touch it.

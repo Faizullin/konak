@@ -1,5 +1,7 @@
+import type { Refused } from "@/lib/refusal";
+import { ReservationError } from "./errors";
 import { isValidStayRange, toStayDate, type StayRange } from "./stay";
-import { isTerminal, RESERVATION_STATUS_LABELS, ReservationStatus } from "./status";
+import { isTerminal, ReservationStatus } from "./status";
 
 /**
  * Moving a stay's dates — the other half of a drag.
@@ -9,9 +11,6 @@ import { isTerminal, RESERVATION_STATUS_LABELS, ReservationStatus } from "./stat
  * `refuseStatusChange`: the sentence is the return value, so the disabled edge
  * and the server's refusal cannot say different things.
  */
-
-const spoken = (status: string) =>
-  (RESERVATION_STATUS_LABELS[status as ReservationStatus] ?? status).toLowerCase();
 
 export type StayMove = {
   /** The stay's own status, which is what the overlap constraint reads. */
@@ -31,13 +30,17 @@ export type StayMove = {
  * arrived did arrive on the day they arrived, and that a booking is not moved
  * to nights that have already gone.
  */
-export function refuseStayMove({ status, from, to, today }: StayMove): string | null {
+export function refuseStayMove({ status, from, to, today }: StayMove): Refused {
   if (!isValidStayRange(to)) {
-    return "A stay is at least one night";
+    return { code: ReservationError.STAY_TOO_SHORT, message: "A stay is at least one night" };
   }
 
   if (isTerminal(status)) {
-    return `A ${spoken(status)} booking's dates cannot move`;
+    return {
+      code: ReservationError.STAY_DATES_LOCKED,
+      values: { status },
+      message: "That booking has ended, so its dates cannot move",
+    };
   }
 
   const day = toStayDate(today).getTime();
@@ -49,16 +52,22 @@ export function refuseStayMove({ status, from, to, today }: StayMove): string | 
     // The arrival is a fact once it has happened. Correcting it is a different
     // decision with its own record, the same way an undone status is.
     if (arriving !== arrived) {
-      return "The guest has already arrived, so only the departure can move";
+      return {
+        code: ReservationError.STAY_ARRIVAL_FIXED,
+        message: "The guest has already arrived",
+      };
     }
     if (leaving < day) {
-      return "That would end the stay before today";
+      return {
+        code: ReservationError.STAY_ENDS_BEFORE_TODAY,
+        message: "That would end the stay before today",
+      };
     }
     return null;
   }
 
   if (arriving < day) {
-    return "A booking cannot be moved into nights that have passed";
+    return { code: ReservationError.STAY_MOVED_INTO_PAST, message: "Those nights have passed" };
   }
 
   return null;

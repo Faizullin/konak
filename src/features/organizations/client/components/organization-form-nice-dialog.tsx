@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import NiceModal, { useModal } from "@ebay/nice-modal-react";
 import { useEffect } from "react";
 import { Controller, useForm } from "react-hook-form";
@@ -33,6 +34,7 @@ export interface OrganizationFormNiceDialogProps {
 
 export const OrganizationFormNiceDialog = NiceModal.create(
   ({ mode = "create", organizationId }: OrganizationFormNiceDialogProps) => {
+    const t = useTranslations("organizations");
     const { handleFormError } = useErrorHandlers();
     const isEdit = mode === "edit";
     const modal = useModal();
@@ -80,7 +82,7 @@ export const OrganizationFormNiceDialog = NiceModal.create(
 
     const createMutation = trpc.organization.create.useMutation({
       onSuccess: async () => {
-        toast.success("Organization created");
+        toast.success(t("form.created"));
         await close();
       },
       // A taken slug arrives as a `ConflictError` naming "slug", and lands under the
@@ -90,7 +92,7 @@ export const OrganizationFormNiceDialog = NiceModal.create(
 
     const updateMutation = trpc.organization.update.useMutation({
       onSuccess: async () => {
-        toast.success("Organization updated");
+        toast.success(t("form.updated"));
         await close();
       },
       onError: (e) => handleFormError(form, e),
@@ -123,10 +125,10 @@ export const OrganizationFormNiceDialog = NiceModal.create(
             name="name"
             render={({ field, fieldState }) => (
               <Field data-invalid={!!fieldState.error}>
-                <FieldLabel htmlFor="org-name">Name</FieldLabel>
+                <FieldLabel htmlFor="org-name">{t("form.name")}</FieldLabel>
                 <Input
                   id="org-name"
-                  placeholder="Acme Inc."
+                  placeholder={t("form.namePlaceholder")}
                   {...field}
                   onChange={(e) => {
                     field.onChange(e);
@@ -147,8 +149,8 @@ export const OrganizationFormNiceDialog = NiceModal.create(
             name="slug"
             render={({ field, fieldState }) => (
               <Field data-invalid={!!fieldState.error}>
-                <FieldLabel htmlFor="org-slug">Slug</FieldLabel>
-                <Input id="org-slug" placeholder="acme" {...field} />
+                <FieldLabel htmlFor="org-slug">{t("form.slug")}</FieldLabel>
+                <Input id="org-slug" placeholder={t("form.slugPlaceholder")} {...field} />
                 {fieldState.error && <FieldError>{fieldState.error.message}</FieldError>}
               </Field>
             )}
@@ -159,10 +161,10 @@ export const OrganizationFormNiceDialog = NiceModal.create(
             name="description"
             render={({ field, fieldState }) => (
               <Field data-invalid={!!fieldState.error}>
-                <FieldLabel htmlFor="org-description">Description</FieldLabel>
+                <FieldLabel htmlFor="org-description">{t("form.description")}</FieldLabel>
                 <Input
                   id="org-description"
-                  placeholder="Optional"
+                  placeholder={t("form.descriptionPlaceholder")}
                   {...field}
                   value={field.value ?? ""}
                 />

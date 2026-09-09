@@ -1,5 +1,6 @@
 "use client";
 
+import { useEnumLabels } from "@/lib/labels";
 import NiceModal from "@ebay/nice-modal-react";
 import type { ColumnDef } from "@tanstack/react-table";
 import { Building2, MoreHorizontal, Pencil, Settings, Shield, User, Users } from "lucide-react";
@@ -23,7 +24,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
-  ORG_ROLE_LABELS,
+  ORG_ROLE_VALUES,
   OrgRole,
   canEditOrganization,
   type ListOrganizationsInput,
@@ -56,6 +57,7 @@ const ROLE_BADGE: Record<OrgRole, "default" | "secondary" | "outline"> = {
  * of a list plus a per-row lookup.
  */
 export function OrganizationsTableView() {
+  const labels = useEnumLabels("orgRole", ORG_ROLE_VALUES);
   const [{ page, perPage, sort, name, slug, role }] = useOrganizationTableParams();
 
   const input = useMemo<ListOrganizationsInput>(
@@ -120,7 +122,7 @@ export function OrganizationsTableView() {
           return (
             <Badge variant={ROLE_BADGE[role]}>
               <Icon className="mr-1 size-3" />
-              {ORG_ROLE_LABELS[role]}
+              {labels[role]}
             </Badge>
           );
         },
@@ -130,7 +132,7 @@ export function OrganizationsTableView() {
           label: "Your role",
           variant: "multiSelect",
           options: Object.values(OrgRole).map((role) => ({
-            label: ORG_ROLE_LABELS[role],
+            label: labels[role],
             value: role,
             icon: ROLE_ICONS[role] as React.FC<React.SVGProps<SVGSVGElement>>,
           })),

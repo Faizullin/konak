@@ -291,7 +291,7 @@ describe("the walk-in", () => {
           roomTypeId: doubleId,
           roomId: rooms["3"],
         }),
-      (e) => code(e) === "CONFLICT" && domainCodeOf(e) === ReservationError.ROOM_NOT_SELLABLE
+      (e) => code(e) === "CONFLICT" && domainCodeOf(e) === ReservationError.ROOM_OUT_OF_ORDER
     );
   });
 
@@ -471,7 +471,7 @@ describe("moving a stay's dates", () => {
           checkIn: fromToday(12),
           checkOut: fromToday(12),
         }),
-      (e) => code(e) === "BAD_REQUEST" && domainCodeOf(e) === ReservationError.STAY_MOVE_REFUSED
+      (e) => code(e) === "BAD_REQUEST" && domainCodeOf(e) === ReservationError.STAY_TOO_SHORT
     );
   });
 

@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import NiceModal, { useModal } from "@ebay/nice-modal-react";
 import { useEffect } from "react";
 import { Controller, useForm } from "react-hook-form";
@@ -37,16 +38,12 @@ const EMPTY: RoomTypeFormInput = {
   position: 0,
 };
 
-const NUMBERS = [
-  ["baseOccupancy", "Base occupancy"],
-  ["maxOccupancy", "Sleeps"],
-  ["maxAdults", "Max adults"],
-  ["maxChildren", "Max children"],
-  ["position", "Order"],
-] as const;
+/** The numeric fields, in the order they read. Labels come from `typeForm.<name>`. */
+const NUMBERS = ["baseOccupancy", "maxOccupancy", "maxAdults", "maxChildren", "position"] as const;
 
 export const RoomTypeFormNiceDialog = NiceModal.create(
   ({ propertyId, roomTypeId }: RoomTypeFormNiceDialogProps) => {
+    const t = useTranslations("properties");
     const { handleFormError } = useErrorHandlers();
     const isEdit = roomTypeId !== undefined;
     const modal = useModal();
@@ -105,7 +102,7 @@ export const RoomTypeFormNiceDialog = NiceModal.create(
       <FormDialog
         open={modal.visible}
         onOpenChange={(open) => !open && modal.hide()}
-        title={isEdit ? "Edit room type" : "New room type"}
+        title={isEdit ? t("typeForm.editTitle") : t("typeForm.newTitle")}
         description="A guest books a type; a room is assigned at check-in."
         onSubmit={form.handleSubmit((values) =>
           isEdit
@@ -114,7 +111,7 @@ export const RoomTypeFormNiceDialog = NiceModal.create(
         )}
         error={form.formState.errors.root?.message}
         isLoading={pending}
-        submitText={isEdit ? "Save" : "Add room type"}
+        submitText={isEdit ? t("typeForm.save") : t("typeForm.add")}
       >
         <FieldGroup>
           <div className="grid gap-4 sm:grid-cols-2">
@@ -123,7 +120,7 @@ export const RoomTypeFormNiceDialog = NiceModal.create(
               name="name"
               render={({ field, fieldState }) => (
                 <Field data-invalid={!!fieldState.error}>
-                  <FieldLabel htmlFor="name">Name</FieldLabel>
+                  <FieldLabel htmlFor="name">{t("typeForm.name")}</FieldLabel>
                   <Input id="name" {...field} disabled={pending} />
                   <FieldError errors={[fieldState.error]} />
                 </Field>
@@ -134,7 +131,7 @@ export const RoomTypeFormNiceDialog = NiceModal.create(
               name="code"
               render={({ field, fieldState }) => (
                 <Field data-invalid={!!fieldState.error}>
-                  <FieldLabel htmlFor="code">Code</FieldLabel>
+                  <FieldLabel htmlFor="code">{t("typeForm.code")}</FieldLabel>
                   <Input
                     id="code"
                     {...field}
@@ -155,14 +152,14 @@ export const RoomTypeFormNiceDialog = NiceModal.create(
           </div>
 
           <div className="grid gap-4 sm:grid-cols-3">
-            {NUMBERS.map(([name, label]) => (
+            {NUMBERS.map((name) => (
               <Controller
                 key={name}
                 control={form.control}
                 name={name}
                 render={({ field, fieldState }) => (
                   <Field data-invalid={!!fieldState.error}>
-                    <FieldLabel htmlFor={name}>{label}</FieldLabel>
+                    <FieldLabel htmlFor={name}>{t(`typeForm.${name}`)}</FieldLabel>
                     <Input
                       id={name}
                       type="number"

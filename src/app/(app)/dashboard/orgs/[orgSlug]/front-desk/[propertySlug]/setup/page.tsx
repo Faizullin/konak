@@ -1,3 +1,4 @@
+import { getTranslations } from "next-intl/server";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { PageHeader } from "@/components/common/page-header";
@@ -15,6 +16,7 @@ import prisma from "@/server/db";
 type Params = { params: Promise<{ orgSlug: string; propertySlug: string }> };
 
 export default async function PropertySetupPage({ params }: Params) {
+  const t = await getTranslations("pages");
   const { orgSlug, propertySlug } = await params;
   if (!propertySlugSchema.safeParse(propertySlug).success) {
     notFound();
@@ -44,15 +46,15 @@ export default async function PropertySetupPage({ params }: Params) {
   return (
     <div className="space-y-8">
       <PageHeader
-        title={`${property.name} setup`}
-        description="Room types, the rooms behind them, and the plans a stay is quoted on."
+        title={t("property.setupTitle", { property: property.name })}
+        description={t("property.setupDescription")}
         actions={
           <Button
             nativeButton={false}
             variant="outline"
             render={<Link href={`/dashboard/orgs/${orgSlug}/front-desk/${propertySlug}`} />}
           >
-            Back to the desk
+            {t("property.backToDesk")}
           </Button>
         }
       />

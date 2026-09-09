@@ -1,0 +1,39 @@
+{
+  "userRole": {
+    "USER": "User",
+    "ADMIN": "Admin",
+    "MODERATOR": "Moderator"
+  },
+  "orgRole": {
+    "OWNER": "Owner",
+    "ADMIN": "Admin",
+    "MEMBER": "Member"
+  },
+  "roomStatus": {
+    "CLEAN": "Clean",
+    "DIRTY": "Dirty",
+    "IN_PROGRESS": "Being cleaned",
+    "INSPECTED": "Inspected",
+    "OUT_OF_ORDER": "Out of order"
+  },
+  "mealPlan": {
+    "ROOM_ONLY": "Room only",
+    "BREAKFAST": "Breakfast",
+    "HALF_BOARD": "Half board",
+    "FULL_BOARD": "Full board",
+    "ALL_INCLUSIVE": "All inclusive"
+  },
+  "dayRole": {
+    "ARRIVAL": "Arrivals",
+    "DEPARTURE": "Departures",
+    "IN_HOUSE": "In house"
+  },
+  "reservationStatus": {
+    "ENQUIRY": "Enquiry",
+    "CONFIRMED": "Confirmed",
+    "CHECKED_IN": "Checked in",
+    "CHECKED_OUT": "Checked out",
+    "CANCELLED": "Cancelled",
+    "NO_SHOW": "No show"
+  }
+}

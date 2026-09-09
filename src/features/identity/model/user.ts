@@ -18,12 +18,6 @@ export const USER_ROLE_VALUES = Object.values(UserRole);
 
 export const userRoleSchema = z.enum(USER_ROLE_VALUES);
 
-export const USER_ROLE_LABELS: Record<UserRole, string> = {
-  USER: "User",
-  ADMIN: "Admin",
-  MODERATOR: "Moderator",
-};
-
 /**
  * Install-wide capabilities, in the same shape `organizations` uses for its
  * own — see [architecture.md](../../../../docs/guides/architecture.md). Two

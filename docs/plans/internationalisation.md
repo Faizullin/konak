@@ -173,10 +173,7 @@ being declined.
 The upgrade shipped, and so did the wiring — `history.md` has both. What is left
 is the part that was always the work:
 
-1. **The rest of the client strings** — the dashboard, the grid, the dialogs.
-   Mechanical once the first two settle the shape, and each route mounts the
-   provider with the namespaces it renders.
-2. **Then a second locale**, which is the first point at which any of this is
+1. **A second locale**, which is the first point at which any of this is
    testable by reading a screen — and the point at which a parity check and a
    translation dashboard start earning their keep.
 
@@ -196,4 +193,8 @@ test pins the list so the debt stays visible.
 171 was every capitalised string in `model/`, labels included. The real surface
 was **21 distinct messages across 33 calls**, and it is now keys.
 
-Step 1 is where the work still is; step 2 is what proves it.
+**All of it shipped.** The last piece was the five rules that worded their own
+refusals; they return a code now, and `RESERVATION_STATUS_LABELS` — which only
+ever existed to build those sentences — is gone.
+
+Step 1 is what proves the rest.

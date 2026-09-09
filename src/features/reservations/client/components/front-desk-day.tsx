@@ -1,5 +1,7 @@
 "use client";
 
+import { useEnumLabels } from "@/lib/labels";
+import { useTranslations } from "next-intl";
 import NiceModal from "@ebay/nice-modal-react";
 import { ChevronLeft, ChevronRight, UserPlus } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -8,14 +10,14 @@ import { confirm } from "@/components/common/confirm-nice-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useErrorHandlers } from "@/lib/errors";
+import { useErrorHandlers, useRefusalText } from "@/lib/errors";
 import { cn } from "@/lib/utils";
 import {
-  DAY_ROLE_LABELS,
+  DAY_ROLE_VALUES,
   DayRole,
   nextStatuses,
   refuseStatusChange,
-  RESERVATION_STATUS_LABELS,
+  RESERVATION_STATUS_VALUES,
   ReservationStatus,
   toStayDate,
   todayAt,
@@ -44,23 +46,32 @@ type DayStay = Day["arrivals"][number];
 const ORDER = [DayRole.ARRIVAL, DayRole.DEPARTURE, DayRole.IN_HOUSE] as const;
 
 /** What the desk calls the transition, rather than the state it lands in. */
-const STATUS_ACTION: Record<string, string> = {
-  [ReservationStatus.CONFIRMED]: "Confirm",
-  [ReservationStatus.CHECKED_IN]: "Check in",
-  [ReservationStatus.CHECKED_OUT]: "Check out",
-  [ReservationStatus.NO_SHOW]: "No show",
-  [ReservationStatus.CANCELLED]: "Cancel",
-};
+/** Labels come from `actions.<status>`; the status is the key. */
 
 /** The two that end a booking and are not undone by setting the column back. */
-const ASKS_FIRST: Record<string, { title: string; description: string }> = {
+/**
+ * What the desk calls the transition, rather than the state it lands in.
+ *
+ * A status arrives from the server as a string, so the key is checked before it
+ * is read — an unrecognised one renders as itself rather than throwing.
+ */
+function useActionLabel() {
+  const t = useTranslations("reservations");
+
+  return (status: string) => {
+    const key = `actions.${status}` as Parameters<typeof t.has>[0];
+    return t.has(key) ? t(key) : status;
+  };
+}
+
+const ASKS_FIRST: Record<string, { titleKey: string; descriptionKey: string }> = {
   [ReservationStatus.CANCELLED]: {
-    title: "Cancel this booking?",
-    description: "The room goes back on sale for those nights.",
+    titleKey: "day.cancelTitle",
+    descriptionKey: "day.cancelDescription",
   },
   [ReservationStatus.NO_SHOW]: {
-    title: "Mark as a no-show?",
-    description: "The booking ends and the nights are released.",
+    titleKey: "day.noShowTitle",
+    descriptionKey: "day.noShowDescription",
   },
 };
 
@@ -88,6 +99,10 @@ function DayRow({
   pending: boolean;
   onAct: (stay: DayStay, status: ReservationStatus) => void;
 }) {
+  const statusLabels = useEnumLabels("reservationStatus", RESERVATION_STATUS_VALUES);
+  const actionLabel = useActionLabel();
+  const refusalText = useRefusalText();
+
   const actions = nextStatuses(stay.status).map((status) => ({
     status,
     // Only this stay is known here. A booking holding two rooms is answered by
@@ -106,7 +121,7 @@ function DayRow({
         {shortFormat.format(stay.checkIn)} → {shortFormat.format(stay.checkOut)}
       </span>
       <Badge variant="outline" className="text-xs">
-        {RESERVATION_STATUS_LABELS[stay.status as ReservationStatus] ?? stay.status}
+        {statusLabels[stay.status as ReservationStatus] ?? stay.status}
       </Badge>
 
       <div className="ml-auto flex items-center gap-2">
@@ -117,12 +132,12 @@ function DayRow({
             variant={ASKS_FIRST[status] ? "ghost" : "default"}
             className={cn(ASKS_FIRST[status] && "text-destructive hover:text-destructive")}
             disabled={pending || refusal !== null}
-            // The reason travels with the disabled button: the rule and the
-            // sentence are the same object in `model/`.
-            title={refusal ?? undefined}
+            // The reason travels with the disabled button, and both sides
+            // resolve the same code — so they cannot say different things.
+            title={refusalText(refusal)}
             onClick={() => onAct(stay, status)}
           >
-            {STATUS_ACTION[status] ?? status}
+            {actionLabel(status)}
           </Button>
         ))}
       </div>
@@ -143,14 +158,16 @@ function DayList({
   pending: boolean;
   onAct: (stay: DayStay, status: ReservationStatus) => void;
 }) {
+  const labels = useEnumLabels("dayRole", DAY_ROLE_VALUES);
+  const t = useTranslations("reservations");
   return (
     <section className="bg-card rounded border">
       <header className="flex items-center justify-between border-b px-3 py-2">
-        <h3 className="text-sm font-medium">{DAY_ROLE_LABELS[role]}</h3>
+        <h3 className="text-sm font-medium">{labels[role]}</h3>
         <span className="text-muted-foreground text-xs">{stays.length}</span>
       </header>
       {stays.length === 0 ? (
-        <p className="text-muted-foreground px-3 py-4 text-sm">Nothing today.</p>
+        <p className="text-muted-foreground px-3 py-4 text-sm">{t("day.nothingToday")}</p>
       ) : (
         <ul>
           {stays.map((stay) => (
@@ -163,6 +180,8 @@ function DayList({
 }
 
 export function FrontDeskDay({ propertyId, timezone }: { propertyId: number; timezone: string }) {
+  const actionLabel = useActionLabel();
+  const t = useTranslations("reservations");
   const { handleError } = useErrorHandlers();
   const today = useMemo(() => todayAt(timezone), [timezone]);
   const [day, setDay] = useState(today);
@@ -184,13 +203,11 @@ export function FrontDeskDay({ propertyId, timezone }: { propertyId: number; tim
   const setStatus = trpc.reservation.setStatus.useMutation({
     onMutate: () => setRefusal(null),
     onSuccess: (reservation) => {
-      toast.success(
-        `${STATUS_ACTION[reservation.status] ?? reservation.status} — ${reservation.reference}`
-      );
+      toast.success(`${actionLabel(reservation.status)} — ${reservation.reference}`);
     },
     onError: (error) => {
       const app = handleError(error, { toast: false });
-      setRefusal(app?.message ?? "That change was refused");
+      setRefusal(app?.message ?? t("day.changeRefused"));
     },
     onSettled: () => {
       utils.reservation.day.invalidate();
@@ -202,8 +219,17 @@ export function FrontDeskDay({ propertyId, timezone }: { propertyId: number; tim
   // row acts on the reservation behind it.
   const act = async (stay: DayStay, status: ReservationStatus) => {
     const ask = ASKS_FIRST[status];
-    if (ask && !(await confirm({ ...ask, destructive: true, confirmLabel: STATUS_ACTION[status] })))
+    if (
+      ask &&
+      !(await confirm({
+        title: t(ask.titleKey as never),
+        description: t(ask.descriptionKey as never),
+        destructive: true,
+        confirmLabel: actionLabel(status),
+      }))
+    ) {
       return;
+    }
     setStatus.mutate({ propertyId, id: stay.reservationId, status });
   };
 
@@ -222,13 +248,18 @@ export function FrontDeskDay({ propertyId, timezone }: { propertyId: number; tim
         <Button
           variant="outline"
           size="icon"
-          aria-label="Previous day"
+          aria-label={t("day.previousDay")}
           onClick={() => shiftDay(-1)}
         >
           <ChevronLeft />
         </Button>
         <span className="min-w-48 text-sm font-medium">{dayFormat.format(day)}</span>
-        <Button variant="outline" size="icon" aria-label="Next day" onClick={() => shiftDay(1)}>
+        <Button
+          variant="outline"
+          size="icon"
+          aria-label={t("day.nextDay")}
+          onClick={() => shiftDay(1)}
+        >
           <ChevronRight />
         </Button>
         <Button
@@ -237,7 +268,7 @@ export function FrontDeskDay({ propertyId, timezone }: { propertyId: number; tim
           disabled={day.getTime() === today.getTime()}
           onClick={() => setDay(today)}
         >
-          Today
+          {t("day.today")}
         </Button>
 
         <Button
@@ -245,7 +276,7 @@ export function FrontDeskDay({ propertyId, timezone }: { propertyId: number; tim
           onClick={() => NiceModal.show(WalkInFormNiceDialog, { propertyId })}
         >
           <UserPlus />
-          Walk-in
+          {t("day.walkIn")}
         </Button>
       </div>
 

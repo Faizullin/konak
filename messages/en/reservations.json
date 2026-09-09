@@ -1,0 +1,55 @@
+{
+  "actions": {
+    "CONFIRMED": "Confirm",
+    "CHECKED_IN": "Check in",
+    "CHECKED_OUT": "Check out",
+    "NO_SHOW": "No show",
+    "CANCELLED": "Cancel"
+  },
+  "day": {
+    "cancelTitle": "Cancel this booking?",
+    "cancelDescription": "The room goes back on sale for those nights.",
+    "noShowTitle": "Mark as a no-show?",
+    "noShowDescription": "The booking ends and the nights are released.",
+    "nothingToday": "Nothing today.",
+    "changeRefused": "That change was refused",
+    "previousDay": "Previous day",
+    "nextDay": "Next day",
+    "today": "Today",
+    "walkIn": "Walk-in"
+  },
+  "grid": {
+    "cancelAction": "Cancel booking",
+    "cancelTitle": "Cancel this booking?",
+    "cancelDescription": "The nights it holds go back on sale, and a booking that returns is a new one.",
+    "noShowTitle": "Mark this booking as a no-show?",
+    "noShowDescription": "It cannot be checked in afterwards — the guest arriving late is a new booking.",
+    "nothingLeft": "Nothing left to do",
+    "close": "Close",
+    "moveRefused": "That move was refused",
+    "changeRefused": "That change was refused",
+    "previousMonth": "Previous month",
+    "nextMonth": "Next month",
+    "today": "Today",
+    "room": "Room",
+    "unassigned": "Unassigned"
+  },
+  "walkIn": {
+    "title": "Walk-in",
+    "description": "Books tonight, assigns the room and checks the guest in.",
+    "submit": "Book and check in",
+    "firstName": "First name",
+    "lastName": "Last name",
+    "email": "Email",
+    "phone": "Phone",
+    "roomType": "Room type",
+    "chooseType": "Choose a type",
+    "room": "Room",
+    "chooseTypeFirst": "Choose a type first",
+    "chooseRoom": "Choose a room",
+    "noSellableRoom": "No sellable room of that type. Another type, or free one first.",
+    "nights": "Nights",
+    "adults": "Adults",
+    "children": "Children"
+  }
+}

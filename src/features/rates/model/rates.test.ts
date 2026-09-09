@@ -8,7 +8,6 @@ import {
   canReadRates,
   canSetRates,
   extraPersonMinor,
-  MEAL_PLAN_LABELS,
   MEAL_PLAN_VALUES,
   refuseCancellationTerms,
   sellRefusal,
@@ -101,20 +100,14 @@ test("a non-refundable plan cannot also have a free-cancellation window", () => 
   );
 
   assert.equal(
-    refuseCancellationTerms({ isRefundable: false, cancellationCutoffHours: 48 }),
-    "A non-refundable plan has no free-cancellation window"
+    refuseCancellationTerms({ isRefundable: false, cancellationCutoffHours: 48 })?.code,
+    "rate_plan.non_refundable_window"
   );
   // Zero hours is still a window — free until the moment of arrival.
   assert.equal(
-    refuseCancellationTerms({ isRefundable: false, cancellationCutoffHours: 0 }),
-    "A non-refundable plan has no free-cancellation window"
+    refuseCancellationTerms({ isRefundable: false, cancellationCutoffHours: 0 })?.code,
+    "rate_plan.non_refundable_window"
   );
-});
-
-test("every meal plan has a label, so a screen never draws a raw column value", () => {
-  for (const meal of MEAL_PLAN_VALUES) {
-    assert.equal(typeof MEAL_PLAN_LABELS[meal], "string", meal);
-  }
 });
 
 test("a receptionist reads prices and does not write them", () => {

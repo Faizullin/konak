@@ -1,21 +1,23 @@
 "use client";
 
+import { useEnumLabels } from "@/lib/labels";
+import { useTranslations } from "next-intl";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import { toast } from "sonner";
 import { useMemo, useRef, useState, type ReactNode } from "react";
 import { confirm } from "@/components/common/confirm-nice-dialog";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useErrorHandlers } from "@/lib/errors";
+import { useErrorHandlers, useRefusalText } from "@/lib/errors";
 import { cn } from "@/lib/utils";
-import { ROOM_STATUS_LABELS, RoomStatus } from "@/features/properties";
+import { ROOM_STATUS_VALUES, RoomStatus } from "@/features/properties";
 import {
   assignLanes,
   laneCount,
   monthWindowOf,
   nextStatuses,
   refuseStatusChange,
-  RESERVATION_STATUS_LABELS,
+  RESERVATION_STATUS_VALUES,
   ReservationStatus,
   shiftMonths,
   spanInWindow,
@@ -97,23 +99,31 @@ const STATUS_MARK: Record<string, string> = {
 };
 
 /** What the desk calls the transition, rather than the state it lands in. */
-const STATUS_ACTION: Record<string, string> = {
-  [ReservationStatus.CONFIRMED]: "Confirm",
-  [ReservationStatus.CHECKED_IN]: "Check in",
-  [ReservationStatus.CHECKED_OUT]: "Check out",
-  [ReservationStatus.NO_SHOW]: "No show",
-  [ReservationStatus.CANCELLED]: "Cancel booking",
-};
+/** Labels come from `actions.<status>`; cancelling reads longer here. */
 
 /** The two that end a booking and are not undone by setting the column back. */
-const ASKS_FIRST: Record<string, { title: string; description: string }> = {
+/**
+ * What the desk calls the transition. Cancelling reads longer on the grid than
+ * in the day lists, where the row already says which booking it is.
+ */
+function useActionLabel() {
+  const t = useTranslations("reservations");
+
+  return (status: string) => {
+    if (status === ReservationStatus.CANCELLED) return t("grid.cancelAction");
+    const key = `actions.${status}` as Parameters<typeof t.has>[0];
+    return t.has(key) ? t(key) : status;
+  };
+}
+
+const ASKS_FIRST: Record<string, { titleKey: string; descriptionKey: string }> = {
   [ReservationStatus.CANCELLED]: {
-    title: "Cancel this booking?",
-    description: "The nights it holds go back on sale, and a booking that returns is a new one.",
+    titleKey: "grid.cancelTitle",
+    descriptionKey: "grid.cancelDescription",
   },
   [ReservationStatus.NO_SHOW]: {
-    title: "Mark this booking as a no-show?",
-    description: "It cannot be checked in afterwards — the guest arriving late is a new booking.",
+    titleKey: "grid.noShowTitle",
+    descriptionKey: "grid.noShowDescription",
   },
 };
 
@@ -207,6 +217,7 @@ function StayChip({
   selected: boolean;
   disabled: boolean;
 }) {
+  const statusLabels = useEnumLabels("reservationStatus", RESERVATION_STATUS_VALUES);
   const nights = Math.round((stay.checkOut.getTime() - stay.checkIn.getTime()) / 86_400_000);
   // Nights added or removed while the pointer is still down, so the edge
   // follows the cursor instead of jumping when the server answers.
@@ -273,7 +284,7 @@ function StayChip({
       onClick={() => onSelect(stay.id)}
       aria-pressed={selected}
       style={{ gridColumn: `${shownOffset + 1} / span ${shownNights}`, gridRow: stay.lane + 1 }}
-      title={`${stay.reference} · ${RESERVATION_STATUS_LABELS[stay.status as ReservationStatus] ?? stay.status} · ${rangeFormat.format(stay.checkIn)} → ${rangeFormat.format(stay.checkOut)} · ${nights} night${nights === 1 ? "" : "s"}`}
+      title={`${stay.reference} · ${statusLabels[stay.status as ReservationStatus] ?? stay.status} · ${rangeFormat.format(stay.checkIn)} → ${rangeFormat.format(stay.checkOut)} · ${nights} night${nights === 1 ? "" : "s"}`}
       className={cn(
         "relative z-10 mx-px flex items-center overflow-hidden rounded border px-1.5 text-xs whitespace-nowrap",
         "cursor-grab active:cursor-grabbing disabled:cursor-default",
@@ -410,19 +421,24 @@ function StayActions({
   onAct: (status: ReservationStatus) => void;
   onClose: () => void;
 }) {
+  const statusLabels = useEnumLabels("reservationStatus", RESERVATION_STATUS_VALUES);
+  const actionLabel = useActionLabel();
+  const t = useTranslations("reservations");
+  const refusalText = useRefusalText();
+
   const actions = nextStatuses(stay.status).map((status) => ({
     status,
     // Only this stay is known here. A booking holding two rooms is answered by
     // the server, which reads them all; this picks the button.
     refusal: refuseStatusChange({ from: stay.status, to: status, stays: [stay], today }),
   }));
-  const reasons = [...new Set(actions.flatMap((action) => action.refusal ?? []))];
+  const reasons = [...new Set(actions.flatMap((action) => refusalText(action.refusal) ?? []))];
 
   return (
     <div className="bg-card flex flex-wrap items-center gap-x-3 gap-y-2 rounded border px-3 py-2">
       <span className="text-sm font-medium">{stay.guestName ?? stay.reference}</span>
       <span className="text-muted-foreground text-xs">
-        {stay.reference} · {RESERVATION_STATUS_LABELS[stay.status as ReservationStatus]} ·{" "}
+        {stay.reference} · {statusLabels[stay.status as ReservationStatus]} ·{" "}
         {rangeFormat.format(stay.checkIn)} → {rangeFormat.format(stay.checkOut)} ·{" "}
         {roomNumber ? `room ${roomNumber}` : "no room yet"}
       </span>
@@ -435,16 +451,16 @@ function StayActions({
             variant={ASKS_FIRST[status] ? "ghost" : "default"}
             className={cn(ASKS_FIRST[status] && "text-destructive hover:text-destructive")}
             disabled={pending || refusal !== null}
-            title={refusal ?? undefined}
+            title={refusalText(refusal)}
             onClick={() => onAct(status)}
           >
-            {STATUS_ACTION[status] ?? status}
+            {actionLabel(status)}
           </Button>
         ))}
         {actions.length === 0 && (
-          <span className="text-muted-foreground text-xs">Nothing left to do</span>
+          <span className="text-muted-foreground text-xs">{t("grid.nothingLeft")}</span>
         )}
-        <Button size="icon" variant="ghost" aria-label="Close" onClick={onClose}>
+        <Button size="icon" variant="ghost" aria-label={t("grid.close")} onClick={onClose}>
           <X />
         </Button>
       </div>
@@ -477,6 +493,10 @@ export function ReservationGrid({
   propertyId: number;
   timezone: string;
 }) {
+  const statusLabels = useEnumLabels("reservationStatus", RESERVATION_STATUS_VALUES);
+  const labels = useEnumLabels("roomStatus", ROOM_STATUS_VALUES);
+  const actionLabel = useActionLabel();
+  const t = useTranslations("reservations");
   const { handleError } = useErrorHandlers();
   const [anchor, setAnchor] = useState(() => monthWindowOf(new Date()).from);
   const [refusal, setRefusal] = useState<string | null>(null);
@@ -515,7 +535,7 @@ export function ReservationGrid({
       // In place, not as a toast: the answer is about the room under the
       // cursor, and it is read where the drag ended.
       const app = handleError(error, { toast: false });
-      setRefusal(app?.message ?? "That move was refused");
+      setRefusal(app?.message ?? t("grid.moveRefused"));
     },
     onSettled: () => {
       utils.reservation.grid.invalidate(input);
@@ -545,7 +565,7 @@ export function ReservationGrid({
     onError: (error, _variables, context) => {
       if (context?.snapshot) utils.reservation.grid.setData(input, context.snapshot);
       const app = handleError(error, { toast: false });
-      setRefusal(app?.message ?? "That move was refused");
+      setRefusal(app?.message ?? t("grid.moveRefused"));
     },
     onSettled: () => {
       utils.reservation.grid.invalidate(input);
@@ -556,13 +576,11 @@ export function ReservationGrid({
   const setStatus = trpc.reservation.setStatus.useMutation({
     onMutate: () => setRefusal(null),
     onSuccess: (reservation) => {
-      toast.success(
-        `${STATUS_ACTION[reservation.status] ?? reservation.status} — ${reservation.reference}`
-      );
+      toast.success(`${actionLabel(reservation.status)} — ${reservation.reference}`);
     },
     onError: (error) => {
       const app = handleError(error, { toast: false });
-      setRefusal(app?.message ?? "That change was refused");
+      setRefusal(app?.message ?? t("grid.changeRefused"));
     },
     onSettled: () => {
       utils.reservation.grid.invalidate(input);
@@ -621,8 +639,17 @@ export function ReservationGrid({
   // chip acts on the reservation behind it.
   const act = async (stay: GridStay, status: ReservationStatus) => {
     const ask = ASKS_FIRST[status];
-    if (ask && !(await confirm({ ...ask, destructive: true, confirmLabel: STATUS_ACTION[status] })))
+    if (
+      ask &&
+      !(await confirm({
+        title: t(ask.titleKey as never),
+        description: t(ask.descriptionKey as never),
+        destructive: true,
+        confirmLabel: actionLabel(status),
+      }))
+    ) {
       return;
+    }
     setStatus.mutate({ propertyId, id: stay.reservationId, status });
   };
 
@@ -644,7 +671,7 @@ export function ReservationGrid({
         <Button
           variant="outline"
           size="icon"
-          aria-label="Previous month"
+          aria-label={t("grid.previousMonth")}
           onClick={() => setAnchor((current) => shiftMonths(current, -1))}
         >
           <ChevronLeft />
@@ -652,13 +679,13 @@ export function ReservationGrid({
         <Button
           variant="outline"
           size="icon"
-          aria-label="Next month"
+          aria-label={t("grid.nextMonth")}
           onClick={() => setAnchor((current) => shiftMonths(current, 1))}
         >
           <ChevronRight />
         </Button>
         <Button variant="ghost" onClick={() => setAnchor(monthWindowOf(new Date()).from)}>
-          Today
+          {t("grid.today")}
         </Button>
         <span className="text-sm font-medium">{monthFormat.format(month.from)}</span>
 
@@ -676,7 +703,7 @@ export function ReservationGrid({
               >
                 {STATUS_MARK[status]}
               </span>
-              {RESERVATION_STATUS_LABELS[status]}
+              {statusLabels[status]}
             </li>
           ))}
         </ul>
@@ -708,7 +735,7 @@ export function ReservationGrid({
         <div className="overflow-x-auto rounded border">
           <div style={{ minWidth: width }}>
             <div className="bg-muted/60 flex border-b">
-              <RowLabel className="bg-muted/60 font-medium">Room</RowLabel>
+              <RowLabel className="bg-muted/60 font-medium">{t("grid.room")}</RowLabel>
               <NightArea nights={nights} lanes={1}>
                 {nights.map((night, index) => (
                   <div
@@ -764,7 +791,7 @@ export function ReservationGrid({
                   {band && (
                     <div className="flex border-b bg-amber-50/60">
                       <RowLabel className="text-muted-foreground bg-amber-50/60 text-xs">
-                        Unassigned
+                        {t("grid.unassigned")}
                       </RowLabel>
                       <NightArea nights={nights} lanes={band.lanes} onDropStay={drop(null)}>
                         {band.stays.map((stay) => (
@@ -796,7 +823,7 @@ export function ReservationGrid({
                                 : "text-muted-foreground"
                             )}
                           >
-                            {ROOM_STATUS_LABELS[room.status as RoomStatus] ?? room.status}
+                            {labels[room.status as RoomStatus] ?? room.status}
                           </span>
                         )}
                       </RowLabel>

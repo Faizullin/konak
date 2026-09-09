@@ -47,7 +47,17 @@ export default async function DashboardLayout({ children }: Readonly<{ children:
   return (
     <NextIntlClientProvider
       locale={locale}
-      messages={{ errors: messages.errors, validation: messages.validation }}
+      messages={{
+        directory: messages.directory,
+        enums: messages.enums,
+        errors: messages.errors,
+        identity: messages.identity,
+        organizations: messages.organizations,
+        properties: messages.properties,
+        rates: messages.rates,
+        reservations: messages.reservations,
+        validation: messages.validation,
+      }}
     >
       <SidebarProvider defaultOpen={defaultOpen}>
         <AppSidebar user={user} />

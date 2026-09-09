@@ -8,7 +8,7 @@ export const RateError = {
   PLAN_OR_TYPE_NOT_FOUND: "rate_plan.or_room_type_not_found",
   PLAN_CODE_TAKEN: "rate_plan.code_taken",
   /** Non-refundable and a free-cancellation window cannot both be true. */
-  PLAN_TERMS_INVALID: "rate_plan.terms_invalid",
+  PLAN_NON_REFUNDABLE_WINDOW: "rate_plan.non_refundable_window",
   /** A plan scoped to a room type that belongs to another property. */
   PLAN_ROOM_TYPE_MISMATCH: "rate_plan.room_type_mismatch",
   PLAN_CREATE_FORBIDDEN: "rate_plan.create_forbidden",

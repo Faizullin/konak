@@ -1,5 +1,7 @@
 "use client";
 
+import { useEnumLabels } from "@/lib/labels";
+import { useTranslations } from "next-intl";
 import NiceModal, { useModal } from "@ebay/nice-modal-react";
 import { useEffect } from "react";
 import { Controller, useForm } from "react-hook-form";
@@ -14,7 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { MEAL_PLAN_LABELS, ratePlanFormSchema, type RatePlanFormInput } from "@/features/rates";
+import { MEAL_PLAN_VALUES, ratePlanFormSchema, type RatePlanFormInput } from "@/features/rates";
 import { useErrorHandlers } from "@/lib/errors";
 import { useZodResolver } from "@/lib/form";
 import { trpc } from "@/utils/trpc";
@@ -38,6 +40,8 @@ const EVERY_TYPE = "ALL";
 
 export const RatePlanFormNiceDialog = NiceModal.create(
   ({ propertyId, currencyCode, planId }: RatePlanFormNiceDialogProps) => {
+    const labels = useEnumLabels("mealPlan", MEAL_PLAN_VALUES);
+    const t = useTranslations("rates");
     const { handleFormError } = useErrorHandlers();
     const isEdit = planId !== undefined;
     const modal = useModal();
@@ -118,7 +122,7 @@ export const RatePlanFormNiceDialog = NiceModal.create(
       <FormDialog
         open={modal.visible}
         onOpenChange={(open) => !open && modal.hide()}
-        title={isEdit ? "Edit rate plan" : "New rate plan"}
+        title={isEdit ? t("form.editTitle") : t("form.newTitle")}
         onSubmit={form.handleSubmit((values) =>
           isEdit
             ? update.mutate({ ...values, propertyId, id: planId })
@@ -126,7 +130,7 @@ export const RatePlanFormNiceDialog = NiceModal.create(
         )}
         error={form.formState.errors.root?.message}
         isLoading={pending}
-        submitText={isEdit ? "Save" : "Add rate plan"}
+        submitText={isEdit ? t("form.save") : t("form.add")}
       >
         <FieldGroup>
           <div className="grid gap-4 sm:grid-cols-2">
@@ -135,7 +139,7 @@ export const RatePlanFormNiceDialog = NiceModal.create(
               name="name"
               render={({ field, fieldState }) => (
                 <Field data-invalid={!!fieldState.error}>
-                  <FieldLabel htmlFor="name">Name</FieldLabel>
+                  <FieldLabel htmlFor="name">{t("form.name")}</FieldLabel>
                   <Input id="name" {...field} disabled={pending} />
                   <FieldError errors={[fieldState.error]} />
                 </Field>
@@ -146,7 +150,7 @@ export const RatePlanFormNiceDialog = NiceModal.create(
               name="code"
               render={({ field, fieldState }) => (
                 <Field data-invalid={!!fieldState.error}>
-                  <FieldLabel htmlFor="code">Code</FieldLabel>
+                  <FieldLabel htmlFor="code">{t("form.code")}</FieldLabel>
                   <Input
                     id="code"
                     {...field}
@@ -164,10 +168,10 @@ export const RatePlanFormNiceDialog = NiceModal.create(
             name="roomTypeId"
             render={({ field, fieldState }) => (
               <Field data-invalid={!!fieldState.error}>
-                <FieldLabel>Applies to</FieldLabel>
+                <FieldLabel>{t("form.appliesTo")}</FieldLabel>
                 <Select
                   items={{
-                    [EVERY_TYPE]: "Every room type",
+                    [EVERY_TYPE]: t("form.everyRoomType"),
                     ...Object.fromEntries((types ?? []).map((t) => [String(t.id), t.name])),
                   }}
                   value={field.value === null ? EVERY_TYPE : String(field.value)}
@@ -180,7 +184,7 @@ export const RatePlanFormNiceDialog = NiceModal.create(
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value={EVERY_TYPE}>Every room type</SelectItem>
+                    <SelectItem value={EVERY_TYPE}>{t("form.everyRoomType")}</SelectItem>
                     {(types ?? []).map((type) => (
                       <SelectItem key={type.id} value={String(type.id)}>
                         {type.name}
@@ -198,9 +202,9 @@ export const RatePlanFormNiceDialog = NiceModal.create(
             name="mealPlan"
             render={({ field, fieldState }) => (
               <Field data-invalid={!!fieldState.error}>
-                <FieldLabel>Meal plan</FieldLabel>
+                <FieldLabel>{t("form.mealPlan")}</FieldLabel>
                 <Select
-                  items={MEAL_PLAN_LABELS}
+                  items={labels}
                   value={field.value}
                   onValueChange={field.onChange}
                   disabled={pending}
@@ -209,7 +213,7 @@ export const RatePlanFormNiceDialog = NiceModal.create(
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {Object.entries(MEAL_PLAN_LABELS).map(([value, label]) => (
+                    {Object.entries(labels).map(([value, label]) => (
                       <SelectItem key={value} value={value}>
                         {label}
                       </SelectItem>
@@ -226,9 +230,9 @@ export const RatePlanFormNiceDialog = NiceModal.create(
             name="isRefundable"
             render={({ field }) => (
               <Field>
-                <FieldLabel>Cancellation</FieldLabel>
+                <FieldLabel>{t("form.cancellation")}</FieldLabel>
                 <Select
-                  items={{ yes: "Refundable", no: "Non-refundable" }}
+                  items={{ yes: t("form.refundable"), no: t("form.nonRefundable") }}
                   value={field.value ? "yes" : "no"}
                   onValueChange={(value) => {
                     const isRefundable = value === "yes";
@@ -244,8 +248,8 @@ export const RatePlanFormNiceDialog = NiceModal.create(
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="yes">Refundable</SelectItem>
-                    <SelectItem value="no">Non-refundable</SelectItem>
+                    <SelectItem value="yes">{t("form.refundable")}</SelectItem>
+                    <SelectItem value="no">{t("form.nonRefundable")}</SelectItem>
                   </SelectContent>
                 </Select>
               </Field>
@@ -258,7 +262,7 @@ export const RatePlanFormNiceDialog = NiceModal.create(
               name="cancellationCutoffHours"
               render={({ field, fieldState }) => (
                 <Field data-invalid={!!fieldState.error}>
-                  <FieldLabel htmlFor="cutoff">Free until, hours before arrival</FieldLabel>
+                  <FieldLabel htmlFor="cutoff">{t("form.cutoff")}</FieldLabel>
                   <Input
                     id="cutoff"
                     type="number"
@@ -275,40 +279,36 @@ export const RatePlanFormNiceDialog = NiceModal.create(
           )}
 
           <div className="grid gap-4 sm:grid-cols-3">
-            {(
-              [
-                ["extraAdultMinor", "Extra adult"],
-                ["extraChildMinor", "Extra child"],
-                ["defaultMinLengthOfStay", "Min nights"],
-              ] as const
-            ).map(([name, label]) => (
-              <Controller
-                key={name}
-                control={form.control}
-                name={name}
-                render={({ field, fieldState }) => (
-                  <Field data-invalid={!!fieldState.error}>
-                    <FieldLabel htmlFor={name}>{label}</FieldLabel>
-                    <Input
-                      id={name}
-                      type="number"
-                      min={0}
-                      value={Number.isNaN(field.value) ? "" : field.value}
-                      onChange={(event) => field.onChange(event.target.valueAsNumber)}
-                      onBlur={field.onBlur}
-                      disabled={pending}
-                    />
-                    {name !== "defaultMinLengthOfStay" && (
-                      // Minor units, said plainly. A money input is a Phase 6
-                      // decision, and inventing one here would be a second
-                      // convention for the same thing.
-                      <FieldDescription>In minor units, e.g. 2500 = 25.00</FieldDescription>
-                    )}
-                    <FieldError errors={[fieldState.error]} />
-                  </Field>
-                )}
-              />
-            ))}
+            {(["extraAdultMinor", "extraChildMinor", "defaultMinLengthOfStay"] as const).map(
+              (name) => (
+                <Controller
+                  key={name}
+                  control={form.control}
+                  name={name}
+                  render={({ field, fieldState }) => (
+                    <Field data-invalid={!!fieldState.error}>
+                      <FieldLabel htmlFor={name}>{t(`form.${name}`)}</FieldLabel>
+                      <Input
+                        id={name}
+                        type="number"
+                        min={0}
+                        value={Number.isNaN(field.value) ? "" : field.value}
+                        onChange={(event) => field.onChange(event.target.valueAsNumber)}
+                        onBlur={field.onBlur}
+                        disabled={pending}
+                      />
+                      {name !== "defaultMinLengthOfStay" && (
+                        // Minor units, said plainly. A money input is a Phase 6
+                        // decision, and inventing one here would be a second
+                        // convention for the same thing.
+                        <FieldDescription>{t("form.minorUnits")}</FieldDescription>
+                      )}
+                      <FieldError errors={[fieldState.error]} />
+                    </Field>
+                  )}
+                />
+              )
+            )}
           </div>
         </FieldGroup>
       </FormDialog>

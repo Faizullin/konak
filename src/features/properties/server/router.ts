@@ -1,7 +1,7 @@
 import "server-only";
 import type { Prisma } from "@/generated/prisma/client";
 import prisma from "@/server/db";
-import { ConflictError, ForbiddenError, InvalidError, NotFoundError } from "@/server/errors";
+import { ConflictError, ForbiddenError, NotFoundError, refused } from "@/server/errors";
 import { requireOrgMember } from "@/server/auth";
 import { createTRPCRouter, protectedProcedure } from "@/server/trpc";
 // A room cannot be archived out from under a booking, and only reservations
@@ -217,7 +217,7 @@ export const propertyRouter = createTRPCRouter({
 
       const refusal = refuseOccupancy(input);
       if (refusal) {
-        throw new InvalidError(PropertyError.ROOM_TYPE_OCCUPANCY_INVALID, refusal, "maxOccupancy");
+        throw refused(refusal, "invalid", "maxOccupancy");
       }
       await assertCodeFree(ctx.db, input.propertyId, input.code);
 
@@ -239,7 +239,7 @@ export const propertyRouter = createTRPCRouter({
 
       const refusal = refuseOccupancy(input);
       if (refusal) {
-        throw new InvalidError(PropertyError.ROOM_TYPE_OCCUPANCY_INVALID, refusal, "maxOccupancy");
+        throw refused(refusal, "invalid", "maxOccupancy");
       }
 
       const { id, propertyId, ...data } = input;

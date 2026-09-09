@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { useEffect } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
@@ -27,6 +28,7 @@ export function PersonFormDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  const t = useTranslations("directory");
   const { handleFormError } = useErrorHandlers();
   const utils = trpc.useUtils();
 
@@ -44,7 +46,7 @@ export function PersonFormDialog({
 
   const mutation = trpc.directory.createPerson.useMutation({
     onSuccess: async () => {
-      toast.success("Person added");
+      toast.success(t("form.added"));
       await utils.directory.listPeople.invalidate();
       onOpenChange(false);
     },
@@ -70,7 +72,7 @@ export function PersonFormDialog({
           name="firstName"
           render={({ field, fieldState }) => (
             <Field data-invalid={!!fieldState.error}>
-              <FieldLabel htmlFor="person-first-name">First name</FieldLabel>
+              <FieldLabel htmlFor="person-first-name">{t("form.firstName")}</FieldLabel>
               <Input id="person-first-name" disabled={mutation.isPending} {...field} />
               {fieldState.error && <FieldError>{fieldState.error.message}</FieldError>}
             </Field>
@@ -82,7 +84,7 @@ export function PersonFormDialog({
           name="lastName"
           render={({ field, fieldState }) => (
             <Field data-invalid={!!fieldState.error}>
-              <FieldLabel htmlFor="person-last-name">Last name</FieldLabel>
+              <FieldLabel htmlFor="person-last-name">{t("form.lastName")}</FieldLabel>
               <Input id="person-last-name" disabled={mutation.isPending} {...field} />
               {fieldState.error && <FieldError>{fieldState.error.message}</FieldError>}
             </Field>
@@ -94,7 +96,7 @@ export function PersonFormDialog({
           name="email"
           render={({ field, fieldState }) => (
             <Field data-invalid={!!fieldState.error}>
-              <FieldLabel htmlFor="person-email">Email</FieldLabel>
+              <FieldLabel htmlFor="person-email">{t("form.email")}</FieldLabel>
               <Input
                 id="person-email"
                 type="email"
@@ -113,7 +115,7 @@ export function PersonFormDialog({
           name="phone"
           render={({ field, fieldState }) => (
             <Field data-invalid={!!fieldState.error}>
-              <FieldLabel htmlFor="person-phone">Phone</FieldLabel>
+              <FieldLabel htmlFor="person-phone">{t("form.phone")}</FieldLabel>
               <Input
                 id="person-phone"
                 disabled={mutation.isPending}
@@ -130,10 +132,10 @@ export function PersonFormDialog({
           name="notes"
           render={({ field, fieldState }) => (
             <Field data-invalid={!!fieldState.error}>
-              <FieldLabel htmlFor="person-notes">Notes</FieldLabel>
+              <FieldLabel htmlFor="person-notes">{t("form.notes")}</FieldLabel>
               <Input
                 id="person-notes"
-                placeholder="Optional"
+                placeholder={t("form.optional")}
                 disabled={mutation.isPending}
                 {...field}
                 value={field.value ?? ""}

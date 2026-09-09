@@ -1,5 +1,7 @@
 "use client";
 
+import { useEnumLabels } from "@/lib/labels";
+import { useTranslations } from "next-intl";
 import NiceModal from "@ebay/nice-modal-react";
 import { Archive, ArchiveRestore, Pencil, Plus } from "lucide-react";
 import { useState } from "react";
@@ -21,7 +23,7 @@ import { OrgRole } from "@/features/organizations";
 import {
   canArchiveRatePlans,
   canManageRatePlans,
-  MEAL_PLAN_LABELS,
+  MEAL_PLAN_VALUES,
   type MealPlan,
 } from "@/features/rates";
 import { trpc } from "@/utils/trpc";
@@ -43,6 +45,8 @@ export function RatePlansPanel({
   organizationId: number;
   currencyCode: string;
 }) {
+  const labels = useEnumLabels("mealPlan", MEAL_PLAN_VALUES);
+  const t = useTranslations("rates");
   const { handleError } = useErrorHandlers();
   const [includeArchived, setIncludeArchived] = useState(false);
   const utils = trpc.useUtils();
@@ -58,7 +62,7 @@ export function RatePlansPanel({
 
   const archive = trpc.rate.archivePlan.useMutation({
     onSuccess: (plan) => {
-      toast.success(plan.archivedAt ? "Rate plan archived" : "Rate plan restored");
+      toast.success(plan.archivedAt ? t("plans.archived") : t("plans.restored"));
       utils.rate.listPlans.invalidate();
     },
     onError: (error) => handleError(error),
@@ -69,16 +73,16 @@ export function RatePlansPanel({
 
   const scope = (roomTypeId: number | null) =>
     roomTypeId === null
-      ? "Every room type"
+      ? t("plans.everyRoomType")
       : (types?.find((type) => type.id === roomTypeId)?.name ?? "—");
 
   const toggleArchive = async (id: number, name: string, archived: boolean) => {
     if (
       archived &&
       !(await confirm({
-        title: `Archive ${name}?`,
-        description: "It stops being quotable. Stays already sold on it keep their terms.",
-        confirmLabel: "Archive",
+        title: t("plans.archiveTitle", { name }),
+        description: t("plans.archiveDescription"),
+        confirmLabel: t("plans.archiveConfirm"),
       }))
     ) {
       return;
@@ -89,13 +93,11 @@ export function RatePlansPanel({
   return (
     <section className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
-        <h2 className="text-lg font-medium">Rate plans</h2>
-        <span className="text-muted-foreground text-sm">
-          The terms around a price. Amounts live in the calendar.
-        </span>
+        <h2 className="text-lg font-medium">{t("plans.heading")}</h2>
+        <span className="text-muted-foreground text-sm">{t("plans.subtitle")}</span>
         <div className="ml-auto flex items-center gap-2">
           <Button variant="ghost" size="sm" onClick={() => setIncludeArchived((show) => !show)}>
-            {includeArchived ? "Hide archived" : "Show archived"}
+            {includeArchived ? t("plans.hideArchived") : t("plans.showArchived")}
           </Button>
           {mayEdit && (
             <Button
@@ -103,7 +105,7 @@ export function RatePlansPanel({
               onClick={() => NiceModal.show(RatePlanFormNiceDialog, { propertyId, currencyCode })}
             >
               <Plus />
-              New plan
+              {t("plans.new")}
             </Button>
           )}
         </div>
@@ -115,11 +117,11 @@ export function RatePlansPanel({
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead>Code</TableHead>
-              <TableHead>Applies to</TableHead>
-              <TableHead>Meals</TableHead>
-              <TableHead>Cancellation</TableHead>
+              <TableHead>{t("plans.name")}</TableHead>
+              <TableHead>{t("plans.code")}</TableHead>
+              <TableHead>{t("plans.appliesTo")}</TableHead>
+              <TableHead>{t("plans.meals")}</TableHead>
+              <TableHead>{t("plans.cancellation")}</TableHead>
               <TableHead className="w-24" />
             </TableRow>
           </TableHeader>
@@ -127,7 +129,7 @@ export function RatePlansPanel({
             {(data ?? []).length === 0 && (
               <TableRow>
                 <TableCell colSpan={6} className="text-muted-foreground">
-                  No rate plans yet. A booking without one is a held room with no money attached.
+                  {t("plans.empty")}
                 </TableCell>
               </TableRow>
             )}
@@ -143,15 +145,13 @@ export function RatePlansPanel({
                 </TableCell>
                 <TableCell className="font-mono text-xs">{plan.code}</TableCell>
                 <TableCell>{scope(plan.roomTypeId)}</TableCell>
-                <TableCell>
-                  {MEAL_PLAN_LABELS[plan.mealPlan as MealPlan] ?? plan.mealPlan}
-                </TableCell>
+                <TableCell>{labels[plan.mealPlan as MealPlan] ?? plan.mealPlan}</TableCell>
                 <TableCell className="text-sm">
                   {plan.isRefundable
                     ? plan.cancellationCutoffHours === null
-                      ? "Free until arrival"
-                      : `Free until ${plan.cancellationCutoffHours}h before`
-                    : "Non-refundable"}
+                      ? t("plans.freeUntilArrival")
+                      : t("plans.freeUntilHours", { hours: plan.cancellationCutoffHours })
+                    : t("plans.nonRefundable")}
                 </TableCell>
                 <TableCell>
                   <div className="flex justify-end gap-1">
@@ -159,7 +159,7 @@ export function RatePlansPanel({
                       <Button
                         variant="ghost"
                         size="icon"
-                        aria-label={`Edit ${plan.name}`}
+                        aria-label={t("plans.editLabel", { name: plan.name })}
                         onClick={() =>
                           NiceModal.show(RatePlanFormNiceDialog, {
                             propertyId,
@@ -176,7 +176,9 @@ export function RatePlansPanel({
                         variant="ghost"
                         size="icon"
                         aria-label={
-                          plan.archivedAt ? `Restore ${plan.name}` : `Archive ${plan.name}`
+                          plan.archivedAt
+                            ? t("plans.restoreLabel", { name: plan.name })
+                            : t("plans.archiveLabel", { name: plan.name })
                         }
                         disabled={archive.isPending}
                         onClick={() => toggleArchive(plan.id, plan.name, !plan.archivedAt)}

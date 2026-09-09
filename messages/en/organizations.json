@@ -1,0 +1,54 @@
+{
+  "list": {
+    "empty": "No organizations yet",
+    "switcherEmpty": "No organizations yet.",
+    "new": "New organization"
+  },
+  "form": {
+    "name": "Name",
+    "namePlaceholder": "Acme Inc.",
+    "slug": "Slug",
+    "slugPlaceholder": "acme",
+    "description": "Description",
+    "descriptionPlaceholder": "Optional",
+    "created": "Organization created",
+    "updated": "Organization updated"
+  },
+  "panels": {
+    "unavailable": "Cannot open this organization",
+    "members": "Members",
+    "membersDescription": "Who has access, and what they can do.",
+    "settings": "Settings",
+    "settingsDescription": "Name, slug and the irreversible actions."
+  },
+  "members": {
+    "added": "Member added",
+    "roleUpdated": "Role updated",
+    "removed": "Member removed",
+    "remove": "Remove",
+    "emailPlaceholder": "person@example.com",
+    "emailLabel": "Email of the person to add",
+    "role": "Role",
+    "actions": "Actions",
+    "member": "Member"
+  },
+  "danger": {
+    "title": "Danger zone",
+    "subtitle": "These actions cannot be undone.",
+    "deleted": "Organization deleted",
+    "left": "You left the organization",
+    "transferred": "Ownership transferred",
+    "deleteTitle": "Delete this organization?",
+    "deleteConfirm": "Delete organization",
+    "leaveTitle": "Leave this organization?",
+    "leaveDescription": "You lose access immediately. An owner or admin would have to add you back.",
+    "leaveConfirm": "Leave",
+    "noOneToTransferTo": "Add another member first — there is no one to transfer to.",
+    "transferTitle": "Transfer ownership",
+    "transferDescription": "They become the owner; you stay on as an admin.",
+    "transferConfirm": "Transfer",
+    "transferWarning": "You will be demoted to admin and cannot undo this yourself.",
+    "transferConfirmFinal": "Transfer ownership",
+    "deleteDescription": "Every membership goes with it. This cannot be undone, and the slug becomes available to anyone."
+  }
+}

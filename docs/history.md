@@ -977,3 +977,203 @@ named by a schema, and no Zod call still carries prose — a key is
 `lower_snake_case`, so a capital letter fails the test.
 
 152 unit tests, 114 integration.
+
+## 2026-09-10 — the page shells, and organizations
+
+The client half, started. No second locale — every screen reads the same English
+it did, from `messages/en/` instead of from a literal.
+
+**Page shells first.** Seven `page.tsx` files under `app/` now read their title
+and description from `messages/en/pages.json` through `getTranslations`. Two of
+them interpolate — a property's check-in hours, a property's name — so those are
+ICU rather than template literals. Server Components, so no provider is
+involved: `getTranslations` reads the request config directly.
+
+**Then organizations, whole.** Six components, and every string a person reads:
+form labels and placeholders, toasts, table headers, the confirm dialogs in the
+danger zone including their descriptions and button labels. `organization-panels.tsx`
+has four components in one file and each got its own translator.
+
+The namespace is mounted on `(app)/dashboard/layout.tsx` beside `errors` and
+`validation`. Shared JS did not move — 824,461 bytes before and after — because
+the JSON is small next to the runtime that was already there.
+
+### What is deliberately not done
+
+**The eight `_LABELS` tables.** `ORG_ROLE_LABELS`, `ROOM_STATUS_LABELS`,
+`RESERVATION_STATUS_LABELS` and the rest are the vocabulary a person reads most
+— badges, selects, status chips — and they are still English in `model/`.
+
+They are left as a set on purpose. Seven are client-only and would move cleanly,
+but `ROOM_STATUS_LABELS` is read by a *router*, at
+`reservations/server/router.ts`, to build the sentence behind
+`room.not_sellable`. Moving it means deciding what a domain error's interpolated
+value is: English, or an enum the client resolves. That is one decision for all
+eight, and taking it one table at a time would answer it by accident.
+
+**The remaining features' prose** — directory, identity, properties, rates,
+reservations — is roughly 51 strings across 16 components. Mechanical, and the
+pattern is now demonstrated twice over.
+
+152 unit tests, 114 integration.
+
+## 2026-09-10 — the rest of the client strings
+
+Six features after `organizations`: identity, directory, properties, rates,
+reservations, and the last of the page shells. Every screen now reads its words
+from `messages/en/`. Still one locale, still the same English on screen.
+
+**Three module-level label arrays had to become keys.** `NUMBERS` in the room
+type form, the extra-person fields in the rate plan form, and `STATUS_ACTION` in
+both the grid and the day lists were `Record`s of English defined outside any
+component, where `t` does not exist. They are lists of *names* now, and the
+label is `t(\`namespace.${name}\`)` at the point of render.
+
+`STATUS_ACTION` needed more than that: the grid and the day lists disagree about
+one word — cancelling reads "Cancel booking" on the grid, where the chip does
+not say which booking, and "Cancel" in a day row that already does. So each file
+has a `useActionLabel` hook, and the grid's overrides that one status. A status
+arrives from the server as a string, so the key is checked with `t.has` before
+it is read: an unrecognised one renders as itself rather than throwing.
+
+**The confirm dialogs carry keys, not sentences.** `ASKS_FIRST` maps a status to
+`{ titleKey, descriptionKey }` and the component resolves them, because the
+record is module-level for the same reason.
+
+**Measured: shared JS 824,461 → 824,413 bytes**, forty-eight bytes *below* the
+floor. Nine namespaces of JSON, and the total did not move — the strings left
+the component bundles and arrived in the provider payload, which is roughly a
+wash. The floor is re-recorded rather than celebrated.
+
+### What is still English, and why it is not an oversight
+
+**The eight `_LABELS` tables.** `ORG_ROLE_LABELS`, `ROOM_STATUS_LABELS`,
+`RESERVATION_STATUS_LABELS`, `MEAL_PLAN_LABELS`, `USER_ROLE_LABELS`,
+`DAY_ROLE_LABELS`, `OUTBOX_STATUS_LABELS`. They are the vocabulary a person
+reads most — badges, selects, status chips — and they are held back as a set.
+
+Seven are client-only and would move today. `ROOM_STATUS_LABELS` is read by a
+router, to build the sentence behind `room.not_sellable`, so moving it decides
+what a domain error's interpolated value is: English, or an enum the client
+resolves. That is one decision for all eight, and answering it one table at a
+time would answer it by accident.
+
+152 unit tests, 114 integration.
+
+## 2026-09-10 — the label tables, and a check that finds what nothing reads
+
+The last of the extraction, plus the tooling to keep it honest.
+
+### The knot, untied by splitting a code
+
+Six of the seven label tables were client-only and would have moved on any day.
+`ROOM_STATUS_LABELS` was read by a **router**, to build
+`That room is ${label} and cannot be sold`, which is why they were held back as
+a set: moving it decides whether a domain error's interpolated value is English
+or an enum the client resolves.
+
+Neither, in the end. `isRoomSellable` is false for exactly two reasons — the
+room is out of order, or the status is one this build does not recognise — so
+**the message never needed the status at all**. Two codes, `room.out_of_order`
+and `room.not_sellable`, no interpolation, and the router stopped importing
+labels. Saying "out of order" about an unrecognised status would have been a
+guess; now neither message guesses.
+
+An integration test caught the split by asserting on the domain code rather than
+the sentence, which is the first time that has paid for itself.
+
+### One table stays, and a test keeps it honest
+
+`RESERVATION_STATUS_LABELS` cannot move. `refuseStatusChange` and
+`refuseStayMove` build their refusal sentences from it, and those are pure
+functions in `model/` with no translator to reach — the same five sentences
+`error-messages.test.ts` already lists as untranslatable.
+
+So the words live twice: in `model/` for the rules, and in `enums.json` for the
+badges. A test fails if the two copies disagree, which was proved by making them
+disagree. They collapse into one when those rules return codes.
+
+### `useEnumLabels` returns a record, not a lookup
+
+Call sites pass these to `items={…}` on a `Select`, index them by value, and
+iterate them with `Object.entries`. A record keeps all three working, so moving
+a table cost one import and one hook line per component rather than a rewrite.
+
+### The tooling
+
+**`npm test` now finds messages nothing reads.** The opposite direction was
+already a compile error — `AppConfig` types the keys from the JSON, so a typo
+fails `tsc` — but a message left behind after the screen that read it changed
+was invisible, and those are what a translator eventually gets paid to
+translate. `message-keys.test.ts` walks the source, resolves each namespace's
+keys, and reports orphans. It found five on its first run, all false positives
+from keys built into a variable before being passed, which is now handled.
+
+Three namespaces are exempt because they are keyed dynamically — `errors` by a
+domain code, `validation` by a Zod message, `enums` by an enum value — and each
+is checked against its *source* in `error-messages.test.ts` instead. Between
+them, every message in the tree is now accounted for in both directions.
+
+**`.vscode/settings.json` configures i18n Ally.** Inline previews and a tree of
+what is missing. Worth knowing: next-intl ships no extension of its own, this is
+a community one, and it does not resolve namespaces from `getTranslations` —
+lokalise/i18n-ally#1170 — so Server Components show as unresolved in the editor.
+The settings file says so, because the tests are what actually check.
+
+155 unit tests, 114 integration.
+
+## 2026-09-10 — the rules stopped writing sentences
+
+The last untranslatable surface. `refuseStatusChange`, `refuseStayMove`,
+`refuseOccupancy`, `refuseCancellationTerms` and the rate `refusalMessage`
+returned the words a person read, and being pure functions in `model/` they had
+no translator to reach.
+
+They return a `Refusal` now — `{ code, values, message }` — and the wording
+lives in `messages/en/errors.json` with the rest.
+
+**The point of the exercise is that both sides still agree.** `architecture.md`
+made a lot of the rule returning one string so that a disabled button and the
+server's refusal could not say different things. They still cannot: they resolve
+the same code from the same file. What changed is that the string is no longer
+English by construction.
+
+**Thirteen codes replaced four.** `reservation.status_refused` stood for four
+different refusals — an illegal transition, a missing room, a booking that has
+not arrived, a last night that has gone — and `stay.move_refused` for five.
+Collapsing them had been fine while the sentence carried the detail; a code that
+means five things carries none.
+
+**`message` stays, and is deliberately plainer than what a person sees.**
+`architecture.md` requires every throw to carry one, and it is the last resort
+when a key is missing — which `error-messages.test.ts` now makes impossible. The
+precise wording is the translation's job.
+
+**`RESERVATION_STATUS_LABELS` is gone.** It existed only for `spoken()`, which
+existed only to build those sentences. The status words are ICU `select` in the
+messages now, so the enum travels as a value and each language chooses its own
+words. That also removes the copy that yesterday's drift test was guarding, and
+the guard with it.
+
+### Two checks the change earned
+
+**Every message is valid ICU.** The new messages carry `select` blocks over
+statuses and refusal reasons, and a malformed one only shows when a person hits
+that exact refusal. The test formats every message in every namespace against a
+bag of plausible values and fails on anything that will not format — proved by
+breaking one.
+
+**The exemption list is gone.** `error-messages.test.ts` no longer carries five
+codes that "supply their own sentence", because none do.
+
+### What the tests had to become
+
+Twelve assertions moved from prose to codes — `assert.match(refusal, /assign a
+room/i)` became `assert.equal(refusal?.code, "reservation.room_required")`. One
+integration test asserted `/arrives on/` against a server message that is now
+the plain fallback, and it was right to fail.
+
+That is the whole argument for codes, arriving on schedule: a rewording used to
+break tests, and now it cannot.
+
+154 unit tests, 114 integration.

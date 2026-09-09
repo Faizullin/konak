@@ -1,3 +1,4 @@
+import { getTranslations } from "next-intl/server";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { redirect } from "next/navigation";
@@ -12,6 +13,7 @@ import prisma from "@/server/db";
  * and it goes straight there.
  */
 export default async function FrontDeskPage({ params }: { params: Promise<{ orgSlug: string }> }) {
+  const t = await getTranslations("pages");
   const { orgSlug } = await params;
   const organization = await organizationBySlug(orgSlug);
   if (!organization) {
@@ -40,7 +42,7 @@ export default async function FrontDeskPage({ params }: { params: Promise<{ orgS
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Front desk" description="Choose a property to open its grid." />
+      <PageHeader title={t("frontDesk.title")} description={t("frontDesk.description")} />
       {properties.length === 0 ? (
         <p className="text-muted-foreground text-sm">
           This organization has no properties yet. One has to exist before there is a desk to run.

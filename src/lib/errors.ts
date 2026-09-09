@@ -4,6 +4,7 @@ import { useCallback, useMemo } from "react";
 import { useTranslations } from "next-intl";
 import type { FieldValues, Path, UseFormReturn } from "react-hook-form";
 import { toast } from "sonner";
+import type { Refusal } from "./refusal";
 
 /**
  * Every error the client can be handed: what it is, and where it renders.
@@ -341,6 +342,27 @@ export function useValidationMessages(): (key: string) => string | null {
       // throwing rather than rendering.
       const named = key as Parameters<typeof t.has>[0];
       return t.has(named) ? t(named) : null;
+    },
+    [t]
+  );
+}
+
+/**
+ * The words for a refusal a `model/` rule returned.
+ *
+ * The rules answer with a code so that both sides of the same rule say the same
+ * thing — a disabled button and the server's refusal are the same key, resolved
+ * from the same file. `refusal.message` is the last resort, and
+ * `error-messages.test.ts` makes sure it is never reached.
+ */
+export function useRefusalText(): (refusal: Refusal | null) => string | undefined {
+  const t = useTranslations("errors");
+
+  return useCallback(
+    (refusal) => {
+      if (!refusal) return undefined;
+      const key = refusal.code as Parameters<typeof t.has>[0];
+      return t.has(key) ? t(key, refusal.values as never) : refusal.message;
     },
     [t]
   );

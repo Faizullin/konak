@@ -5,7 +5,6 @@ import {
   addedNights,
   appearsOnGrid,
   assignLanes,
-  DAY_ROLE_LABELS,
   DayRole,
   dayRoleOf,
   availableRooms,
@@ -22,7 +21,6 @@ import {
   occupiesInventory,
   refuseStatusChange,
   refuseStayMove,
-  RESERVATION_STATUS_LABELS,
   RESERVATION_STATUS_VALUES,
   ReservationStatus,
   shiftMonths,
@@ -118,7 +116,7 @@ test("a guest checks into a room, not into a room type", () => {
     stays: [inRoom(10, 12, null)],
     today: d(10),
   });
-  assert.match(unassigned ?? "", /assign a room/i);
+  assert.equal(unassigned?.code, "reservation.room_required");
 
   assert.equal(
     refuseStatusChange({
@@ -131,25 +129,28 @@ test("a guest checks into a room, not into a room type", () => {
   );
 
   // One room short is still short: a two-room booking arrives as one guest.
-  assert.match(
+  assert.equal(
     refuseStatusChange({
       from: ReservationStatus.CONFIRMED,
       to: ReservationStatus.CHECKED_IN,
       stays: [inRoom(10, 12), inRoom(10, 12, null)],
       today: d(10),
-    }) ?? "",
-    /assign a room/i
+    })?.code,
+    "reservation.room_required"
   );
 });
 
 test("a booking that has not arrived is wrong dates, not an early arrival", () => {
   const early = { from: ReservationStatus.CONFIRMED, stays: [inRoom(12, 14)], today: d(10) };
-  assert.match(
-    refuseStatusChange({ ...early, to: ReservationStatus.CHECKED_IN }) ?? "",
-    /arrives on/
+  assert.equal(
+    refuseStatusChange({ ...early, to: ReservationStatus.CHECKED_IN })?.code,
+    "reservation.arrives_later"
   );
   // Nor can it fail to turn up before the day it was due.
-  assert.match(refuseStatusChange({ ...early, to: ReservationStatus.NO_SHOW }) ?? "", /arrives on/);
+  assert.equal(
+    refuseStatusChange({ ...early, to: ReservationStatus.NO_SHOW })?.code,
+    "reservation.arrives_later"
+  );
 
   // Arriving late is ordinary, and so is recording a no-show afterwards.
   assert.equal(
@@ -172,27 +173,32 @@ test("a booking that has not arrived is wrong dates, not an early arrival", () =
   );
 
   // But there is no night left to check into once the last one has gone.
-  assert.match(
+  assert.equal(
     refuseStatusChange({
       from: ReservationStatus.CONFIRMED,
       to: ReservationStatus.CHECKED_IN,
       stays: [inRoom(8, 10)],
       today: d(10),
-    }) ?? "",
-    /last night has passed/
+    })?.code,
+    "reservation.last_night_passed"
   );
 });
 
-test("the machine's refusal is the sentence the desk reads", () => {
-  assert.equal(
-    refuseStatusChange({
-      from: ReservationStatus.CONFIRMED,
-      to: ReservationStatus.CHECKED_OUT,
-      stays: [inRoom(10, 12)],
-      today: d(10),
-    }),
-    "A confirmed reservation cannot become checked out"
-  );
+test("the machine's refusal carries the two states, so a message can name them", () => {
+  const refusal = refuseStatusChange({
+    from: ReservationStatus.CONFIRMED,
+    to: ReservationStatus.CHECKED_OUT,
+    stays: [inRoom(10, 12)],
+    today: d(10),
+  });
+
+  // The words are `messages/en/errors.json`'s job now; what the rule owes is
+  // the code and the two states the sentence has to name.
+  assert.equal(refusal?.code, "reservation.transition_illegal");
+  assert.deepEqual(refusal?.values, {
+    from: ReservationStatus.CONFIRMED,
+    to: ReservationStatus.CHECKED_OUT,
+  });
 
   // Checking out is recording what happened, so leaving early is not refused.
   assert.equal(
@@ -355,12 +361,6 @@ test("a month is a window, and moving by one crosses the year", () => {
   );
 });
 
-test("every status has a label, so the grid never draws a raw column value", () => {
-  for (const status of RESERVATION_STATUS_VALUES) {
-    assert.equal(typeof RESERVATION_STATUS_LABELS[status], "string", status);
-  }
-});
-
 test("a day sorts a stay into exactly one of the desk's three lists", () => {
   const stay = {
     checkIn: new Date(Date.UTC(2027, 2, 3)),
@@ -397,12 +397,6 @@ test("the day roles read against a time of day, not only a midnight", () => {
   assert.equal(dayRoleOf(stay, new Date(Date.UTC(2027, 2, 4, 23, 59))), DayRole.IN_HOUSE);
 });
 
-test("every day role has a label, so a list never draws a raw value", () => {
-  for (const role of Object.values(DayRole)) {
-    assert.equal(typeof DAY_ROLE_LABELS[role], "string", role);
-  }
-});
-
 const march = (n: number) => new Date(Date.UTC(2027, 2, n));
 
 test("a stay must still be a stay after it moves", () => {
@@ -413,7 +407,7 @@ test("a stay must still be a stay after it moves", () => {
     today: march(1),
   };
 
-  assert.equal(refuseStayMove(move), "A stay is at least one night");
+  assert.equal(refuseStayMove(move)?.code, "stay.too_short");
 });
 
 test("a booking that has ended does not move", () => {
@@ -428,7 +422,7 @@ test("a booking that has ended does not move", () => {
       to: { checkIn: march(11), checkOut: march(13) },
       today: march(1),
     });
-    assert.match(refusal ?? "", /cannot move/, status);
+    assert.equal(refusal?.code, "stay.dates_locked", status);
   }
 });
 
@@ -443,13 +437,13 @@ test("an arrived guest arrived when they arrived — only the departure moves", 
   );
 
   assert.equal(
-    refuseStayMove({ ...checkedIn, to: { checkIn: march(11), checkOut: march(14) } }),
-    "The guest has already arrived, so only the departure can move"
+    refuseStayMove({ ...checkedIn, to: { checkIn: march(11), checkOut: march(14) } })?.code,
+    "stay.arrival_fixed"
   );
   // Their last night would be the 11th, and it is already the 13th.
   assert.equal(
-    refuseStayMove({ ...checkedIn, to: { checkIn: march(10), checkOut: march(12) } }),
-    "That would end the stay before today"
+    refuseStayMove({ ...checkedIn, to: { checkIn: march(10), checkOut: march(12) } })?.code,
+    "stay.ends_before_today"
   );
 });
 
@@ -476,8 +470,8 @@ test("a booking that has not arrived cannot be moved into nights that have gone"
       from,
       to: { checkIn: march(3), checkOut: march(5) },
       today: march(5),
-    }),
-    "A booking cannot be moved into nights that have passed"
+    })?.code,
+    "stay.moved_into_past"
   );
   // Onto today itself is allowed — that is a guest arriving now.
   assert.equal(

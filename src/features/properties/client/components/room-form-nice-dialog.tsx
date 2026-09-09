@@ -1,5 +1,7 @@
 "use client";
 
+import { useEnumLabels } from "@/lib/labels";
+import { useTranslations } from "next-intl";
 import NiceModal, { useModal } from "@ebay/nice-modal-react";
 import { useEffect } from "react";
 import { Controller, useForm } from "react-hook-form";
@@ -15,7 +17,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  ROOM_STATUS_LABELS,
+  ROOM_STATUS_VALUES,
   roomFormSchema,
   RoomStatus,
   type RoomFormInput,
@@ -41,6 +43,8 @@ export interface RoomFormNiceDialogProps {
 
 export const RoomFormNiceDialog = NiceModal.create(
   ({ propertyId, roomId, roomTypeId }: RoomFormNiceDialogProps) => {
+    const labels = useEnumLabels("roomStatus", ROOM_STATUS_VALUES);
+    const t = useTranslations("properties");
     const { handleFormError } = useErrorHandlers();
     const isEdit = roomId !== undefined;
     const modal = useModal();
@@ -109,7 +113,7 @@ export const RoomFormNiceDialog = NiceModal.create(
       <FormDialog
         open={modal.visible}
         onOpenChange={(open) => !open && modal.hide()}
-        title={isEdit ? "Edit room" : "New room"}
+        title={isEdit ? t("roomForm.editTitle") : t("roomForm.newTitle")}
         onSubmit={form.handleSubmit((values) =>
           isEdit
             ? update.mutate({ ...values, propertyId, id: roomId })
@@ -117,7 +121,7 @@ export const RoomFormNiceDialog = NiceModal.create(
         )}
         error={form.formState.errors.root?.message}
         isLoading={pending}
-        submitText={isEdit ? "Save" : "Add room"}
+        submitText={isEdit ? t("roomForm.save") : t("roomForm.add")}
       >
         <FieldGroup>
           <div className="grid gap-4 sm:grid-cols-2">
@@ -126,7 +130,7 @@ export const RoomFormNiceDialog = NiceModal.create(
               name="number"
               render={({ field, fieldState }) => (
                 <Field data-invalid={!!fieldState.error}>
-                  <FieldLabel htmlFor="number">Number</FieldLabel>
+                  <FieldLabel htmlFor="number">{t("roomForm.number")}</FieldLabel>
                   <Input id="number" {...field} disabled={pending} />
                   <FieldError errors={[fieldState.error]} />
                 </Field>
@@ -137,7 +141,7 @@ export const RoomFormNiceDialog = NiceModal.create(
               name="floor"
               render={({ field, fieldState }) => (
                 <Field data-invalid={!!fieldState.error}>
-                  <FieldLabel htmlFor="floor">Floor</FieldLabel>
+                  <FieldLabel htmlFor="floor">{t("roomForm.floor")}</FieldLabel>
                   <Input id="floor" {...field} value={field.value ?? ""} disabled={pending} />
                   <FieldError errors={[fieldState.error]} />
                 </Field>
@@ -150,7 +154,7 @@ export const RoomFormNiceDialog = NiceModal.create(
             name="roomTypeId"
             render={({ field, fieldState }) => (
               <Field data-invalid={!!fieldState.error}>
-                <FieldLabel>Room type</FieldLabel>
+                <FieldLabel>{t("roomForm.type")}</FieldLabel>
                 <Select
                   items={Object.fromEntries((types ?? []).map((t) => [String(t.id), t.name]))}
                   value={field.value ? String(field.value) : ""}
@@ -158,7 +162,7 @@ export const RoomFormNiceDialog = NiceModal.create(
                   disabled={pending}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Choose a type" />
+                    <SelectValue placeholder={t("roomForm.chooseType")} />
                   </SelectTrigger>
                   <SelectContent>
                     {(types ?? []).map((type) => (
@@ -178,9 +182,9 @@ export const RoomFormNiceDialog = NiceModal.create(
             name="status"
             render={({ field, fieldState }) => (
               <Field data-invalid={!!fieldState.error}>
-                <FieldLabel>Housekeeping</FieldLabel>
+                <FieldLabel>{t("roomForm.housekeeping")}</FieldLabel>
                 <Select
-                  items={ROOM_STATUS_LABELS}
+                  items={labels}
                   value={field.value}
                   onValueChange={field.onChange}
                   disabled={pending}
@@ -189,7 +193,7 @@ export const RoomFormNiceDialog = NiceModal.create(
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {Object.entries(ROOM_STATUS_LABELS).map(([value, label]) => (
+                    {Object.entries(labels).map(([value, label]) => (
                       <SelectItem key={value} value={value}>
                         {label}
                       </SelectItem>

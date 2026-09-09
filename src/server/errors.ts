@@ -1,3 +1,5 @@
+import type { Refusal } from "../lib/refusal";
+
 /**
  * Errors thrown from more than one place, and the classes the domain throws.
  *
@@ -140,6 +142,26 @@ export class PreconditionError extends DomainError {
     super("PRECONDITION_FAILED", code, message, field);
     this.name = "PreconditionError";
   }
+}
+
+/**
+ * A `DomainError` from a rule's refusal.
+ *
+ * The rules in `model/` answer with a code, values and a plain fallback; this
+ * is the one place that turns one into something a router can throw, so the
+ * five call sites do not each remember to carry the values across.
+ */
+export function refused(
+  refusal: Refusal,
+  kind: "invalid" | "conflict" = "invalid",
+  field?: string
+): DomainError {
+  const error =
+    kind === "conflict"
+      ? new ConflictError(refusal.code, refusal.message, field)
+      : new InvalidError(refusal.code, refusal.message, field);
+
+  return refusal.values ? error.with(refusal.values) : error;
 }
 
 /** The signed-in caller has no `User` row: deleted mid-session, usually. */

@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { after, before, describe, test } from "node:test";
 import { TRPCError } from "@trpc/server";
-import { callerFor, createFixture, prisma, type Fixture } from "./harness";
+import { callerFor, createFixture, domainCodeOf, prisma, type Fixture } from "./harness";
+import { ReservationError } from "@/features/reservations";
 
 /**
  * Availability and the booking transaction, against a real database — the half
@@ -297,7 +298,7 @@ describe("status and rooms", () => {
     for (const status of ["CHECKED_IN", "NO_SHOW"] as const) {
       await assert.rejects(
         () => callerFor(fx.owner).reservation.setStatus({ propertyId, id: r.id, status }),
-        (e) => code(e) === "BAD_REQUEST" && /arrives on/.test(message(e))
+        (e) => code(e) === "BAD_REQUEST" && domainCodeOf(e) === ReservationError.ARRIVES_LATER
       );
     }
   });

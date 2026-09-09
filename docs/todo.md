@@ -6,10 +6,13 @@ boxes. A finished item leaves here; the fact of it goes to `history.md`.
 Where this sits in the whole build: `plans/roadmap.md`.
 
 ## Internationalisation
-`next-intl` is wired in no-routing mode and the two auth screens read from
-`messages/en/`, which proved the setup without changing a word on screen. What
-is still English: the 77 domain codes' messages, the 171 Zod messages, and every
-dashboard string. `plans/internationalisation.md` has the order.
+The extraction is finished — refusals, Zod messages, page shells, every
+feature's components and the label tables. `npm test` fails on a message nothing
+reads and on a key nothing declares, in both directions.
+
+One thing remains: **a second locale**, which is the first point any of it is
+visible. Every string in the app now comes from `messages/en/`, including the
+refusals the `model/` rules used to word themselves.
 
 ## Visual design and motion
 Last, once the product works. Density, colour-as-data, keyboard rules, and

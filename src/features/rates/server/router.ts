@@ -1,6 +1,12 @@
 import "server-only";
 import prisma from "@/server/db";
-import { ConflictError, ForbiddenError, InvalidError, NotFoundError } from "@/server/errors";
+import {
+  ConflictError,
+  ForbiddenError,
+  InvalidError,
+  NotFoundError,
+  refused,
+} from "@/server/errors";
 import { createTRPCRouter, protectedProcedure } from "@/server/trpc";
 import { requirePropertyMember } from "@/features/properties/server";
 import { nightsOf, toStayDate } from "@/features/reservations";
@@ -75,7 +81,7 @@ async function assertPlanShape(
 ) {
   const refusal = refuseCancellationTerms(plan);
   if (refusal) {
-    throw new InvalidError(RateError.PLAN_TERMS_INVALID, refusal, "cancellationCutoffHours");
+    throw refused(refusal, "invalid", "cancellationCutoffHours");
   }
 
   if (plan.roomTypeId !== null) {

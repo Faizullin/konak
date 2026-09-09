@@ -1,4 +1,6 @@
 import { z } from "zod";
+import type { Refused } from "@/lib/refusal";
+import { PropertyError } from "./errors";
 
 /**
  * Rooms and room types — the physical side of the inventory decision.
@@ -26,14 +28,6 @@ export type RoomStatus = (typeof RoomStatus)[keyof typeof RoomStatus];
 export const ROOM_STATUS_VALUES = Object.values(RoomStatus);
 
 export const roomStatusSchema = z.enum(ROOM_STATUS_VALUES);
-
-export const ROOM_STATUS_LABELS: Record<RoomStatus, string> = {
-  CLEAN: "Clean",
-  DIRTY: "Dirty",
-  IN_PROGRESS: "Being cleaned",
-  INSPECTED: "Inspected",
-  OUT_OF_ORDER: "Out of order",
-};
 
 /**
  * Whether a room can hold a guest at all. Only `OUT_OF_ORDER` says no — a dirty
@@ -104,18 +98,30 @@ export function refuseOccupancy(type: {
   maxOccupancy: number;
   maxAdults: number;
   maxChildren: number;
-}): string | null {
+}): Refused {
   if (type.maxAdults < 1) {
-    return "A room type sleeps at least one adult";
+    return {
+      code: PropertyError.ROOM_TYPE_NEEDS_ONE_ADULT,
+      message: "A room type sleeps at least one adult",
+    };
   }
   if (type.baseOccupancy > type.maxOccupancy) {
-    return "The base occupancy cannot be more than the maximum";
+    return {
+      code: PropertyError.ROOM_TYPE_BASE_OVER_MAX,
+      message: "The base occupancy is above the maximum",
+    };
   }
   if (type.maxAdults > type.maxOccupancy) {
-    return "More adults than the room type sleeps in total";
+    return {
+      code: PropertyError.ROOM_TYPE_ADULTS_OVER_MAX,
+      message: "More adults than the type sleeps",
+    };
   }
   if (type.maxChildren > type.maxOccupancy) {
-    return "More children than the room type sleeps in total";
+    return {
+      code: PropertyError.ROOM_TYPE_CHILDREN_OVER_MAX,
+      message: "More children than the type sleeps",
+    };
   }
   return null;
 }

@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { confirm } from "@/components/common/confirm-nice-dialog";
@@ -19,6 +20,7 @@ export function OrganizationDangerZone({
   currentUserRole: OrgRole;
   currentUserId?: string;
 }) {
+  const t = useTranslations("organizations");
   const { handleError } = useErrorHandlers();
   const router = useRouter();
   const utils = trpc.useUtils();
@@ -35,7 +37,7 @@ export function OrganizationDangerZone({
 
   const deleteMutation = trpc.organization.delete.useMutation({
     onSuccess: async () => {
-      toast.success("Organization deleted");
+      toast.success(t("danger.deleted"));
       await afterLeaving();
     },
     onError: (e) => handleError(e),
@@ -43,7 +45,7 @@ export function OrganizationDangerZone({
 
   const leaveMutation = trpc.organization.leave.useMutation({
     onSuccess: async () => {
-      toast.success("You left the organization");
+      toast.success(t("danger.left"));
       await afterLeaving();
     },
     onError: (e) => handleError(e),
@@ -51,7 +53,7 @@ export function OrganizationDangerZone({
 
   const transferMutation = trpc.organization.transferOwnership.useMutation({
     onSuccess: async () => {
-      toast.success("Ownership transferred");
+      toast.success(t("danger.transferred"));
       await Promise.all([
         utils.organization.getById.invalidate({ id: organizationId }),
         utils.organization.listMembers.invalidate({ organizationId }),
@@ -67,10 +69,9 @@ export function OrganizationDangerZone({
 
   const handleDelete = async () => {
     const ok = await confirm({
-      title: "Delete this organization?",
-      description:
-        "Every membership goes with it. This cannot be undone, and the slug becomes available to anyone.",
-      confirmLabel: "Delete organization",
+      title: t("danger.deleteTitle"),
+      description: t("danger.deleteDescription"),
+      confirmLabel: t("danger.deleteConfirm"),
       destructive: true,
     });
     if (!ok) return;
@@ -80,9 +81,9 @@ export function OrganizationDangerZone({
 
   const handleLeave = async () => {
     const ok = await confirm({
-      title: "Leave this organization?",
-      description: "You lose access immediately. An owner or admin would have to add you back.",
-      confirmLabel: "Leave",
+      title: t("danger.leaveTitle"),
+      description: t("danger.leaveDescription"),
+      confirmLabel: t("danger.leaveConfirm"),
       destructive: true,
     });
     if (!ok) return;
@@ -96,26 +97,26 @@ export function OrganizationDangerZone({
       .map((m) => ({ id: m.user.id, label: `${m.user.name} · ${m.user.email}` }));
 
     if (candidates.length === 0) {
-      toast.error("Add another member first — there is no one to transfer to.");
+      toast.error(t("danger.noOneToTransferTo"));
       return;
     }
 
     const picked = await selectOne<{ id: string; label: string }>({
-      title: "Transfer ownership",
-      description: "They become the owner; you stay on as an admin.",
+      title: t("danger.transferTitle"),
+      description: t("danger.transferDescription"),
       valueKey: "id",
       renderText: (m) => m.label,
       // Already loaded, so this filters in memory rather than round-tripping.
       searchFn: async (search) =>
         candidates.filter((c) => c.label.toLowerCase().includes(search.toLowerCase())),
-      confirmLabel: "Transfer",
+      confirmLabel: t("danger.transferConfirm"),
     });
     if (!picked) return;
 
     const ok = await confirm({
       title: `Make ${picked.label.split(" · ")[0]} the owner?`,
-      description: "You will be demoted to admin and cannot undo this yourself.",
-      confirmLabel: "Transfer ownership",
+      description: t("danger.transferWarning"),
+      confirmLabel: t("danger.transferConfirmFinal"),
       destructive: true,
     });
     if (!ok) return;
@@ -126,8 +127,8 @@ export function OrganizationDangerZone({
   return (
     <Card className="border-destructive/40">
       <CardHeader>
-        <CardTitle className="text-destructive">Danger zone</CardTitle>
-        <CardDescription>These actions cannot be undone.</CardDescription>
+        <CardTitle className="text-destructive">{t("danger.title")}</CardTitle>
+        <CardDescription>{t("danger.subtitle")}</CardDescription>
       </CardHeader>
       <CardContent className="flex flex-wrap gap-2">
         {isOwner ? (

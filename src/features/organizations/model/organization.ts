@@ -36,12 +36,6 @@ export const orgRoleSchema = z.enum(ORG_ROLE_VALUES);
 /** Roles that can be *assigned*. Ownership moves through `transferOwnership`. */
 export const assignableOrgRoleSchema = z.enum([OrgRole.ADMIN, OrgRole.MEMBER]);
 
-export const ORG_ROLE_LABELS: Record<OrgRole, string> = {
-  OWNER: "Owner",
-  ADMIN: "Admin",
-  MEMBER: "Member",
-};
-
 /**
  * Every resource in this feature, and the verbs each one admits.
  *
