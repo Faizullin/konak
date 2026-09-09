@@ -1,0 +1,79 @@
+name: Notify Telegram
+
+on:
+  issues:
+    types: [opened, closed, reopened]
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/github-script@v7
+        env:
+          TG_BOT_TOKEN: 8839328949:AAE2lsG-m3xX7hBZU2fkFufNc7r6VGbSTjQ
+          TG_CHAT_ID: -1003988424753
+          TG_THREAD_ID: 72
+        with:
+          script: |
+            const fs = require('fs');
+
+            let map = {};
+            try {
+              map = JSON.parse(fs.readFileSync('.github/telegram-users.json', 'utf8'));
+            } catch (e) {
+              core.warning('telegram-users.json не найден, пишу github-логины');
+            }
+
+            const issue  = context.payload.issue;
+            const action = context.payload.action;
+
+            const assigned = (issue.assignees || [])
+              .map(a => map[a.login] || `${a.login} (github)`)
+              .join(', ') || 'не назначен';
+
+            const labels = (issue.labels || []).map(l => l.name);
+            const prio   = labels.find(l => /^(critical|high|medium|low)$/i.test(l));
+
+            const due = issue.milestone && issue.milestone.due_on
+              ? issue.milestone.due_on.slice(0, 10)
+              : null;
+
+            const head = { opened: '🆕 Task', closed: '✅ Closed', reopened: '♻️ Reopened' }[action];
+
+            const esc = s => String(s).replace(/[_*\[\]()~`>#+\-=|{}.!\\]/g, '\\$&');
+
+            const text = [
+              `${head}: *${esc(issue.title)}*`,
+              prio ? `Priority: ${esc(prio)}` : null,
+              ``,
+              `Assigned: ${esc(assigned)}`,
+              `Project: ${esc(context.repo.repo)}`,
+              due ? `Deadline: ${esc(due)}` : null,
+              ``,
+              esc(issue.html_url),
+            ].filter(x => x !== null).join('\n');
+
+            const body = {
+              chat_id: process.env.TG_CHAT_ID,
+              text,
+              parse_mode: 'MarkdownV2',
+              link_preview_options: { is_disabled: true },
+            };
+            if (process.env.TG_THREAD_ID) {
+              body.message_thread_id = Number(process.env.TG_THREAD_ID);
+            }
+
+            const res = await fetch(
+              `https://api.telegram.org/bot${process.env.TG_BOT_TOKEN}/sendMessage`,
+              {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+              }
+            );
+
+            if (!res.ok) {
+              core.setFailed(`Telegram API: ${res.status} ${await res.text()}`);
+            }
