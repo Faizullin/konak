@@ -24,9 +24,15 @@ the app and outside `env.mjs`'s module graph, and `getBaseUrl()` in
 `NEXT_PUBLIC_` would publish them to the browser to no purpose. A third such
 read should be argued for, not added quietly.
 
-Copy `.env.example` to `.env`. Only three variables are required:
-`DATABASE_URL`, `BETTER_AUTH_SECRET` (generate one with `npx auth@latest
-secret`) and `BETTER_AUTH_URL`. The OAuth pairs are optional.
+Copy `.env.example` to `.env`. Four variables are required: `DATABASE_URL`,
+`BETTER_AUTH_SECRET` (generate one with `npx auth@latest secret`),
+`BETTER_AUTH_URL`, and `FIELD_ENCRYPTION_KEY` (`openssl rand -base64 32`). The
+OAuth pairs are optional.
+
+`FIELD_ENCRYPTION_KEY` is validated for length, not just presence — 32 bytes of
+base64 — so a truncated paste fails at startup rather than at the first write.
+**Losing it loses every value encrypted with it.** It is not derivable from
+anything else, and there is no recovery path by design.
 
 ## Authentication
 

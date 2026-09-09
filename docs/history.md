@@ -573,3 +573,106 @@ know what every other test counts.
 to it. Shared JS unchanged at 245 kB.
 
 119 unit tests, 101 integration.
+
+## 2026-09-09 — a worker for the outbox
+
+`OutboxTask` had been the intent since the schema landed and nothing drained it.
+It does now — the mechanism only. The first integration is Phase 7's own bullet
+and deliberately not here.
+
+**Every *when* decision is in `model/` and proved without waiting.** The backoff
+curve doubles from a minute and caps at an hour; five attempts spans about half
+an hour, which outlasts a deploy without hiding a real breakage for a day. A
+test asserts the curve rather than observing it.
+
+**Attempts are spent on the claim, not on the failure.** A worker killed
+mid-handler still costs one — otherwise a task that crashes the process retries
+forever and takes every worker with it.
+
+**A lease, because a dead worker holds its row forever.** A RUNNING task whose
+`lockedAt` is older than five minutes is claimable again. Without it the queue
+loses work quietly rather than retrying it.
+
+**A type with no handler dead-letters immediately.** Retrying cannot make a
+handler appear, and waiting an hour to fail the same way is delay, not
+resilience. It also means the empty registry is honest: a commit run today
+fails loudly instead of looking idle.
+
+**`drainOutbox` runs one pass, not a loop.** How often to call it is the
+caller's decision — a script's `--interval`, a cron, a test calling it once. A
+drain that owned its loop could not be tested without waiting.
+
+**Raw SQL, once, and it earns it.** `FOR UPDATE SKIP LOCKED` is what lets two
+workers drain one queue without either waiting on the other or both taking the
+same row, and Prisma's query API cannot express it. Read-then-update would hand
+the same task to both.
+
+### The bug that took the longest to see
+
+The drain tests passed alone and failed in the suite — a different test each
+run, which is the signature of a race rather than an ordering problem. Pairing
+the file against each other file in turn reproduced it twice and then stopped
+reproducing at all, which ruled out interference and pointed at timing.
+
+**It was two clocks.** `availableAt` is written with `new Date()` and every
+model function reasons in those terms, but the claim compared it against
+Postgres's `now()` — which is *transaction start* time, not statement time. A
+task enqueued a moment earlier could read as not yet due and silently not be
+claimed. The claim now takes the application's clock, like everything else that
+touches that column. Four consecutive suite runs, clean.
+
+Worth keeping: a flaky test that moves between assertions is describing a shared
+clock or a shared row, not a bad assertion.
+
+### The script
+
+`scripts/outbox-worker.mts`, run with `--conditions=react-server` exactly as
+`local-development.md` specifies, and a dry run without `--commit` as that guide
+requires of anything that changes data. `scripts/` sits beside `src/` rather
+than inside it, so a file that is not part of the app's module graph is not in
+`tsc`'s or Next's either; `architecture.md` says so now.
+
+126 unit tests, 114 integration.
+
+## 2026-09-09 — field encryption, and a key that must exist
+
+`IdentityDocument.numberEncrypted` was named for an obligation nothing in the
+code met. `server/crypto.ts` meets it.
+
+**`src/server/`, not `src/lib/`.** The architecture test is "would two features
+ever own this together" — compliance will encrypt passport numbers and billing
+will encrypt payment references, so it is shared rather than a feature's. It
+also reads `node:crypto`, and `lib/` carries no `server-only`: a client
+component importing it would be a build break rather than a compile error.
+
+**AES-256-GCM, because the failure that matters is silent corruption.** A
+modified ciphertext refuses to decrypt instead of decrypting to a different
+number. Two tests flip a bit — one in the body, one in the tag — and assert the
+refusal.
+
+**Not deterministic, deliberately.** The same number encrypts differently every
+time, so `WHERE numberEncrypted = ?` cannot work and is not meant to. Finding a
+document is `numberLast4`'s job; equality on a ciphertext would leak which
+guests share a document.
+
+**A versioned envelope.** `v1.<iv>.<tag>.<ciphertext>` in one column — the parts
+are useless apart, and a schema able to hold an IV without its ciphertext will
+eventually hold one. The prefix is what lets a later algorithm know what old
+rows are rather than guessing.
+
+**`decryptField` throws rather than returning `null`.** A caller that forgot to
+check a nullable return would write the absence of a passport number into an
+official filing.
+
+**The key is required, not optional.** A column named `numberEncrypted` that
+falls back to plaintext when a variable is absent is the exact failure the name
+promises it is not. `env.mjs` checks the length too, so a truncated paste fails
+at startup rather than at the first write. `.env.example` gained the variable —
+and lost a comment that still described the database as SQLite.
+
+**What this does not do.** Nothing writes `IdentityDocument` yet, so no value is
+encrypted in anger. The writer, the retention job and the "who may read a
+passport number" audit are Phase 9, and the roadmap now says the primitive is
+already there so it is not built twice.
+
+136 unit tests, 114 integration.

@@ -5,14 +5,6 @@ boxes. A finished item leaves here; the fact of it goes to `history.md`.
 
 Where this sits in the whole build: `plans/roadmap.md`.
 
-## A worker draining OutboxTask
-The table is the intent; nothing acts on it. Needed before anything talks to an
-external system.
-
-## Field-level encryption
-`IdentityDocument.numberEncrypted` is named for an obligation the code does not
-meet. Until it does, that column holds plaintext.
-
 ## Class-based exceptions on the server
 Forty-four `throw new TRPCError` sites each carry their own English sentence, and
 `server/errors.ts` names only the two that repeat. A small hierarchy thrown by

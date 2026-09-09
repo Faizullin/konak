@@ -75,8 +75,10 @@ at the front desk without anyone retyping it.
 
 The highest-risk code in the product, and the reason a regional PMS can exist.
 
-- Field-level encryption for `IdentityDocument.numberEncrypted`, plus the
-  retention job that reads `purgeAfter`.
+- The document writer, using `encryptField` from `server/crypto.ts` — the
+  primitive, its key and its tests already exist; what does not is anything that
+  calls it. Plus the retention job that reads `purgeAfter`, which now has a
+  worker to run in.
 - A fiscal adapter for one jurisdiction; a registration adapter for the same one.
 - Access to a passport is audited, and refusable, separately from reading a name.
 

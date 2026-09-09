@@ -42,6 +42,12 @@ src/
 └── utils/ generated/
 ```
 
+`scripts/` sits beside `src/`, not inside it: a `.mts` file run by `tsx` is not
+part of the app's module graph, and putting one under `src/` would put it in
+`tsc`'s and Next's. `outbox-worker.mts` is the only one today — see
+[local-development.md](local-development.md#running-scripts-that-import-feature-code)
+for why it needs `--conditions=react-server`.
+
 Six features exist. `identity` (who the caller is) and `organizations` (the
 container the rest hangs off) exercise every layer, and `organizations` is the
 worked example. `directory` (people and companies) has a `model/` and a

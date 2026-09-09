@@ -1,3 +1,4 @@
+export * from "./outbox";
 export * from "./schemas";
 export * from "./scope";
 export * from "./storage";

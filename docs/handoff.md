@@ -26,6 +26,11 @@ from the browser's.
 room types, rooms and rate plans, behind the same module toggle as the desk. It
 is the first screen that is manager-only: OWNER and ADMIN write, MEMBER reads.
 
+**The outbox has a worker now, and no handlers.** `npm run outbox` is a dry run;
+`-- --commit` drains. Nothing registers a handler until the first external
+system in Phase 7, so a commit run today dead-letters whatever it finds — which
+is the intended answer, not a bug.
+
 **Start the database first.** `docker compose -f docker/compose/db.yml up -d`,
 then `npm run db:migrate` and `npm run db:seed` on a fresh volume.
 
