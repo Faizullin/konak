@@ -1,5 +1,5 @@
 import "server-only";
-import { TRPCError } from "@trpc/server";
+import { InvalidError, PreconditionError } from "@/server/errors";
 import prisma from "@/server/db";
 import { personDisplayName } from "@/features/directory";
 import { compareRoomNumbers } from "@/features/properties";
@@ -15,6 +15,7 @@ import {
   nightsBetween,
   nightsOf,
   occupiesInventory,
+  ReservationError,
   spanInWindow,
   toStayDate,
   type GridSpan,
@@ -74,10 +75,10 @@ export async function availability(
   const from = toStayDate(args.from);
   const to = toStayDate(args.to);
   if (nightsBetween(from, to) < 1) {
-    throw new TRPCError({
-      code: "BAD_REQUEST",
-      message: "The range must cover at least one night",
-    });
+    throw new InvalidError(
+      ReservationError.STAY_RANGE_INVALID,
+      "The range must cover at least one night"
+    );
   }
 
   const roomTypeIds = scope
@@ -184,10 +185,10 @@ export async function nextSeriesNumber(
     },
   });
   if (!series) {
-    throw new TRPCError({
-      code: "PRECONDITION_FAILED",
-      message: `No ${args.kind} number series for this property`,
-    });
+    throw new PreconditionError(
+      ReservationError.SERIES_MISSING,
+      `No ${args.kind} number series for this property`
+    );
   }
 
   // A yearly series restarts when the period changes; the update is what makes
@@ -270,10 +271,10 @@ export async function frontDeskGrid(args: {
 }): Promise<FrontDeskGrid> {
   const window = gridWindowOf(args.from, args.to);
   if (!window) {
-    throw new TRPCError({
-      code: "BAD_REQUEST",
-      message: `A grid window is between one and ${GRID_MAX_NIGHTS} nights`,
-    });
+    throw new InvalidError(
+      ReservationError.GRID_WINDOW_INVALID,
+      `A grid window is between one and ${GRID_MAX_NIGHTS} nights`
+    );
   }
 
   const from = window.from;

@@ -5,13 +5,12 @@ boxes. A finished item leaves here; the fact of it goes to `history.md`.
 
 Where this sits in the whole build: `plans/roadmap.md`.
 
-## Class-based exceptions on the server
-Forty-four `throw new TRPCError` sites each carry their own English sentence, and
-`server/errors.ts` names only the two that repeat. A small hierarchy thrown by
-the domain and mapped to `TRPCError` once at the boundary would leave codes where
-sentences are now: the translation entry below needs exactly that, and a router
-becomes testable without asserting on prose. `lib/errors.ts` keeps matching by
-shape either way — the comment there says why `instanceof` is not an option.
+## Domain error codes for the remaining features
+`reservations` is converted and is the worked example: a code per refusal in
+`model/errors.ts`, thrown as a `DomainError`, mapped once in `trpc.ts`.
+`directory`, `organizations`, `properties`, `rates`, `platform` and `identity`
+still throw `TRPCError` with an English sentence and nothing else, so their
+refusals cannot be asserted on or translated. Mechanical, one feature at a time.
 
 ## Pick a translation library
 Every string in the app is inline English and nothing is installed. The field is

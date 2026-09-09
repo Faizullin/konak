@@ -135,3 +135,49 @@ test("form-level Zod messages stay separate from field ones", () => {
   assert.deepEqual(app.formErrors, ["Pick at least one"]);
   assert.equal(app.fieldErrors, undefined);
 });
+
+test("a domain code survives the wire, alongside the transport's own", () => {
+  const app = normalizeError(
+    trpc(
+      {
+        code: "CONFLICT",
+        httpStatus: 409,
+        domainCode: "room.taken",
+        field: "roomId",
+      },
+      "That room is taken for part of this stay"
+    )
+  );
+
+  // Two codes, and they answer different questions: `code` is the transport's
+  // and decides where this renders; `domainCode` is the rule's and is what a
+  // screen or a translation keys on.
+  assert.equal(app.code, "CONFLICT");
+  assert.equal(app.domainCode, "room.taken");
+  assert.deepEqual(app.fieldErrors, { roomId: ["That room is taken for part of this stay"] });
+});
+
+test("an error with no domain code does not invent one", () => {
+  const app = normalizeError(trpc({ code: "NOT_FOUND", httpStatus: 404 }, "Gone"));
+
+  assert.equal("domainCode" in app, false);
+});
+
+test("a null domain code is an absence, not a value", () => {
+  // The formatter writes `null` when the cause was not a `DomainError`, and a
+  // caller checking `app.domainCode === X` must not match on that.
+  const app = normalizeError(
+    trpc({ code: "NOT_FOUND", httpStatus: 404, domainCode: null }, "Gone")
+  );
+
+  assert.equal(app.domainCode, undefined);
+});
+
+test("a domain code never rescues a 500's message", () => {
+  const app = normalizeError(
+    trpc({ code: "INTERNAL_SERVER_ERROR", httpStatus: 500, domainCode: "x.y" }, "at Object.<anon>")
+  );
+
+  assert.equal(app.message, GENERIC_SERVER_MESSAGE);
+  assert.equal(app.domainCode, "x.y");
+});

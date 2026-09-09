@@ -1,8 +1,8 @@
 import "server-only";
-import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import { fieldError } from "@/server/errors";
+import { ConflictError, InvalidError, NotFoundError } from "@/server/errors";
 import { createTRPCRouter, protectedProcedure } from "@/server/trpc";
+import { ReservationError } from "../model";
 import { createGuestPerson } from "@/features/directory/server";
 import { isRoomSellable, ROOM_STATUS_LABELS, type RoomStatus } from "@/features/properties";
 import { requirePropertyMember } from "@/features/properties/server";
@@ -95,7 +95,11 @@ export const reservationRouter = createTRPCRouter({
 
     const range = { checkIn: toStayDate(input.checkIn), checkOut: toStayDate(input.checkOut) };
     if (!isValidStayRange(range)) {
-      throw fieldError("checkOut", "A stay is at least one night", "BAD_REQUEST");
+      throw new InvalidError(
+        ReservationError.STAY_TOO_SHORT,
+        "A stay is at least one night",
+        "checkOut"
+      );
     }
 
     const roomType = await ctx.db.roomType.findFirst({
@@ -103,10 +107,14 @@ export const reservationRouter = createTRPCRouter({
       select: { id: true, maxOccupancy: true },
     });
     if (!roomType) {
-      throw new TRPCError({ code: "NOT_FOUND", message: "Room type not found" });
+      throw new NotFoundError(ReservationError.ROOM_TYPE_NOT_FOUND, "Room type not found");
     }
     if (input.adults + input.children > roomType.maxOccupancy) {
-      throw fieldError("adults", "That is more people than the room type sleeps", "BAD_REQUEST");
+      throw new InvalidError(
+        ReservationError.STAY_OVER_OCCUPANCY,
+        "That is more people than the room type sleeps",
+        "adults"
+      );
     }
 
     // Availability is checked here and the database refuses an overlapping
@@ -120,10 +128,10 @@ export const reservationRouter = createTRPCRouter({
     });
     const soldOut = nights.find((night) => night.available < 1);
     if (soldOut) {
-      throw fieldError(
-        "checkIn",
+      throw new ConflictError(
+        ReservationError.STAY_SOLD_OUT,
         `No rooms of that type free on ${soldOut.date.toISOString().slice(0, 10)}`,
-        "CONFLICT"
+        "checkIn"
       );
     }
 
@@ -147,7 +155,11 @@ export const reservationRouter = createTRPCRouter({
         children: input.children,
       });
       if (quote.refusal || quote.totalMinor === null) {
-        throw fieldError("ratePlanId", refusalMessage(quote.refusal ?? "NO_PRICE"), "CONFLICT");
+        throw new ConflictError(
+          ReservationError.STAY_NO_PRICE,
+          refusalMessage(quote.refusal ?? "NO_PRICE"),
+          "ratePlanId"
+        );
       }
       currencyCode = quote.currencyCode;
       totalMinor = quote.totalMinor;
@@ -207,7 +219,11 @@ export const reservationRouter = createTRPCRouter({
 
     const range = { checkIn: toStayDate(input.checkIn), checkOut: toStayDate(input.checkOut) };
     if (!isValidStayRange(range)) {
-      throw fieldError("checkOut", "A stay is at least one night", "BAD_REQUEST");
+      throw new InvalidError(
+        ReservationError.STAY_TOO_SHORT,
+        "A stay is at least one night",
+        "checkOut"
+      );
     }
 
     const roomType = await ctx.db.roomType.findFirst({
@@ -215,7 +231,7 @@ export const reservationRouter = createTRPCRouter({
       select: { id: true },
     });
     if (!roomType) {
-      throw new TRPCError({ code: "NOT_FOUND", message: "Room type not found" });
+      throw new NotFoundError(ReservationError.ROOM_TYPE_NOT_FOUND, "Room type not found");
     }
 
     // Availability already discounts live holds, so re-using a key extends the
@@ -233,10 +249,10 @@ export const reservationRouter = createTRPCRouter({
       });
       const short = nights.find((night) => night.available < input.quantity);
       if (short) {
-        throw fieldError(
-          "checkIn",
+        throw new ConflictError(
+          ReservationError.STAY_SOLD_OUT,
           `Only ${short.available} free on ${short.date.toISOString().slice(0, 10)}`,
-          "CONFLICT"
+          "checkIn"
         );
       }
     }
@@ -281,7 +297,7 @@ export const reservationRouter = createTRPCRouter({
         },
       });
       if (!reservation) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Reservation not found" });
+        throw new NotFoundError(ReservationError.NOT_FOUND, "Reservation not found");
       }
 
       // The rule is a pure function in `model/`; this is the two writes it
@@ -293,7 +309,7 @@ export const reservationRouter = createTRPCRouter({
         today: todayAt(reservation.property.timezone),
       });
       if (refusal) {
-        throw new TRPCError({ code: "BAD_REQUEST", message: refusal });
+        throw new InvalidError(ReservationError.STATUS_REFUSED, refusal);
       }
 
       return ctx.db.$transaction(async (tx) => {
@@ -325,7 +341,7 @@ export const reservationRouter = createTRPCRouter({
       select: { id: true, roomTypeId: true, checkIn: true, checkOut: true },
     });
     if (!stay) {
-      throw new TRPCError({ code: "NOT_FOUND", message: "Stay not found" });
+      throw new NotFoundError(ReservationError.STAY_NOT_FOUND, "Stay not found");
     }
 
     if (input.roomId !== null) {
@@ -334,10 +350,14 @@ export const reservationRouter = createTRPCRouter({
         select: { id: true, roomTypeId: true },
       });
       if (!room) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Room not found" });
+        throw new NotFoundError(ReservationError.ROOM_NOT_FOUND, "Room not found");
       }
       if (room.roomTypeId !== stay.roomTypeId) {
-        throw fieldError("roomId", "That room is a different type", "BAD_REQUEST");
+        throw new InvalidError(
+          ReservationError.ROOM_WRONG_TYPE,
+          "That room is a different type",
+          "roomId"
+        );
       }
     }
 
@@ -350,7 +370,11 @@ export const reservationRouter = createTRPCRouter({
       // The exclusion constraint, surfacing as a message rather than a 500.
       // Nothing else can raise it on this update.
       if (String(error).includes("room_stays_no_overlap")) {
-        throw fieldError("roomId", "That room is taken for part of this stay", "CONFLICT");
+        throw new ConflictError(
+          ReservationError.ROOM_TAKEN,
+          "That room is taken for part of this stay",
+          "roomId"
+        );
       }
       throw error;
     }
@@ -389,21 +413,29 @@ export const reservationRouter = createTRPCRouter({
       },
     });
     if (!room) {
-      throw new TRPCError({ code: "NOT_FOUND", message: "Room not found" });
+      throw new NotFoundError(ReservationError.ROOM_NOT_FOUND, "Room not found");
     }
     if (room.roomTypeId !== input.roomTypeId) {
-      throw fieldError("roomId", "That room is a different type", "BAD_REQUEST");
+      throw new InvalidError(
+        ReservationError.ROOM_WRONG_TYPE,
+        "That room is a different type",
+        "roomId"
+      );
     }
     if (!isRoomSellable(room.status)) {
       const label = ROOM_STATUS_LABELS[room.status as RoomStatus] ?? room.status;
-      throw fieldError(
-        "roomId",
+      throw new ConflictError(
+        ReservationError.ROOM_NOT_SELLABLE,
         `That room is ${label.toLowerCase()} and cannot be sold`,
-        "CONFLICT"
+        "roomId"
       );
     }
     if (input.adults + input.children > room.roomType.maxOccupancy) {
-      throw fieldError("adults", "That is more people than the room type sleeps", "BAD_REQUEST");
+      throw new InvalidError(
+        ReservationError.STAY_OVER_OCCUPANCY,
+        "That is more people than the room type sleeps",
+        "adults"
+      );
     }
 
     const nights = await availability({
@@ -414,10 +446,10 @@ export const reservationRouter = createTRPCRouter({
     });
     const soldOut = nights.find((night) => night.available < 1);
     if (soldOut) {
-      throw fieldError(
-        "nights",
+      throw new ConflictError(
+        ReservationError.STAY_SOLD_OUT,
         `No rooms of that type free on ${soldOut.date.toISOString().slice(0, 10)}`,
-        "CONFLICT"
+        "nights"
       );
     }
 
@@ -434,7 +466,11 @@ export const reservationRouter = createTRPCRouter({
         children: input.children,
       });
       if (quote.refusal || quote.totalMinor === null) {
-        throw fieldError("ratePlanId", refusalMessage(quote.refusal ?? "NO_PRICE"), "CONFLICT");
+        throw new ConflictError(
+          ReservationError.STAY_NO_PRICE,
+          refusalMessage(quote.refusal ?? "NO_PRICE"),
+          "ratePlanId"
+        );
       }
       currencyCode = quote.currencyCode;
       totalMinor = quote.totalMinor;
@@ -497,7 +533,11 @@ export const reservationRouter = createTRPCRouter({
     } catch (error) {
       // Someone else took the room between the availability read and the write.
       if (String(error).includes("room_stays_no_overlap")) {
-        throw fieldError("roomId", "That room is taken for part of this stay", "CONFLICT");
+        throw new ConflictError(
+          ReservationError.ROOM_TAKEN,
+          "That room is taken for part of this stay",
+          "roomId"
+        );
       }
       throw error;
     }
@@ -534,7 +574,7 @@ export const reservationRouter = createTRPCRouter({
       },
     });
     if (!stay) {
-      throw new TRPCError({ code: "NOT_FOUND", message: "Stay not found" });
+      throw new NotFoundError(ReservationError.STAY_NOT_FOUND, "Stay not found");
     }
 
     const to = { checkIn: toStayDate(input.checkIn), checkOut: toStayDate(input.checkOut) };
@@ -547,7 +587,7 @@ export const reservationRouter = createTRPCRouter({
       today: todayAt(stay.reservation.property.timezone),
     });
     if (refusal) {
-      throw fieldError("checkOut", refusal, "BAD_REQUEST");
+      throw new InvalidError(ReservationError.STAY_MOVE_REFUSED, refusal, "checkOut");
     }
 
     // `undefined` leaves the room alone; `null` puts the stay back on its type.
@@ -558,10 +598,14 @@ export const reservationRouter = createTRPCRouter({
         select: { id: true, roomTypeId: true },
       });
       if (!room) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Room not found" });
+        throw new NotFoundError(ReservationError.ROOM_NOT_FOUND, "Room not found");
       }
       if (room.roomTypeId !== stay.roomTypeId) {
-        throw fieldError("roomId", "That room is a different type", "BAD_REQUEST");
+        throw new InvalidError(
+          ReservationError.ROOM_WRONG_TYPE,
+          "That room is a different type",
+          "roomId"
+        );
       }
     }
 
@@ -580,10 +624,10 @@ export const reservationRouter = createTRPCRouter({
         (night) => wanted.has(night.date.getTime()) && night.available < 1
       );
       if (soldOut) {
-        throw fieldError(
-          "checkIn",
+        throw new ConflictError(
+          ReservationError.STAY_SOLD_OUT,
           `No rooms of that type free on ${soldOut.date.toISOString().slice(0, 10)}`,
-          "CONFLICT"
+          "checkIn"
         );
       }
     }
@@ -603,7 +647,11 @@ export const reservationRouter = createTRPCRouter({
         children: stay.children,
       });
       if (quote.refusal || quote.totalMinor === null) {
-        throw fieldError("checkIn", refusalMessage(quote.refusal ?? "NO_PRICE"), "CONFLICT");
+        throw new ConflictError(
+          ReservationError.STAY_NO_PRICE,
+          refusalMessage(quote.refusal ?? "NO_PRICE"),
+          "checkIn"
+        );
       }
       currencyCode = quote.currencyCode;
       totalMinor = quote.totalMinor;
@@ -639,7 +687,11 @@ export const reservationRouter = createTRPCRouter({
     } catch (error) {
       // The exclusion constraint, surfacing as a sentence rather than a 500.
       if (String(error).includes("room_stays_no_overlap")) {
-        throw fieldError("roomId", "That room is taken for part of those nights", "CONFLICT");
+        throw new ConflictError(
+          ReservationError.ROOM_TAKEN,
+          "That room is taken for part of those nights",
+          "roomId"
+        );
       }
       throw error;
     }
@@ -654,7 +706,7 @@ export const reservationRouter = createTRPCRouter({
         select: { checkIn: true, checkOut: true },
       });
       if (!stay) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Stay not found" });
+        throw new NotFoundError(ReservationError.STAY_NOT_FOUND, "Stay not found");
       }
       return nightsOf(stay);
     }),

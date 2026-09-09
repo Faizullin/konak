@@ -676,3 +676,47 @@ passport number" audit are Phase 9, and the roadmap now says the primitive is
 already there so it is not built twice.
 
 136 unit tests, 114 integration.
+
+## 2026-09-09 — a refusal is a code, not only a sentence
+
+Every refusal in the tree was an English sentence and nothing else. A router
+test had to assert on prose, and a translation would have had nothing to key on
+— which is the entry that follows this one in `todo.md`, and the reason this one
+came first.
+
+**Five classes, one boundary.** `DomainError` with `NotFoundError`,
+`ForbiddenError`, `ConflictError`, `InvalidError` and `PreconditionError` over
+it. `mapDomainErrors` in `trpc.ts` turns one into a `TRPCError` exactly once,
+keeping the original as `cause` so `errorFormatter` can read the code and the
+field off it.
+
+**A middleware rather than `errorFormatter`.** By the time the formatter runs
+the status is already decided, and the status is the half `lib/errors.ts` routes
+on. Every procedure is built from a base that applies the middleware, so a new
+route cannot forget it.
+
+**Codes live in `model/`, per feature.** Not in `server/errors.ts`: that file is
+reached by `auth.ts`, which `auth:generate` loads through jiti, so it may not
+import from `features/`. `model/` is also what lets the client compare against
+the same constant the server threw.
+
+**Two codes, and they answer different questions.** `AppError.code` is the
+transport's — `CONFLICT`, `NOT_FOUND` — and decides where the error renders.
+`AppError.domainCode` is the rule's — `room.taken` — and is what a screen or a
+translation keys on. A test pins that a `null` domain code reads as absent, so a
+caller comparing against a constant cannot match on nothing.
+
+**The proof it works is the tests that did not change.** 114 integration tests
+assert on tRPC codes, and all of them still pass through the new mapping. Four
+of them now assert on the domain code as well — the point of the exercise, and
+the first assertions in the tree that survive a rewording.
+
+**`reservations` is converted and the rest are not**, deliberately: sixteen
+codes covering thirty-odd sites, which is a worked example rather than a
+mechanical sweep of a hundred. The remaining six features are named in
+`todo.md`. `fieldError` stays for now — it routes to a field correctly and
+carries no code, so converting it is the same sweep.
+
+Also: `todo.md` said forty-four `TRPCError` sites. There were sixty-two.
+
+140 unit tests, 114 integration.

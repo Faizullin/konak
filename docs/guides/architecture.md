@@ -315,6 +315,27 @@ meant to stay literal — the file to grow is the router, not `errors.ts`.
 without one ships an empty toast. That applies to the framework guards in
 `trpc.ts` as much as to feature routers.
 
+### A refusal is a code, not only a sentence
+
+`DomainError` and its five subclasses — `NotFoundError`, `ForbiddenError`,
+`ConflictError`, `InvalidError`, `PreconditionError` — are what a router throws
+for a rule the domain refused. Each carries a **code**, an optional field, and
+the tRPC status the boundary maps to.
+
+The code is the point. A message is written for a person and will be reworded,
+and eventually translated; a code survives that, so a test asserts on it and a
+screen branches on it without either depending on prose.
+
+**The mapping happens once**, in `mapDomainErrors` in `trpc.ts`. Every procedure
+is built from a base that applies it, so no route can skip it. `errorFormatter`
+then copies the code onto `data.domainCode` and the field onto `data.field`, and
+`lib/errors.ts` reads both by shape into `AppError`.
+
+**Codes are declared per feature, in `model/`** — `reservations/model/errors.ts`
+is the worked example. Not in `errors.ts`: that file is reached by `auth.ts` and
+may not import from `features/`, and a code in `model/` is also readable by the
+client that has to recognise it.
+
 `fieldError(field, message, code)` marks an error as belonging to one input.
 `errorFormatter` in `trpc.ts` copies the name onto `data.field`, and the client
 half — `src/lib/errors.ts` — turns it into an error under that field. That is

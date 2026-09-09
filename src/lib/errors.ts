@@ -36,6 +36,15 @@ export type AppError = {
   /** Messages belonging to the submission as a whole. */
   formErrors?: string[];
   code?: string;
+  /**
+   * The stable half of a domain refusal — `DomainError.code` on the server.
+   *
+   * `code` above is the transport's (`CONFLICT`, `NOT_FOUND`); this is the
+   * rule's ("reservation.room_taken"). A message can be reworded or translated
+   * without moving, which is what a screen keying off a specific refusal, and a
+   * later translation file, need.
+   */
+  domainCode?: string;
   status?: number;
 };
 
@@ -120,6 +129,9 @@ export function normalizeError(error: unknown): AppError {
       ...(named ? { fieldErrors } : {}),
       ...(formErrors.length ? { formErrors } : {}),
       code: data.code as string,
+      ...(typeof data.domainCode === "string" && data.domainCode
+        ? { domainCode: data.domainCode }
+        : {}),
       ...(typeof data.httpStatus === "number" ? { status: data.httpStatus } : {}),
     };
   }

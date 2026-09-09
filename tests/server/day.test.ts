@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { after, before, describe, test } from "node:test";
 import { TRPCError } from "@trpc/server";
-import { callerFor, createFixture, prisma, type Fixture } from "./harness";
+import { callerFor, createFixture, domainCodeOf, prisma, type Fixture } from "./harness";
+import { ReservationError } from "@/features/reservations";
 
 /**
  * The day a receptionist works: three lists for a date, and the walk-in that
@@ -275,7 +276,9 @@ describe("the walk-in", () => {
           roomTypeId: suiteId,
           roomId: rooms["2"],
         }),
-      (e) => code(e) === "BAD_REQUEST"
+      // The code, not the sentence: the wording is free to change, and a
+      // translation will replace it entirely.
+      (e) => code(e) === "BAD_REQUEST" && domainCodeOf(e) === ReservationError.ROOM_WRONG_TYPE
     );
   });
 
@@ -288,7 +291,7 @@ describe("the walk-in", () => {
           roomTypeId: doubleId,
           roomId: rooms["3"],
         }),
-      (e) => code(e) === "CONFLICT"
+      (e) => code(e) === "CONFLICT" && domainCodeOf(e) === ReservationError.ROOM_NOT_SELLABLE
     );
   });
 
@@ -315,7 +318,7 @@ describe("the walk-in", () => {
           roomTypeId: doubleId,
           roomId: rooms["10"],
         }),
-      (e) => code(e) === "CONFLICT"
+      (e) => code(e) === "CONFLICT" && domainCodeOf(e) === ReservationError.ROOM_TAKEN
     );
   });
 
@@ -468,7 +471,7 @@ describe("moving a stay's dates", () => {
           checkIn: fromToday(12),
           checkOut: fromToday(12),
         }),
-      (e) => code(e) === "BAD_REQUEST"
+      (e) => code(e) === "BAD_REQUEST" && domainCodeOf(e) === ReservationError.STAY_MOVE_REFUSED
     );
   });
 
