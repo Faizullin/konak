@@ -35,6 +35,13 @@ base64 — so a truncated paste fails at startup rather than at the first write.
 **Losing it loses every value encrypted with it.** It is not derivable from
 anything else, and there is no recovery path by design.
 
+**File storage needs nothing to start.** `STORAGE_PROVIDER` defaults to
+`filesystem`, writing under `.storage/` — outside `public/`, and gitignored.
+Only the selected provider's variables are required, so choosing `s3` without a
+bucket fails at startup naming each one; see
+[architecture.md](architecture.md#file-storage). The adapters are prepared, not
+yet implemented, so nothing uploads anything today.
+
 ## Authentication
 
 Better Auth runs in-process. There is no dashboard, no tunnel and no webhook —

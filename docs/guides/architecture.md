@@ -37,6 +37,7 @@ src/
 ├── config/       data, not behaviour — nav-items.ts, locales.ts
 ├── hooks/        generic hooks only
 ├── lib/          REPLACEABLE ADAPTERS — utils, auth-client, errors, i18n
+│   └── storage/  file storage, one class per provider — see below
 ├── styles/       every stylesheet — shadcn's `globals.css`, and ours after it
 ├── store/        client providers (nice-modal)
 └── utils/ generated/
@@ -361,6 +362,50 @@ own class rather than a transport error it has no business knowing about.
 `errors.ts` must not import from `features/`. `auth.ts` reaches it, and
 `npm run auth:generate` loads `auth.ts` through jiti, which does not read
 tsconfig `paths` — see [local-development.md](local-development.md).
+
+## File storage
+
+`lib/storage/` is the textbook case of the second test at the top of this file:
+swap the vendor, change no business rule. Four providers are prepared —
+`s3.ts`, `cloudinary.ts`, `vercel-blob.ts`, `filesystem.ts` — all extending the
+`StorageProvider` base class in `provider.ts`. **Only the base class, the
+capability flags and the registry are written; the byte-moving methods throw
+`StorageNotImplementedError` until the upload phase lands.** See
+[plans/file-uploads.md](../plans/file-uploads.md).
+
+**How the backend uses it.** Never by naming a vendor:
+
+```ts
+const store = await storage();          // lib/storage — the only place one is chosen
+const ticket = await store.ticket(key, { maxBytes, mimeTypes });
+```
+
+Four things are worth knowing before writing against it:
+
+- **`storage()` is async and memoised.** The provider is imported dynamically so
+  an unconfigured vendor's SDK never loads — choosing the filesystem must not
+  pull in the AWS client. One instance per process, not per request.
+- **`ticket()` may answer `null`,** and the filesystem always does. `null` means
+  *the browser posts to our own route handler instead* — a branch the caller has
+  anyway, not an error.
+- **`put()` works everywhere.** The direct upload is the optimisation; bytes
+  through the server is the contract every provider honours.
+- **`stat()` decides what is recorded.** `confirmUpload` writes the size and
+  mime type storage *reports*, never what the client claimed. Providers rename
+  things — Cloudinary answers with its own `public_id` — so `providerId` from
+  the result addresses the object afterwards, not the key we asked for.
+
+**A provider is not asked whether a file is allowed; a kind is.**
+`features/platform/model/attachment.ts` holds `KIND_REQUIRES`, and
+`refuseProviderForKind` matches it against the provider's `capabilities`. This
+lives in the feature because `lib/` may not import one, and it is pure so the
+same answer serves a startup check and a test. Cloudinary and Vercel Blob serve
+public URLs, so both are refused `IDENTITY_DOCUMENT` — the check belongs at
+boot, where a misconfiguration is a sentence, rather than at upload, where it is
+a passport scan on a CDN.
+
+`env.mjs` asks only for the selected provider's variables, so a clone runs on
+`filesystem` with none of them. Its root must stay outside `public/`.
 
 ## Access control
 

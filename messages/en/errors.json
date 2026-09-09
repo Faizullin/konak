@@ -1,4 +1,6 @@
 {
+  "attachment.provider_public": "{kind, select, IDENTITY_DOCUMENT {Identity documents} CONSENT {Consent forms} CONTRACT {Contracts} other {These files}} cannot be kept where every stored file is served publicly. Choose a storage provider that keeps objects private.",
+  "attachment.provider_unsigned": "{kind, select, IDENTITY_DOCUMENT {Identity documents} other {These files}} must be opened through a link that expires, and this storage provider cannot issue one.",
   "auth.admin_required": "This action requires an administrator",
   "auth.not_signed_in": "You must be signed in",
   "company.create_forbidden": "You cannot add companies",

@@ -47,6 +47,17 @@ and the day lists are one bounded query each. A mutation on either invalidates
 both, so two views of one booking cannot disagree. If a change seems not to
 appear, it is a stale 30 seconds, not a lost write.
 
+**File storage is prepared, not working.** `lib/storage/` has the base class,
+four adapters (S3, Cloudinary, Vercel Blob, filesystem) and a registry that
+imports only the selected one. **Every method that would move bytes throws
+`StorageNotImplementedError`** — deliberately, so the interface could be settled
+without four SDKs. `STORAGE_PROVIDER` defaults to `filesystem` and needs no
+configuration, and `env.mjs` asks only for the chosen provider's variables.
+Which kinds a provider may hold is a domain rule, not an adapter's —
+`platform/model/attachment.ts`, tested. See
+[guides/architecture.md](guides/architecture.md#file-storage) for how a caller
+uses it and `plans/file-uploads.md` for what is left.
+
 **Where to start.** `docs/todo.md`, top entry.
 
 **Before you finish.** `npm run lint && npm test && npx tsc --noEmit && npm run format:check`,
