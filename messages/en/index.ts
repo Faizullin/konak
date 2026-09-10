@@ -5,6 +5,7 @@ import errors from "./errors.json";
 import identity from "./identity.json";
 import organizations from "./organizations.json";
 import pages from "./pages.json";
+import platform from "./platform.json";
 import properties from "./properties.json";
 import rates from "./rates.json";
 import reservations from "./reservations.json";
@@ -25,6 +26,7 @@ const en = {
   identity,
   organizations,
   pages,
+  platform,
   properties,
   rates,
   reservations,

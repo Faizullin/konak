@@ -1,32 +1,58 @@
 # The upload UI
 
 The browser half of [file-uploads.md](file-uploads.md). That plan settled where
-the bytes go; the server side of it landed while this was being written — the
-migration, the two procedures, the quota, the sweep. **None of it is reachable
-from a screen.** This plan is what the browser needs: which components exist,
-where each file goes, and what makes them reusable by the four features that
-will want them.
+the bytes go and the server side of it has since landed — the migration, the
+procedures, the quota, the sweeps. **Nothing collects a file.** This plan is
+what the browser needs: which components exist, where each file goes, and what
+makes them reusable by every feature that will want them.
 
-Nothing here is built. There is no upload UI in the tree at all.
+**Built.** Everything below shipped, in the order this plan set out, and it is
+mounted on property setup. What follows is kept because it is the reasoning, not
+a queue — the sections that are now description rather than proposal are marked.
 
-## Where the frontend actually stands
+Four decisions were made while building that this plan left open or assumed:
 
-`src/features/platform/` has a `model/` and a `server/` and **no `client/`**.
-Nothing under `src/components/` or any feature's `client/` mentions a file, an
-upload or an attachment. Greenfield, which is the good case: the seam can go in
-the right place the first time rather than being extracted from three copies.
+- **No `progress` primitive.** The bar is nine lines inside `AttachmentsPanel`.
+  Adding a shadcn component means a Radix dependency and a CLI run that rewrites
+  `styles/globals.css`, for one caller — and `architecture.md` wants the third
+  caller before a component exists.
+- **`subjectInput()` in `model/subject.ts`.** `SubjectRef` says `number | null`
+  and the input schemas say `number | undefined`; sent as `null` a subject reads
+  as *set* and fails `hasExactlyOneSubject`. The conversion is in the model
+  once rather than at each call site.
+- **The panel asks for the caller's role itself**, matching `RatePlansPanel`.
+  A prop would save a request; this keeps one way of answering the question.
+- **The mount is property setup**, which settles the room-photograph question in
+  passing: photographs are an `Attachment` with a `propertyId`, not a column on
+  `RoomType`.
 
-The server is further along than the parent plan says. Five procedures are
-wired in `platform/server/router.ts` — `listAttachments:104`,
-`requestUpload:127`, `confirmUpload:135`, `deleteAttachment:144` and
-`storageUsage:166` — over the service in `server/attachments.ts`. The domain
-rules a browser needs are all in `model/attachment.ts`: `KIND_LIMITS:96`,
-`refuseAttachment:136`, `refuseQuota:180`, `AttachmentStatus:79`,
-`MAX_UPLOAD_BYTES:127`, and the two input schemas at `:223` and `:234`. Every
-refusal already has English in `messages/en/errors.json`, interpolated by kind.
+**Mounted twice.** Property setup takes one panel; `/directory/<personId>` — a
+route created for this — takes three, one per kind. `listAttachments` gained an
+optional `kind` filter so a panel lists what it manages rather than repeating
+its neighbour.
 
-So the model layer this plan would otherwise have specified **is done**, and
-what follows is written against it rather than around it.
+**A note on the citations below.** `platform/model/attachment.ts`,
+`platform/server/attachments.ts` and `app/api/uploads/[...key]/route.ts` are
+under active edit, and their line numbers move by the hour. Each reference here
+carries the symbol as well as the line, so a drifted number still finds its
+subject. Check the symbol, not the digit.
+
+## What the server already gives the browser
+
+Five procedures on `platform.*` in `server/router.ts` — `listAttachments:105`,
+`requestUpload:131`, `confirmUpload:139`, `deleteAttachment:148`,
+`storageUsage:170` — over the service in `server/attachments.ts`. Both halves of
+the byte path exist: `POST /api/uploads/<key>` receives, `GET` serves back, and
+membership is re-checked on each.
+
+The rules a browser needs are pure and already in `model/attachment.ts`:
+`KIND_LIMITS:79`, `refuseAttachment:116`, `refuseQuota:165`,
+`AttachmentStatus:65`, `uploadByteLimit:155`, and the two input schemas —
+`requestUploadSchema:205` and `confirmUploadSchema:216`. Every refusal has
+English in `messages/en/errors.json`, interpolated by kind, resolved by
+`useErrorHandlers`.
+
+So this plan is written against a working back end, not around a missing one.
 
 ### Three facts that constrain the components
 
@@ -58,7 +84,7 @@ the work into five pieces and put each one somewhere different:
 | Piece | The test it answers | Where it goes |
 |---|---|---|
 | Bytes over the wire, with progress | swappable, knows no rule | `src/lib/upload.ts` |
-| What a kind of file allows | both sides must agree | `platform/model/` — **done** |
+| What a kind of file allows | both sides must agree | `platform/model/` — all but one function |
 | Request → transfer → confirm | knows tRPC and `AttachmentKind` | `platform/client/hooks/` |
 | Drop target and file picker | two features would own it together | `components/common/` |
 | Panel, dialog, table, badge | knows the domain | `platform/client/components/` |
@@ -124,8 +150,8 @@ every call site writes its own string and the file picker offers what
 front, since the person has already chosen the file.
 
 Note that `accept` on an `<input>` is a *filter in the file chooser*, not a
-check: drag-and-drop bypasses it entirely. `refuseAttachment` runs on every
-file whatever route it arrived by, and the server sniffs the real bytes
+check: drag-and-drop bypasses it entirely. `refuseAttachment` runs on every file
+whatever route it arrived by, and the server sniffs the real bytes
 (`lib/storage/sniff.ts`) regardless. Three layers, and only the third is
 trusted.
 
@@ -143,13 +169,13 @@ Per file: `refuseAttachment` → `platform.requestUpload` → **branch once** �
 and `storageUsage`.
 
 The branch is already shaped for it. `RequestUploadResult`
-(`server/attachments.ts:112`) answers with `{ attachmentId, storageKey, ticket,
+(`server/attachments.ts:104`) answers with `{ attachmentId, storageKey, ticket,
 uploadUrl, expiresAt }`, where `ticket` is `null` for a provider that has none
 and `uploadUrl` is where to post instead — so the hook reads
 `ticket ?? { url: uploadUrl, method: "POST" }` and the two paths converge on one
 call. `confirmUpload` then takes `{ organizationId, storageKey }`
-(`model/attachment.ts:234`) — the key, not the id, because it is what both
-routes address.
+(`confirmUploadSchema`, `model/attachment.ts:216`) — the key, not the id,
+because it is what both routes address.
 
 A hook rather than a component because progress, abort and retry belong to the
 *transfer*, not to the pixels: a dialog that unmounts mid-upload must abort, and
@@ -157,8 +183,17 @@ a panel showing three rows in flight needs one owner of that array. Two
 surfaces can then render the same upload differently without either owning the
 state machine.
 
+Two behaviours to settle here rather than leave to whoever writes it:
+
+- **`retry`** re-transfers against the same PENDING key while the window holds,
+  and re-requests once it has lapsed. The two are different calls and the row
+  decides which, so the hook must read the row rather than guess.
+- **`multiple` uploads serially.** `requestUpload` reserves quota per file, so
+  N files chosen at once would hold N reservations before the first byte moves,
+  and the last of them would be refused for space the first is not yet using.
+
 **A cancelled upload needs no cleanup call.** The row's reservation lapses on
-its own after `UPLOAD_WINDOW_MS` (`model/attachment.ts:207` — fifteen minutes)
+its own after `UPLOAD_WINDOW_MS` (`model/attachment.ts:192` — fifteen minutes)
 and the sweep releases the quota. Worth a comment, or someone adds a delete
 mutation that races the sweeper.
 
@@ -216,6 +251,11 @@ and `requestUploadSchema` extends the same object, so the panel reuses the shape
 the router already validates instead of inventing a prop per subject. Follows
 `RoomTypesPanel` and `RatePlansPanel`.
 
+It needs a real **"nothing yet" empty state**, separate from "nothing matched".
+`ui-patterns.md` § Empty states makes the point that the second is the one
+people misread as breakage, and a panel with no files is the first thing anyone
+will see.
+
 **`attachment-upload-nice-dialog.tsx` → `AttachmentUploadNiceDialog`, plus an
 `uploadAttachment()` wrapper.** A `NiceDialog` reached as a function, like
 `confirm()` and `selectOne()`. `ui-patterns.md` § Which tier decides this by
@@ -234,56 +274,65 @@ with `destructive: true`, then `platform.deleteAttachment` — the row leaves at
 once and the bytes leave when the outbox worker runs.
 
 **`attachment-status-badge.tsx`.** `AttachmentStatus` is `PENDING | READY`
-(`model/attachment.ts:79`), plus the client-side *failed* that is not a column
+(`model/attachment.ts:65`), plus the client-side *failed* that is not a column
 and never reaches the database. `ui-patterns.md` § Colour as data applies: hue
 is never the only cue, so each carries a glyph as well, `aria-hidden`, with the
 words in the `title`. Both themes on every pair — `dark:` is a class variant
 here, not a media query.
 
-## What the frontend is still blocked on
+## What had to be settled on the server first — all four done
 
-Both of these are server-side, and neither is in `file-uploads.md`'s remaining
-list because that list was written before the rest of it landed.
+Three defects and one undecided question. Every one was real; each is fixed.
 
-**There is no `/api/uploads` route handler.** `requestUpload` returns a
-`uploadUrl` for the no-ticket path and nothing serves it. The filesystem
-provider is the development default and it can *never* issue a ticket — that is
-the whole reason the two-phase flow exists — so **on a default clone the
-fallback is the only path, and it 404s.** The UI cannot be built or seen working
-locally until that handler exists. It is the first thing to write.
+**`deleteAttachment` is MEMBER-level** (`router.ts:148`). Any member can
+irreversibly delete an identity document. It is consistent with the rest of the
+platform router, which is the problem — `architecture.md` § Permissions are a
+table wants an `attachment` resource in `orgStatements`
+(`organizations/model/organization.ts:51`) with `create` for MEMBER and `delete`
+for managers. The UI needs the predicate anyway, to hide the button; writing
+the rule twice is how the two come to disagree.
 
-**There is no `readUrl` procedure.** `readUrl()` exists in the service
-(`server/attachments.ts:298`) and nothing exposes it over tRPC, so a client
-cannot open or preview a stored file at all. When it is added, note the shape it
-forces: `READ_TTL_SECONDS` is five minutes (`attachments.ts:34`), so a URL is a
-**query result with a TTL, not a column** — it needs a `staleTime` under that,
-or images 404 after five minutes on screen. And for `IDENTITY_DOCUMENT` the URL
-should never reach an `href` a person can right-click and copy; the point of an
-expiring link is lost the moment it is pasted into a chat, which is the reason
-`attachment.provider_unsigned` exists.
+**`Content-Disposition: attachment` makes previews impossible.** `route.ts:138`
+forces a download, so `<img src="/api/uploads/…">` saves a file rather than
+rendering one — **there is no thumbnail mechanism at all.** The header's comment
+defends against a stored HTML or SVG running scripts in our origin, and that is
+already closed a layer up: `KIND_LIMITS` allows neither, and `confirmUpload`
+writes the sniffed type rather than the claimed one. `inline` for `image/*`,
+`attachment` for the rest, `?download=1` to force, and keep
+`Cache-Control: private, no-store`. The same line percent-encodes the filename,
+so a file saves as `Marketing%20Consent.pdf`; RFC 5987's `filename*=UTF-8''…`
+beside an ASCII fallback is the fix.
 
-## Three things the parent plan does not cover
+**HEIC renders in no browser.** `KIND_LIMITS` allows `image/heic` and
+`image/heif` deliberately — it is what an iPhone produces, and a receptionist
+photographing a passport will use one. Even after the header fix, those files
+have a broken thumbnail. Either transcode on confirmation as an outbox task, or
+show a file icon for those two types; the second is enough for now, but it has
+to be decided rather than discovered in the panel.
+
+**`readUrl` is exported and called by nothing** (`server/index.ts:21`,
+defined at `attachments.ts:291`), so the barrel asserts a use that does not
+exist. The client can address `/api/uploads/<storageKey>` directly — the GET
+route works for all four providers — which is the simpler answer while signing
+is an optimisation for SDKs that are not installed. Drop it from the barrel and
+put it back with the first real provider; a `platform.readUrl` procedure
+answering `signedUrl ?? routeUrl` is the right end state, mirroring how
+`requestUpload` answers `ticket ?? uploadUrl`, but it buys nothing today.
+
+## Two things the parent plan does not cover
 
 **An XHR failure is a third error dialect.** `normalizeError`
 (`src/lib/errors.ts:116`) collapses exactly two: tRPC *throws*
 `{ message, data }`, Better Auth *returns* `{ data, error }`. Its last two
-branches are `error instanceof TypeError` → `network` (`:172`) and a catch-all
-→ `server` with generic copy. A 403 from an expired presigned URL is neither a
-`TypeError` nor a tRPC error, so it lands in the catch-all: the person reads
-"something went wrong" and the one useful fact — *the ticket expired, ask for
-another* — is discarded. Fix: `lib/upload.ts` throws a typed
+branches are `error instanceof TypeError` → `network` (`:174`) and a catch-all
+→ `server` with generic copy. A 403 from an expired presigned URL, or a 410
+from our own route, is neither — so it lands in the catch-all, the person reads
+"something went wrong", and the one useful fact — *the reservation lapsed, ask
+for another* — is discarded. Fix: `lib/upload.ts` throws a typed
 `UploadTransferError` carrying the status, and `normalizeError` grows one branch
-for it, mapping an expired ticket onto `attachment.not_pending`, which already
-has English. That keeps "where an error appears is decided once, in
-`lib/errors.ts`" true, which is the whole point of that file.
-
-**There is no page to put the panel on.** The directory route renders a table
-with no person detail page beneath it, so the natural first home for attachments
-does not exist yet. The honest first consumer today is the property setup
-screen: `propertyId` is already a valid subject, the route exists, and it is
-manager-gated. Without one, the panel ships as dead code — and an unused shared
-component asserts a sharing that does not exist, the same way an empty barrel
-does.
+for it, mapping 409 and 410 onto `attachment.not_pending`, which already has
+English. That keeps "where an error appears is decided once, in `lib/errors.ts`"
+true, which is the whole point of that file.
 
 **Direct upload is cross-origin.** Progress events and the response both need
 CORS on the bucket, and S3's presigned POST answers with XML or a redirect
@@ -309,7 +358,7 @@ added to the provider map in `src/app/(app)/dashboard/layout.tsx:50`. Miss the
 third and `useTranslations` throws at runtime on a screen that compiled fine;
 miss nothing and `message-keys.test.ts` still fails on a message nothing reads.
 
-The refusals need nothing: all nine `attachment.*` codes already have English in
+The refusals need nothing: every `attachment.*` code already has English in
 `errors.json`, and `useErrorHandlers` resolves them. `FileDropzone` takes its
 words as props with English defaults, per the `components/common/` convention
 above, so only the platform components call `useTranslations`.
@@ -327,32 +376,31 @@ above, so only the platform components call `useTranslations`.
 - **Client-side image compression**, and any antivirus indicator. Both are
   post-confirmation policy — see `file-uploads.md` § Open.
 
-## The order
+## The order — followed
 
-1. `/api/uploads`, or nothing below can be seen working on a default clone.
-2. `acceptAttribute` in `model/`, and a `readUrl` procedure.
-3. `lib/upload.ts` and the `normalizeError` branch.
-4. `FileDropzone`.
-5. `useAttachmentUpload`.
-6. Panel, dialog, table, badge.
-7. `messages/en/platform.json`, in all three places.
+1. ✅ `attachment` in `orgStatements`, with `canUploadAttachments` and
+   `canDeleteAttachments`. A MEMBER attaches; a manager deletes.
+2. ✅ `Content-Disposition` now RFC 6266 with both halves, `inline` for what a
+   browser renders, `?download` to force. `rendersInBrowser` and
+   `isThumbnailable` answer the HEIC question in `model/`, once.
+3. ✅ `acceptAttribute` in `model/`, with a test that the picker offers exactly
+   what `refuseAttachment` accepts. `readUrl` gone from the barrel.
+4. ✅ `lib/upload.ts` and the `normalizeError` branch, matched by shape.
+5. ✅ `FileDropzone`.
+6. ✅ `useAttachmentUpload`.
+7. ✅ Panel, dialog, table, badge.
+8. ✅ `messages/en/platform.json`, in all three places.
 
 ## Open
 
-- **The first mount.** Property setup is available now; a person detail route is
-  what the product actually wants. Building the panel before either exists is
-  building for nobody.
-- **Whether `components/common` should be lint-guarded.** `eslint.config.mjs:61`
-  restricts `./src/lib` and `./src/components/ui` from importing `./src/features`
-  but not `./src/components/common`, which is domain-free purely by discipline
-  today. Adding it to that zone would make the convention a build failure
-  instead of a habit, and nothing currently there would break.
-- **Whether the panel or the calling feature owns the permission check.** Every
-  other panel asks `trpc.organization.getById` for the caller's role and hides
-  its buttons; a shared panel doing that adds a query to every screen that
-  mounts it. Passing the role in as a prop is the alternative, and pushes the
-  question back to the feature that already knows it.
-- **Whether `listAttachments` should narrow its select.** It returns whole rows
-  (`router.ts:104`), so `reservedBytes`, `releaseAt` and `providerId` all reach
-  the browser. Harmless today and everything the table needs is in there, but a
-  panel is the wrong place to discover it.
+- **Whether `components/common` should be lint-guarded.** `eslint.config.mjs`
+  restricts `./src/lib` and `./src/components/ui` from importing
+  `./src/features` but not `./src/components/common`, which is domain-free
+  purely by discipline. `FileDropzone` keeps that discipline — words as props,
+  limits as numbers — but nothing enforces it.
+- **Whether `listAttachments` should narrow its select.** It still returns whole
+  rows, so `reservedBytes`, `releaseAt` and `providerId` reach the browser.
+  Harmless, and the table uses none of them.
+- **Direct upload is cross-origin.** Progress and the response both need CORS on
+  the bucket, and S3's presigned POST answers with XML or a redirect. Invisible
+  until the first real provider, and it presents as "progress never moves".

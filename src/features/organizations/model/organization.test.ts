@@ -4,7 +4,9 @@ import { test } from "node:test";
 import {
   canDeleteOrganization,
   canEditOrganization,
+  canDeleteAttachments,
   canManageMembers,
+  canUploadAttachments,
   createOrganizationSchema,
   ORG_ROLE_VALUES,
   OrgRole,
@@ -32,6 +34,18 @@ test("owners and admins manage members; members do not", () => {
   assert.equal(canManageMembers(OrgRole.OWNER), true);
   assert.equal(canManageMembers(OrgRole.ADMIN), true);
   assert.equal(canManageMembers(OrgRole.MEMBER), false);
+});
+
+test("a member attaches a file but cannot delete one", () => {
+  // The split that matters: a receptionist scans a passport at check-in, and
+  // deleting it takes the bytes with it and cannot be undone.
+  assert.equal(canUploadAttachments(OrgRole.MEMBER), true);
+  assert.equal(canDeleteAttachments(OrgRole.MEMBER), false);
+
+  for (const role of [OrgRole.OWNER, OrgRole.ADMIN]) {
+    assert.equal(canUploadAttachments(role), true, role);
+    assert.equal(canDeleteAttachments(role), true, role);
+  }
 });
 
 test("owners and admins edit the organization; members do not", () => {

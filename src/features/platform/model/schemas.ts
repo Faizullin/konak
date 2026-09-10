@@ -52,6 +52,10 @@ export const ATTACHMENT_KINDS = ["FILE", "CONSENT", "IDENTITY_DOCUMENT", "CONTRA
 
 export const listAttachmentsSchema = subjectInputSchema.extend({
   organizationId: z.number(),
+  // Optional, so a screen can show every file on a subject — but a panel that
+  // manages one kind passes it, or mounting two panels on one person shows the
+  // same list twice.
+  kind: z.enum(ATTACHMENT_KINDS).optional(),
 });
 
 export type ListAttachmentsInput = z.infer<typeof listAttachmentsSchema>;

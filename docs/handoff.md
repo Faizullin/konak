@@ -62,9 +62,18 @@ without `--commit`.
 
 `STORAGE_PROVIDER` defaults to `filesystem`, which is implemented and needs no
 configuration; S3, Cloudinary and Vercel Blob declare real capabilities and
-throw `StorageNotImplementedError`. **No screen collects a file yet** — the
-procedures are what one would call. See
-[guides/architecture.md](guides/architecture.md#file-storage).
+throw `StorageNotImplementedError`.
+
+**There are two screens.** `/front-desk/<propertySlug>/setup` carries an
+`AttachmentsPanel` for photographs and documents, and
+`/directory/<personId>` — reached by clicking a name in the directory — carries
+three, one each for identity documents, consents and other files. A panel lists
+and uploads **one kind**, so mounting several on a page does not repeat itself.
+`uploadAttachment()` opens the same panel as a dialog from anywhere.
+
+Uploading is a MEMBER right and deleting is a manager's, because deleting takes
+the bytes with it. Try it on the demo: sign in as `admin@konak.dev`, open
+Directory, click **Ada Lovelace**.
 
 **Where to start.** `docs/todo.md`, top entry.
 

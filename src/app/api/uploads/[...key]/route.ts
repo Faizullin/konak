@@ -1,5 +1,11 @@
 import { storage } from "@/lib/storage";
-import { AttachmentStatus, uploadByteLimit, type AttachmentKind } from "@/features/platform";
+import { contentDisposition } from "@/lib/storage/disposition";
+import {
+  AttachmentStatus,
+  rendersInBrowser,
+  uploadByteLimit,
+  type AttachmentKind,
+} from "@/features/platform";
 import { auth } from "@/server/auth";
 import prisma from "@/server/db";
 
@@ -130,15 +136,25 @@ export async function GET(request: Request, context: RouteContext<"/api/uploads/
   const body = await store.read(attachment.providerId ?? attachment.storageKey);
   if (!body) return new Response("Not found", { status: 404 });
 
+  // Inline, so a thumbnail and a PDF preview are possible at all — `?download`
+  // forces the save. A blanket `attachment` would defend against a stored HTML
+  // or SVG running scripts in our origin, but that is closed a layer up:
+  // `KIND_LIMITS` allows neither, and `confirmUpload` writes the **sniffed**
+  // type rather than the claimed one, so nothing arrives here pretending to be
+  // an image. HEIC is excluded because no browser renders it.
+  const wantsDownload = new URL(request.url).searchParams.has("download");
+  const inline = !wantsDownload && rendersInBrowser(attachment.mimeType);
+
   return new Response(new Uint8Array(body), {
     headers: {
       "Content-Type": attachment.mimeType ?? "application/octet-stream",
-      // `attachment` rather than inline: a stored HTML or SVG file rendered in
-      // our origin would run scripts with the viewer's session.
-      "Content-Disposition": `attachment; filename="${encodeURIComponent(attachment.fileName)}"`,
+      "Content-Disposition": contentDisposition(attachment.fileName, inline),
       // Private, and never by a shared cache — the URL is the same for everyone
       // but the right to read it is not.
       "Cache-Control": "private, no-store",
+      // The type was sniffed, so there is nothing left to sniff. Saying so stops
+      // a browser second-guessing it and rendering something else.
+      "X-Content-Type-Options": "nosniff",
     },
   });
 }

@@ -248,3 +248,41 @@ test("a translated 500 is still not shown — the message is for a log", () => {
 
   assert.equal(app.message, GENERIC_SERVER_MESSAGE);
 });
+
+/* --- The third dialect: a file transfer ----------------------------------- */
+
+/** What `lib/upload.ts` throws, by shape — this file must not import XHR code. */
+function transferError(status: number) {
+  const error = new Error("Upload failed") as Error & { status: number };
+  error.name = "UploadTransferError";
+  error.status = status;
+  return error;
+}
+
+test("a lapsed reservation says so, rather than 'something went wrong'", () => {
+  // 409 and 410 both mean the row is no longer PENDING. Before this branch
+  // they fell to the catch-all and the one useful fact was discarded.
+  for (const status of [409, 410]) {
+    const error = normalizeError(transferError(status), (code) => `translated:${code}`);
+    assert.equal(error.domainCode, "attachment.not_pending", String(status));
+    assert.equal(error.message, "translated:attachment.not_pending");
+  }
+});
+
+test("a refused size is worded without the kind, which the transport does not know", () => {
+  const error = normalizeError(transferError(413), (code) => `translated:${code}`);
+  assert.equal(error.domainCode, "attachment.transfer_too_large");
+});
+
+test("a transfer that never left is a network problem, not a refusal", () => {
+  const error = normalizeError(transferError(0));
+  assert.equal(error.kind, "network");
+  assert.equal(error.domainCode, undefined);
+});
+
+test("an ordinary auth error is still read as one", () => {
+  // `authErrorOf` matches anything with a numeric status, so the upload branch
+  // has to run first without swallowing Better Auth's shape.
+  const error = normalizeError({ status: 401, message: "Nope" });
+  assert.equal(error.kind, "auth");
+});

@@ -18,7 +18,6 @@ export {
 export {
   confirmUpload,
   enqueueStorageRemoval,
-  readUrl,
   requestUpload,
   storageForAttachments,
   storageUsage,

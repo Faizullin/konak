@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  acceptAttribute,
+  isThumbnailable,
+  KIND_LIMITS,
   KIND_REQUIRES,
+  rendersInBrowser,
   kindsRefusedBy,
   refuseAttachment,
   refuseProviderForKind,
@@ -158,4 +162,56 @@ test("the reservation expires ahead of now, and the window is minutes not hours"
 
   assert.equal(uploadReleaseAt(now).toISOString(), "2026-03-04T12:15:00.000Z");
   assert.ok(UPLOAD_WINDOW_MS < 60 * 60 * 1000);
+});
+
+/* --- What a browser can show ---------------------------------------------- */
+
+test("HEIC is accepted but never rendered", () => {
+  // Both halves matter: refusing it would lose the photograph a receptionist
+  // actually took, and rendering it would be a broken image in the table.
+  assert.equal(KIND_LIMITS.IDENTITY_DOCUMENT.mimeTypes.includes("image/heic"), true);
+  assert.equal(rendersInBrowser("image/heic"), false);
+  assert.equal(isThumbnailable("image/heic"), false);
+});
+
+test("a PDF renders but is not a thumbnail", () => {
+  assert.equal(rendersInBrowser("application/pdf"), true);
+  assert.equal(isThumbnailable("application/pdf"), false);
+});
+
+test("the ordinary image types are both", () => {
+  for (const type of ["image/jpeg", "image/png", "image/webp"]) {
+    assert.equal(rendersInBrowser(type), true, type);
+    assert.equal(isThumbnailable(type), true, type);
+  }
+});
+
+test("a missing or parameterised type is handled, not assumed", () => {
+  assert.equal(rendersInBrowser(null), false);
+  assert.equal(rendersInBrowser(undefined), false);
+  assert.equal(rendersInBrowser("image/png; charset=binary"), true);
+  assert.equal(rendersInBrowser("IMAGE/PNG"), true);
+});
+
+test("nothing scriptable can be rendered inline", () => {
+  // The reason a blanket `Content-Disposition: attachment` is not needed.
+  for (const type of ["text/html", "image/svg+xml", "application/xhtml+xml"]) {
+    assert.equal(rendersInBrowser(type), false, type);
+  }
+});
+
+test("the file picker offers exactly what the rule accepts", () => {
+  // If these ever disagree, the picker shows a file that is then refused.
+  for (const kind of ATTACHMENT_KINDS) {
+    const offered = acceptAttribute(kind).split(",");
+    assert.deepEqual(offered, [...KIND_LIMITS[kind].mimeTypes], kind);
+
+    for (const type of offered) {
+      assert.equal(refuseAttachment({ kind, sizeBytes: 100, mimeType: type }), null, type);
+    }
+  }
+});
+
+test("a contract offers only a PDF", () => {
+  assert.equal(acceptAttribute("CONTRACT"), "application/pdf");
 });

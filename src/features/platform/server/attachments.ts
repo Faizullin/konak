@@ -25,8 +25,15 @@ import { STORAGE_REMOVE } from "./storage-sweep";
  * and an invariant: stored plus reserved never exceeds the quota.
  */
 
-/** How long a signed read URL lives, where the provider can issue one. */
-const READ_TTL_SECONDS = 5 * 60;
+/**
+ * There is no `readUrl` here on purpose.
+ *
+ * The browser addresses `/api/uploads/<storageKey>` directly, and that route
+ * works for every provider. A `platform.readUrl` answering `signedUrl ??
+ * routeUrl` — mirroring how `requestUpload` answers `ticket ?? uploadUrl` — is
+ * the right end state, and buys nothing while signing is an optimisation for
+ * SDKs that are not installed. It goes back in with the first real provider.
+ */
 
 /**
  * Checked at the first upload rather than at import: a module that throws on
@@ -282,13 +289,4 @@ async function discard(
 ) {
   await store.remove(attachment.providerId ?? attachment.storageKey);
   await prisma.attachment.delete({ where: { id: attachment.id } });
-}
-
-/**
- * An expiring URL where the provider signs, ours where it does not. Both are a
- * URL the browser can use, so the caller does not branch.
- */
-export async function readUrl(attachment: { storageKey: string; providerId: string | null }) {
-  const store = await storageForAttachments();
-  return store.url(attachment.providerId ?? attachment.storageKey, READ_TTL_SECONDS);
 }

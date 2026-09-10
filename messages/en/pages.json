@@ -24,6 +24,16 @@
     "setupTitle": "{property} setup",
     "setupDescription": "Room types, the rooms behind them, and the plans a stay is quoted on.",
     "backToDesk": "Back to the desk",
-    "setup": "Setup"
+    "setup": "Setup",
+    "filesTitle": "Photographs and documents"
+  },
+  "person": {
+    "description": "Contact details and the paperwork attached to this person.",
+    "backToDirectory": "Back to directory",
+    "email": "Email",
+    "phone": "Phone",
+    "identityDocuments": "Identity documents",
+    "consents": "Consents",
+    "otherFiles": "Other files"
   }
 }

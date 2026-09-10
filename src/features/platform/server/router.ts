@@ -1,7 +1,8 @@
 import "server-only";
 import { z } from "zod";
 import { requireOrgMember } from "@/server/auth";
-import { ConflictError, InvalidError, NotFoundError } from "@/server/errors";
+import { ConflictError, ForbiddenError, InvalidError, NotFoundError } from "@/server/errors";
+import { canDeleteAttachments, canUploadAttachments } from "@/features/organizations";
 import { createTRPCRouter, protectedProcedure } from "@/server/trpc";
 import prisma from "@/server/db";
 import {
@@ -112,6 +113,7 @@ export const platformRouter = createTRPCRouter({
         personId: input.personId ?? undefined,
         companyId: input.companyId ?? undefined,
         propertyId: input.propertyId ?? undefined,
+        kind: input.kind,
         // A reservation nobody uploaded against is not a file yet, and a
         // revoked one is a record that a file existed.
         status: AttachmentStatus.READY,
@@ -129,7 +131,10 @@ export const platformRouter = createTRPCRouter({
    * that is the only way "random, not derived from an id" can be guaranteed.
    */
   requestUpload: protectedProcedure.input(requestUploadSchema).mutation(async ({ ctx, input }) => {
-    const { user } = await requireOrgMember(ctx, input.organizationId);
+    const { user, role } = await requireOrgMember(ctx, input.organizationId);
+    if (!canUploadAttachments(role)) {
+      throw new ForbiddenError(PlatformError.ATTACHMENT_CREATE_FORBIDDEN, "You cannot add files");
+    }
     await assertSubjectInOrg(input.organizationId, input);
 
     return requestUpload({ ...input, uploadedById: user.id });
@@ -148,7 +153,15 @@ export const platformRouter = createTRPCRouter({
   deleteAttachment: protectedProcedure
     .input(deleteAttachmentSchema)
     .mutation(async ({ ctx, input }) => {
-      await requireOrgMember(ctx, input.organizationId);
+      const { role } = await requireOrgMember(ctx, input.organizationId);
+      // Not the same right as uploading: this takes the bytes with it, and an
+      // identity document deleted by mistake is not recoverable.
+      if (!canDeleteAttachments(role)) {
+        throw new ForbiddenError(
+          PlatformError.ATTACHMENT_DELETE_FORBIDDEN,
+          "Only managers can delete files"
+        );
+      }
 
       const attachment = await ctx.db.attachment.findFirst({
         where: { id: input.id, organizationId: input.organizationId },

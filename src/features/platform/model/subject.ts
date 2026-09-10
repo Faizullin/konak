@@ -16,6 +16,22 @@ export type SubjectRef = {
 
 export type Subject = { kind: SubjectKind; id: number };
 
+/**
+ * A `SubjectRef` as the input schemas want it.
+ *
+ * The row's columns are nullable, so a `SubjectRef` says `number | null`, while
+ * `subjectInputSchema` says `number | undefined`. Sent as `null`, a subject
+ * reads as *set* and fails `hasExactlyOneSubject` — so the conversion is here,
+ * once, rather than spread across every caller that happens to remember.
+ */
+export function subjectInput(ref: SubjectRef) {
+  return {
+    personId: ref.personId ?? undefined,
+    companyId: ref.companyId ?? undefined,
+    propertyId: ref.propertyId ?? undefined,
+  };
+}
+
 /** The subjects actually set. Length is the whole invariant. */
 export function subjectsOf(ref: SubjectRef): Subject[] {
   const found: Subject[] = [];

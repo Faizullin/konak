@@ -455,6 +455,39 @@ identity documents and so refused the filesystem, which serves nothing publicly
 and checks membership on every single read. That is stricter than an expiring
 link, not weaker.
 
+### The browser half
+
+Five pieces, cut by the same two tests at the top of this file:
+
+| Piece | Where |
+|---|---|
+| Bytes over the wire, with progress | `lib/upload.ts` |
+| What a kind allows, and what a browser can show | `platform/model/attachment.ts` |
+| Request → transfer → confirm | `platform/client/hooks/use-attachment-upload.ts` |
+| Drop target and file picker | `components/common/file-dropzone.tsx` |
+| Panel, dialog, table, badge | `platform/client/components/` |
+
+**The ticket-or-`null` branch lives in the hook and nowhere else.** A screen that
+uploads a passport and one that uploads a room photograph differ by a `kind`
+prop, whichever provider is configured.
+
+`lib/upload.ts` is `XMLHttpRequest` and must stay that way: `fetch` cannot
+report upload progress. It throws `UploadTransferError`, which `lib/errors.ts`
+recognises **by shape** — the third dialect beside tRPC and Better Auth — so a
+409 or 410 reads as "the reservation lapsed" rather than "something went wrong".
+It is matched by shape rather than imported because `errors.ts` is in the chunk
+every route loads.
+
+Uploads run **serially**: `requestUpload` reserves quota per file, so N files
+chosen at once would hold N reservations before the first byte moved. A
+cancelled upload needs no cleanup call — the reservation lapses and the sweep
+releases it, and a delete mutation there would race the sweeper.
+
+`AttachmentsPanel` is the reuse seam and the only thing another feature imports;
+`uploadAttachment()` opens the same panel in a dialog from anywhere. Its prop
+surface is `{ organizationId, subject, kind }` — the shape `requestUploadSchema`
+already validates.
+
 ### Calling it
 
 ```ts

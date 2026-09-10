@@ -40,6 +40,10 @@ signature. Several files here over-explain; do not add to it.
   `<FormError />` fails silently.
 - **`styles/globals.css` is shadcn's.** The CLI rewrites it; ours goes in
   `styles/` beside it.
+- **`@/lib/storage` is `server-only`.** A client importing it drags the provider
+  registry into the browser bundle and fails the build with a message about
+  `server-only` that reads like a framework bug. Client code imports
+  `@/lib/storage/provider` for the types, and `@/lib/upload` to send bytes.
 
 ## Before finishing
 

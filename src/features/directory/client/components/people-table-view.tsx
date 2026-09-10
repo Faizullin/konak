@@ -3,6 +3,7 @@
 import { useTranslations } from "next-intl";
 import type { ColumnDef } from "@tanstack/react-table";
 import { Building2, Mail, Phone, Plus } from "lucide-react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useMemo } from "react";
 import { DataTable } from "@/components/data-table/data-table";
@@ -29,7 +30,13 @@ const SORTABLE = ["lastName", "firstName", "createdAt"];
  * happen on the server — the URL is the state, and a link to a filtered view
  * reopens it.
  */
-export function PeopleTableView({ organizationId }: { organizationId: number }) {
+export function PeopleTableView({
+  organizationId,
+  orgSlug,
+}: {
+  organizationId: number;
+  orgSlug: string;
+}) {
   const t = useTranslations("directory");
   const [{ page, perPage, sort, search }] = usePeopleTableParams();
   // One component opens this dialog and nobody else needs to, so the state
@@ -56,7 +63,16 @@ export function PeopleTableView({ organizationId }: { organizationId: number }) 
         id: "lastName",
         accessorKey: "lastName",
         header: ({ column }) => <DataTableColumnHeader column={column} title={t("table.name")} />,
-        cell: ({ row }) => <span className="font-medium">{personDisplayName(row.original)}</span>,
+        cell: ({ row }) => (
+          // The way into the person's paperwork. Without this the detail route
+          // exists and nothing reaches it.
+          <Link
+            href={`/dashboard/orgs/${orgSlug}/directory/${row.original.id}`}
+            className="font-medium hover:underline"
+          >
+            {personDisplayName(row.original)}
+          </Link>
+        ),
         enableSorting: true,
         enableColumnFilter: true,
         meta: { label: t("table.name"), placeholder: t("table.search"), variant: "text" },
@@ -121,7 +137,7 @@ export function PeopleTableView({ organizationId }: { organizationId: number }) 
         enableSorting: true,
       },
     ],
-    [t]
+    [t, orgSlug]
   );
 
   const { table } = useDataTable({

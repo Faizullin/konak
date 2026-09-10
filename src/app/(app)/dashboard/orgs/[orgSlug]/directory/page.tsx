@@ -27,7 +27,7 @@ export default async function DirectoryPage({ params }: { params: Promise<{ orgS
   return (
     <div className="space-y-6">
       <PageHeader title={t("directory.title")} description={t("directory.description")} />
-      <PeopleTableView organizationId={organization.id} />
+      <PeopleTableView organizationId={organization.id} orgSlug={orgSlug} />
     </div>
   );
 }

@@ -13,6 +13,8 @@ export const PlatformError = {
   ATTACHMENT_PROVIDER_PUBLIC: "attachment.provider_public",
 
   ATTACHMENT_NOT_FOUND: "attachment.not_found",
+  ATTACHMENT_CREATE_FORBIDDEN: "attachment.create_forbidden",
+  ATTACHMENT_DELETE_FORBIDDEN: "attachment.delete_forbidden",
   ATTACHMENT_EMPTY: "attachment.empty",
   ATTACHMENT_TOO_LARGE: "attachment.too_large",
   ATTACHMENT_TYPE_REFUSED: "attachment.type_refused",
@@ -21,6 +23,8 @@ export const PlatformError = {
   ATTACHMENT_NOT_PENDING: "attachment.not_pending",
   /** A ticket was issued and nothing was ever uploaded against it. */
   ATTACHMENT_MISSING_OBJECT: "attachment.missing_object",
+  /** The transfer itself was refused — worded without the kind, which it lacks. */
+  ATTACHMENT_TRANSFER_TOO_LARGE: "attachment.transfer_too_large",
 } as const;
 
 export type PlatformError = (typeof PlatformError)[keyof typeof PlatformError];

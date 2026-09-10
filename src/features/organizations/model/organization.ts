@@ -51,6 +51,10 @@ export const assignableOrgRoleSchema = z.enum([OrgRole.ADMIN, OrgRole.MEMBER]);
 export const orgStatements = {
   organization: ["update", "delete"],
   member: ["create", "update", "delete", "list"],
+  // Uploading and deleting are deliberately not the same right: a receptionist
+  // attaches a passport scan as part of checking a guest in, and deleting one
+  // is irreversible — the bytes go with the row.
+  attachment: ["create", "delete"],
 } as const;
 
 const ac = createAccessControl(orgStatements);
@@ -66,12 +70,14 @@ const ORG_ROLE_AC = {
   [OrgRole.OWNER]: ac.newRole({
     organization: ["update", "delete"],
     member: ["create", "update", "delete", "list"],
+    attachment: ["create", "delete"],
   }),
   [OrgRole.ADMIN]: ac.newRole({
     organization: ["update"],
     member: ["create", "update", "delete", "list"],
+    attachment: ["create", "delete"],
   }),
-  [OrgRole.MEMBER]: ac.newRole({ member: ["list"] }),
+  [OrgRole.MEMBER]: ac.newRole({ member: ["list"], attachment: ["create"] }),
 };
 
 /** Ask whether `role` may do something. Resources are `AND`-ed by default. */
@@ -97,6 +103,15 @@ export function canEditOrganization(role: OrgRole): boolean {
 
 export function canDeleteOrganization(role: OrgRole): boolean {
   return orgCan(role, { organization: ["delete"] });
+}
+
+export function canUploadAttachments(role: OrgRole): boolean {
+  return orgCan(role, { attachment: ["create"] });
+}
+
+/** Deleting takes the bytes with it, so it is a manager's call, not a member's. */
+export function canDeleteAttachments(role: OrgRole): boolean {
+  return orgCan(role, { attachment: ["delete"] });
 }
 
 /** Lowercase letters, digits and hyphens — it appears in URLs. */

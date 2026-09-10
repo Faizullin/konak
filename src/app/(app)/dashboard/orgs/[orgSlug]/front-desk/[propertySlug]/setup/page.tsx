@@ -10,6 +10,7 @@ import {
   RoomsPanel,
   RoomTypesPanel,
 } from "@/features/properties/client/components/inventory-panels";
+import { AttachmentsPanel } from "@/features/platform/client/components/attachments-panel";
 import { RatePlansPanel } from "@/features/rates/client/components/rate-plans-panel";
 import prisma from "@/server/db";
 
@@ -68,6 +69,16 @@ export default async function PropertySetupPage({ params }: Params) {
         propertyId={property.id}
         organizationId={organization.id}
         currencyCode={property.currencyCode}
+      />
+
+      {/* The first mount of the shared panel. A property is a valid subject,
+          this route is already manager-gated, and photographs of the place are
+          what a booking widget will ask for first. */}
+      <AttachmentsPanel
+        organizationId={organization.id}
+        subject={{ propertyId: property.id }}
+        kind="FILE"
+        title={t("property.filesTitle")}
       />
     </div>
   );

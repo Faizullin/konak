@@ -611,6 +611,68 @@ describe("attachments", () => {
     assert.equal(task.organizationId, null);
   });
 
+  test("listing filters by kind, so two panels on one person do not overlap", async () => {
+    const owner = callerFor(fx.owner);
+
+    const consent = await request({ kind: "CONSENT", fileName: "consent.pdf" });
+    await upload(consent.storageKey, PDF_BYTES);
+    await owner.platform.confirmUpload({
+      organizationId: fx.org.id,
+      storageKey: consent.storageKey,
+    });
+
+    const contract = await request({ kind: "CONTRACT", fileName: "contract.pdf" });
+    await upload(contract.storageKey, PDF_BYTES);
+    await owner.platform.confirmUpload({
+      organizationId: fx.org.id,
+      storageKey: contract.storageKey,
+    });
+
+    const consents = await owner.platform.listAttachments({
+      organizationId: fx.org.id,
+      personId,
+      kind: "CONSENT",
+    });
+    assert.ok(consents.some((row) => row.id === consent.attachmentId));
+    assert.ok(!consents.some((row) => row.id === contract.attachmentId));
+
+    // Without a kind it is every file on the subject, which is what a screen
+    // showing one combined list would ask for.
+    const all = await owner.platform.listAttachments({ organizationId: fx.org.id, personId });
+    assert.ok(all.some((row) => row.id === contract.attachmentId));
+  });
+
+  test("a member attaches a file but cannot delete one", async () => {
+    // Uploading is part of checking a guest in; deleting takes the bytes with
+    // it and cannot be undone, so the two are not the same right.
+    const { attachmentId, storageKey } = await callerFor(fx.member).platform.requestUpload({
+      organizationId: fx.org.id,
+      personId,
+      kind: "CONSENT",
+      fileName: "member-consent.pdf",
+      mimeType: "application/pdf",
+      sizeBytes: PDF_BYTES.byteLength,
+    });
+    await upload(storageKey, PDF_BYTES);
+    await callerFor(fx.member).platform.confirmUpload({ organizationId: fx.org.id, storageKey });
+
+    await assert.rejects(
+      () =>
+        callerFor(fx.member).platform.deleteAttachment({
+          organizationId: fx.org.id,
+          id: attachmentId,
+        }),
+      (e) => domainCodeOf(e) === "attachment.delete_forbidden"
+    );
+
+    // The owner can, and the row goes.
+    await callerFor(fx.owner).platform.deleteAttachment({
+      organizationId: fx.org.id,
+      id: attachmentId,
+    });
+    assert.equal(await prisma.attachment.findUnique({ where: { id: attachmentId } }), null);
+  });
+
   test("the read route refuses a caller with no session", async () => {
     const { storageKey } = await request();
     const response = await GET(new Request(`http://localhost/api/uploads/${storageKey}`), {

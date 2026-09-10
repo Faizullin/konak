@@ -98,6 +98,28 @@ function trpcDataOf(error: unknown): Record<string, unknown> | null {
   return typeof error.data.code === "string" ? error.data : null;
 }
 
+/**
+ * A file transfer that reached a server and was refused — the third dialect.
+ *
+ * By shape rather than `instanceof`, like the two above: `lib/upload.ts` is
+ * client-only XHR code and this file is reached by every route. Checked before
+ * `authErrorOf`, which would otherwise claim it on `status` alone and lose the
+ * one useful fact — that the reservation lapsed and another can be asked for.
+ */
+function uploadErrorOf(error: unknown): number | null {
+  if (!isRecord(error)) return null;
+  return error.name === "UploadTransferError" && typeof error.status === "number"
+    ? (error.status as number)
+    : null;
+}
+
+/** Codes with no placeholders, so they read correctly with nothing to interpolate. */
+const UPLOAD_CODE_BY_STATUS: Record<number, string> = {
+  409: "attachment.not_pending",
+  410: "attachment.not_pending",
+  413: "attachment.transfer_too_large",
+};
+
 function authErrorOf(error: unknown): Record<string, unknown> | null {
   if (!isRecord(error)) return null;
   return typeof error.status === "number" ? error : null;
@@ -154,6 +176,26 @@ export function normalizeError(error: unknown, translate?: TranslateDomain): App
       code: data.code as string,
       ...(code ? { domainCode: code } : {}),
       ...(typeof data.httpStatus === "number" ? { status: data.httpStatus } : {}),
+    };
+  }
+
+  const uploadStatus = uploadErrorOf(error);
+  if (uploadStatus !== null) {
+    // Status 0 means it never arrived, which is the `network` story, not a
+    // refusal: nothing is wrong with the file.
+    if (uploadStatus === 0) return { kind: "network", message: NETWORK_MESSAGE };
+
+    const code = UPLOAD_CODE_BY_STATUS[uploadStatus];
+    if (code) {
+      const message = translate?.(code) || GENERIC_SERVER_MESSAGE;
+      return { kind: "form", message, domainCode: code, status: uploadStatus };
+    }
+
+    const kind = kindByStatus(uploadStatus);
+    return {
+      kind,
+      message: kind === "server" ? GENERIC_SERVER_MESSAGE : NETWORK_MESSAGE,
+      status: uploadStatus,
     };
   }
 

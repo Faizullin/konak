@@ -156,6 +156,47 @@ export function uploadByteLimit(kind: AttachmentKind, reservedBytes: number): nu
   return Math.min(KIND_LIMITS[kind].maxBytes, reservedBytes);
 }
 
+/**
+ * The `accept` attribute for a file input. **A filter, never the check.**
+ *
+ * Here rather than in the component so the picker offers exactly what
+ * `refuseAttachment` will accept. Written at the call site instead, the two
+ * drift, and the person discovers the mismatch *after* choosing the file.
+ *
+ * Drag-and-drop ignores `accept` entirely, `refuseAttachment` runs on every
+ * file whatever route it arrived by, and the server sniffs the real bytes.
+ * Three layers, and only the third is trusted.
+ */
+export function acceptAttribute(kind: AttachmentKind): string {
+  return KIND_LIMITS[kind].mimeTypes.join(",");
+}
+
+/**
+ * Types a browser renders rather than downloads.
+ *
+ * **HEIC is not one of them, in any browser.** `KIND_LIMITS` allows it on
+ * purpose — it is what an iPhone produces, and a receptionist photographing a
+ * passport will use one — so the gap between "we accept it" and "it can be
+ * shown" is real and has to be answered somewhere. It is answered here, once,
+ * rather than by a broken `<img>` in a table.
+ */
+const RENDERS_IN_BROWSER: readonly string[] = [
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "application/pdf",
+];
+
+export function rendersInBrowser(mimeType: string | null | undefined): boolean {
+  if (!mimeType) return false;
+  return RENDERS_IN_BROWSER.includes(mimeType.split(";")[0]!.trim().toLowerCase());
+}
+
+/** Narrower: what an `<img>` can show, so a table knows a thumbnail from an icon. */
+export function isThumbnailable(mimeType: string | null | undefined): boolean {
+  return rendersInBrowser(mimeType) && (mimeType ?? "").toLowerCase().startsWith("image/");
+}
+
 /* --- What the organization may hold --------------------------------------- */
 
 /**
