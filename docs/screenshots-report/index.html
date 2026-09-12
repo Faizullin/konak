@@ -1,0 +1,270 @@
+<!doctype html><meta charset="utf-8">
+<title>uishot — http://localhost:3000</title>
+<style>
+:root{color-scheme:dark}
+body{font:13px/1.5 ui-sans-serif,system-ui,-apple-system,sans-serif;margin:0;padding:24px;background:#0b0d10;color:#e6e9ef}
+.report-header h1{font-size:18px;margin:0 0 4px;font-weight:700}
+.report-meta{opacity:.75;margin-bottom:20px;font-size:12px}
+.cards-list{display:flex;flex-direction:column;gap:18px}
+.card{background:#14171c;border:1px solid #232830;border-radius:10px;padding:14px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.3)}
+.card.bad{border-color:#e05252}
+.card.warn{border-color:#d29922}
+.card.ok{border-color:#232830}
+.card-header{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid #1f242c}
+.card-title-group{flex:1;min-width:0}
+.card-title{margin:0;font-size:14px;font-weight:600;color:#f0f6fc}
+.card-desc{margin:3px 0 0;font-size:11px;color:#8b949e;word-break:break-all}
+.card-badges{display:flex;gap:6px;flex-shrink:0;align-items:center}
+.badge{font-size:10px;padding:2px 7px;border-radius:99px;font-weight:500;text-transform:uppercase;letter-spacing:0.3px}
+.badge.ok{background:#1f6feb22;color:#58a6ff;border:1px solid #388bfd44}
+.badge.err{background:#f8514922;color:#ff7b72;border:1px solid #f8514944}
+.badge.muted{background:#21262d;color:#8b949e;border:1px solid #30363d}
+.card-preview{background:#0d1117;border-radius:6px;overflow:hidden;border:1px solid #21262d}
+img{width:100%;display:block;max-height:650px;object-fit:cover;object-position:top;background:#fff}
+.card-issues{margin-top:10px;padding:8px 12px;background:#21262d;border-radius:6px;font-size:11px}
+ul{margin:0;padding-left:18px}
+li.err{color:#ff7b72}li.warn{color:#e3b341}
+
+/* ── PDF / print export layout ─────────────────────────────────────────────── */
+@page{size:A4 landscape;margin:8mm}
+@media print{
+  body{background:#fff !important;color:#101418 !important;padding:0 !important;font-size:10px}
+  .report-header h1{font-size:14px;color:#101418}
+  .report-meta{color:#4a5261;margin-bottom:12px;font-size:10px}
+  .cards-list{display:flex;flex-direction:column;gap:12px}
+  .card{background:#fff !important;border:1px solid #d0d7de !important;border-radius:6px;padding:8px;margin:0 0 10px;break-inside:avoid;page-break-inside:avoid;box-shadow:none}
+  .card.bad{border-color:#cf222e !important}
+  .card.warn{border-color:#9a6700 !important}
+  .card.ok{border-color:#d0d7de !important}
+  .card-header{border-bottom:1px solid #e1e4e8;padding-bottom:5px;margin-bottom:6px}
+  .card-title{font-size:11px;color:#101418}
+  .card-desc{font-size:9px;color:#57606a}
+  .badge{font-size:8px;padding:1px 5px}
+  .badge.ok{background:#dafbe1;color:#1a7f37;border-color:#1a7f3733}
+  .badge.err{background:#ffebe9;color:#cf222e;border-color:#cf222e33}
+  .badge.muted{background:#f6f8fa;color:#57606a;border-color:#d0d7de}
+  .card-preview{background:#fff;border-color:#e1e4e8}
+  img{max-height:135mm;object-fit:contain;object-position:top;border:1px solid #e1e4e8}
+  .card-issues{background:#fff8c5;border:1px solid #d4a72c;color:#101418}
+}
+</style>
+<div class="report-header">
+  <h1>uishot — http://localhost:3000</h1>
+  <div class="report-meta">12 shots · 0 failed · 0 auth redirects · 0 with JS errors · 2026-09-09T08:16:40.230Z</div>
+</div>
+<div class="cards-list"><section class="card ok">
+  <div class="card-header">
+    <div class="card-title-group">
+      <h3 class="card-title">Konak — Home Landing</h3>
+      <p class="card-desc">Public landing page with welcome message and authentication entrypoints.</p>
+    </div>
+    <div class="card-badges">
+      <span class="badge ok">HTTP 200</span>
+      <span class="badge muted">desktop</span>
+      <span class="badge muted">light</span>
+      <span class="badge muted">5569ms</span>
+    </div>
+  </div>
+  <div class="card-preview">
+    <a href="root--landing__desktop__light.png" target="_blank"><img loading="lazy" src="root--landing__desktop__light.png" alt="Konak — Home Landing"></a>
+  </div>
+  
+</section>
+<section class="card ok">
+  <div class="card-header">
+    <div class="card-title-group">
+      <h3 class="card-title">Authentication — Sign In</h3>
+      <p class="card-desc">Better Auth credential login with email, password, and social OAuth buttons.</p>
+    </div>
+    <div class="card-badges">
+      <span class="badge ok">HTTP 200</span>
+      <span class="badge muted">desktop</span>
+      <span class="badge muted">light</span>
+      <span class="badge muted">3904ms</span>
+    </div>
+  </div>
+  <div class="card-preview">
+    <a href="sign-in--sign-in__desktop__light.png" target="_blank"><img loading="lazy" src="sign-in--sign-in__desktop__light.png" alt="Authentication — Sign In"></a>
+  </div>
+  
+</section>
+<section class="card ok">
+  <div class="card-header">
+    <div class="card-title-group">
+      <h3 class="card-title">Authentication — Sign Up</h3>
+      <p class="card-desc">New user registration flow with name, email, and password fields.</p>
+    </div>
+    <div class="card-badges">
+      <span class="badge ok">HTTP 200</span>
+      <span class="badge muted">desktop</span>
+      <span class="badge muted">light</span>
+      <span class="badge muted">7505ms</span>
+    </div>
+  </div>
+  <div class="card-preview">
+    <a href="sign-up--sign-up__desktop__light.png" target="_blank"><img loading="lazy" src="sign-up--sign-up__desktop__light.png" alt="Authentication — Sign Up"></a>
+  </div>
+  
+</section>
+<section class="card ok">
+  <div class="card-header">
+    <div class="card-title-group">
+      <h3 class="card-title">Dashboard — User Overview</h3>
+      <p class="card-desc">Main app dashboard displaying current user profile (Ada Admin), roles, and active session info.</p>
+    </div>
+    <div class="card-badges">
+      <span class="badge ok">HTTP 200</span>
+      <span class="badge muted">desktop</span>
+      <span class="badge muted">light</span>
+      <span class="badge muted">3773ms</span>
+    </div>
+  </div>
+  <div class="card-preview">
+    <a href="dashboard--overview__desktop__light.png" target="_blank"><img loading="lazy" src="dashboard--overview__desktop__light.png" alt="Dashboard — User Overview"></a>
+  </div>
+  
+</section>
+<section class="card ok">
+  <div class="card-header">
+    <div class="card-title-group">
+      <h3 class="card-title">Organizations Switcher</h3>
+      <p class="card-desc">Organization directory and switcher view listing available tenants (Acme Inc).</p>
+    </div>
+    <div class="card-badges">
+      <span class="badge ok">HTTP 200</span>
+      <span class="badge muted">desktop</span>
+      <span class="badge muted">light</span>
+      <span class="badge muted">5967ms</span>
+    </div>
+  </div>
+  <div class="card-preview">
+    <a href="dashboard_orgs--orgs-list__desktop__light.png" target="_blank"><img loading="lazy" src="dashboard_orgs--orgs-list__desktop__light.png" alt="Organizations Switcher"></a>
+  </div>
+  
+</section>
+<section class="card ok">
+  <div class="card-header">
+    <div class="card-title-group">
+      <h3 class="card-title">Acme Inc — Organization Overview</h3>
+      <p class="card-desc">Tenant dashboard showing organization details, active modules, and quick actions.</p>
+    </div>
+    <div class="card-badges">
+      <span class="badge ok">HTTP 200</span>
+      <span class="badge muted">desktop</span>
+      <span class="badge muted">light</span>
+      <span class="badge muted">8534ms</span>
+    </div>
+  </div>
+  <div class="card-preview">
+    <a href="dashboard_orgs_acme--org-overview__desktop__light.png" target="_blank"><img loading="lazy" src="dashboard_orgs_acme--org-overview__desktop__light.png" alt="Acme Inc — Organization Overview"></a>
+  </div>
+  
+</section>
+<section class="card ok">
+  <div class="card-header">
+    <div class="card-title-group">
+      <h3 class="card-title">Front Desk — Property Selection</h3>
+      <p class="card-desc">Properties overview listing managed hotel properties (Seaside Hotel).</p>
+    </div>
+    <div class="card-badges">
+      <span class="badge ok">HTTP 200</span>
+      <span class="badge muted">desktop</span>
+      <span class="badge muted">light</span>
+      <span class="badge muted">9175ms</span>
+    </div>
+  </div>
+  <div class="card-preview">
+    <a href="dashboard_orgs_acme_front-desk--properties-list__desktop__light.png" target="_blank"><img loading="lazy" src="dashboard_orgs_acme_front-desk--properties-list__desktop__light.png" alt="Front Desk — Property Selection"></a>
+  </div>
+  
+</section>
+<section class="card ok">
+  <div class="card-header">
+    <div class="card-title-group">
+      <h3 class="card-title">Front Desk — Seaside Hotel Reservation Grid</h3>
+      <p class="card-desc">Interactive 30-day room &amp; reservation grid with booking stay spans and room statuses.</p>
+    </div>
+    <div class="card-badges">
+      <span class="badge ok">HTTP 200</span>
+      <span class="badge muted">desktop</span>
+      <span class="badge muted">light</span>
+      <span class="badge muted">4596ms</span>
+    </div>
+  </div>
+  <div class="card-preview">
+    <a href="dashboard_orgs_acme_front-desk_seaside--reservation-grid__desktop__light.png" target="_blank"><img loading="lazy" src="dashboard_orgs_acme_front-desk_seaside--reservation-grid__desktop__light.png" alt="Front Desk — Seaside Hotel Reservation Grid"></a>
+  </div>
+  
+</section>
+<section class="card ok">
+  <div class="card-header">
+    <div class="card-title-group">
+      <h3 class="card-title">CRM Directory — Guests &amp; Companies</h3>
+      <p class="card-desc">Guest list (Ada Lovelace), corporate accounts (Northwind Travel), and VIP tags table.</p>
+    </div>
+    <div class="card-badges">
+      <span class="badge ok">HTTP 200</span>
+      <span class="badge muted">desktop</span>
+      <span class="badge muted">light</span>
+      <span class="badge muted">6634ms</span>
+    </div>
+  </div>
+  <div class="card-preview">
+    <a href="dashboard_orgs_acme_directory--directory-table__desktop__light.png" target="_blank"><img loading="lazy" src="dashboard_orgs_acme_directory--directory-table__desktop__light.png" alt="CRM Directory — Guests &amp; Companies"></a>
+  </div>
+  
+</section>
+<section class="card ok">
+  <div class="card-header">
+    <div class="card-title-group">
+      <h3 class="card-title">Organization — Team Members</h3>
+      <p class="card-desc">Member directory showing roles (Owner, Member), permissions, and invite controls.</p>
+    </div>
+    <div class="card-badges">
+      <span class="badge ok">HTTP 200</span>
+      <span class="badge muted">desktop</span>
+      <span class="badge muted">light</span>
+      <span class="badge muted">9125ms</span>
+    </div>
+  </div>
+  <div class="card-preview">
+    <a href="dashboard_orgs_acme_members--members-table__desktop__light.png" target="_blank"><img loading="lazy" src="dashboard_orgs_acme_members--members-table__desktop__light.png" alt="Organization — Team Members"></a>
+  </div>
+  
+</section>
+<section class="card ok">
+  <div class="card-header">
+    <div class="card-title-group">
+      <h3 class="card-title">Organization — Settings &amp; Modules</h3>
+      <p class="card-desc">Tenant configuration and feature toggles for Front Desk, Directory, and PMS modules.</p>
+    </div>
+    <div class="card-badges">
+      <span class="badge ok">HTTP 200</span>
+      <span class="badge muted">desktop</span>
+      <span class="badge muted">light</span>
+      <span class="badge muted">6856ms</span>
+    </div>
+  </div>
+  <div class="card-preview">
+    <a href="dashboard_orgs_acme_settings--settings-panel__desktop__light.png" target="_blank"><img loading="lazy" src="dashboard_orgs_acme_settings--settings-panel__desktop__light.png" alt="Organization — Settings &amp; Modules"></a>
+  </div>
+  
+</section>
+<section class="card ok">
+  <div class="card-header">
+    <div class="card-title-group">
+      <h3 class="card-title">Admin — Users Management</h3>
+      <p class="card-desc">Platform-wide user directory displaying roles (ADMIN, MODERATOR, USER) and accounts.</p>
+    </div>
+    <div class="card-badges">
+      <span class="badge ok">HTTP 200</span>
+      <span class="badge muted">desktop</span>
+      <span class="badge muted">light</span>
+      <span class="badge muted">8740ms</span>
+    </div>
+  </div>
+  <div class="card-preview">
+    <a href="dashboard_users--users-table__desktop__light.png" target="_blank"><img loading="lazy" src="dashboard_users--users-table__desktop__light.png" alt="Admin — Users Management"></a>
+  </div>
+  
+</section></div>
