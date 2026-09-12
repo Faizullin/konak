@@ -165,6 +165,69 @@ describe("availability", () => {
   });
 });
 
+describe("check-out and the floor", () => {
+  // Today's inventory is two rooms and later tests need it back. A booking
+  // that stays checked out holds its nights for ever — that is the point of
+  // `occupiesInventory` — so these give them up deliberately.
+  const spent: number[] = [];
+  after(async () => {
+    if (spent.length > 0) await prisma.reservation.deleteMany({ where: { id: { in: spent } } });
+  });
+
+  test("a departure leaves the room dirty, without anyone remembering", async () => {
+    const caller = callerFor(fx.owner);
+    const roomId = roomIds[0]!;
+
+    await prisma.room.update({ where: { id: roomId }, data: { status: "CLEAN" } });
+
+    const booking = await caller.reservation.create({
+      propertyId,
+      roomTypeId,
+      checkIn: today(0),
+      checkOut: today(1),
+      adults: 1,
+      children: 0,
+      source: "DIRECT",
+      roomId,
+    });
+    spent.push(booking.id);
+
+    await caller.reservation.setStatus({ propertyId, id: booking.id, status: "CHECKED_IN" });
+    await caller.reservation.setStatus({ propertyId, id: booking.id, status: "CHECKED_OUT" });
+
+    const room = await prisma.room.findUniqueOrThrow({ where: { id: roomId } });
+    assert.equal(room.status, "DIRTY");
+  });
+
+  test("out of order survives a departure", async () => {
+    // The one housekeeping state with a commercial consequence, set by somebody
+    // who found a fault. A check-out is not news about the fault.
+    const caller = callerFor(fx.owner);
+    const roomId = roomIds[1]!;
+
+    await prisma.room.update({ where: { id: roomId }, data: { status: "CLEAN" } });
+
+    const booking = await caller.reservation.create({
+      propertyId,
+      roomTypeId,
+      checkIn: today(0),
+      checkOut: today(1),
+      adults: 1,
+      children: 0,
+      source: "DIRECT",
+      roomId,
+    });
+    spent.push(booking.id);
+    await caller.reservation.setStatus({ propertyId, id: booking.id, status: "CHECKED_IN" });
+
+    await prisma.room.update({ where: { id: roomId }, data: { status: "OUT_OF_ORDER" } });
+    await caller.reservation.setStatus({ propertyId, id: booking.id, status: "CHECKED_OUT" });
+
+    const room = await prisma.room.findUniqueOrThrow({ where: { id: roomId } });
+    assert.equal(room.status, "OUT_OF_ORDER");
+  });
+});
+
 describe("holds", () => {
   test("a hold is half-open, like the stay it will become", async () => {
     const caller = callerFor(fx.owner);

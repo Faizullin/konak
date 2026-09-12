@@ -16,6 +16,7 @@ import {
   refuseOccupancy,
   ROOM_STATUS_VALUES,
   RoomStatus,
+  statusAfterCheckOut,
 } from "./index";
 
 /**
@@ -122,4 +123,19 @@ test("a receptionist reads the inventory and does not set it up", () => {
 test("a role nobody granted reads as no", () => {
   assert.equal(canReadInventory("GUEST"), false);
   assert.equal(canManageRooms(""), false);
+});
+
+test("check-out is what makes a room dirty, and out of order survives it", () => {
+  // The event that creates the work. A receptionist who also has to remember
+  // is how a housekeeping board goes stale — `product-shape.md` § 10.
+  assert.equal(statusAfterCheckOut(RoomStatus.CLEAN), RoomStatus.DIRTY);
+  assert.equal(statusAfterCheckOut(RoomStatus.INSPECTED), RoomStatus.DIRTY);
+  assert.equal(statusAfterCheckOut(RoomStatus.IN_PROGRESS), RoomStatus.DIRTY);
+
+  // Already dirty is not a change, and writing it again is not news.
+  assert.equal(statusAfterCheckOut(RoomStatus.DIRTY), null);
+
+  // The one state with a commercial consequence, set by someone who found a
+  // fault. A departure is not news about the fault.
+  assert.equal(statusAfterCheckOut(RoomStatus.OUT_OF_ORDER), null);
 });

@@ -26,8 +26,16 @@ export class GridPage {
     await this.jumpToDate.waitFor();
   }
 
+  /**
+   * By shape, not by name — the one deliberate exception to the rule above.
+   *
+   * Its `aria-label` is a translated string, and the locale journey changes the
+   * language *as the thing under test*; a page object that then could not find
+   * the grid would be asserting about its own English. Everything else here is
+   * still located the way a person would.
+   */
   get jumpToDate() {
-    return this.page.getByLabel("Jump to a date");
+    return this.page.locator('input[type="date"]');
   }
 
   get newBooking() {
@@ -54,9 +62,12 @@ export class GridPage {
    * offer the same four buttons — an unscoped `Check in` finds whichever the
    * DOM happens to put first, and the test then asserts about a booking it
    * never made.
+   *
+   * By test id, for the same reason `jumpToDate` is by shape: its accessible
+   * name is translated, and the locale journey changes the language.
    */
   get actions() {
-    return this.page.getByRole("group", { name: "Selected booking" });
+    return this.page.getByTestId("stay-actions");
   }
 
   action(name: string) {

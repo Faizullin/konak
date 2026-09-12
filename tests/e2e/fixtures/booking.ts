@@ -72,9 +72,10 @@ export function createBookingsFixture(context: {
       );
       people.push(person.id);
 
-      // A reference nothing else collides with, and one a failure can be
-      // searched for by hand afterwards.
-      const reference = `E2E-${Date.now()}-${reservations.length}`;
+      // The tag, not the clock: `(propertyId, reference)` is unique, and two
+      // parallel workers creating their first booking in the same millisecond
+      // collide on it. Still readable enough to find by hand after a failure.
+      const reference = `E2E-${tag}-${reservations.length}`;
       const publicId = randomUUID();
 
       const reservation = await one<{ id: number }>(

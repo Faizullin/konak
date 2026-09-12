@@ -158,9 +158,12 @@ const GRID_ACTION_KEYS = {
  * language is invisible to a language switch — the strings move and the dates
  * do not, which reads as a half-translated screen.
  *
- * `headerFormat` uses `formatRange`, which collapses a span inside one month to
- * "September 2026" and spells the boundary out when it crosses one. That is the
- * whole reason the header could not stay a single month name.
+ * **The window label is built from two `format()` calls, not `formatRange()`.**
+ * `formatRange` is not stable across ICU versions — Node 24 separates the dash
+ * with U+2009 THIN SPACE where Chrome uses an ordinary one, and U+202F before
+ * Russian's "г." where Chrome uses a space — so the server and the browser
+ * render the same words and React sees a hydration mismatch on every load of
+ * the desk. `format()` was checked against a browser and agrees exactly.
  */
 function useGridFormats() {
   const locale = useLocale();
@@ -174,6 +177,7 @@ function useGridFormats() {
         year: "numeric",
         timeZone: "UTC",
       }),
+      month: new Intl.DateTimeFormat(locale, { month: "long", timeZone: "UTC" }),
       range: new Intl.DateTimeFormat(locale, {
         day: "numeric",
         month: "short",
@@ -510,6 +514,11 @@ function StayActions({
     <div
       role="group"
       aria-label={t("grid.selectedBooking")}
+      // The label is for a person and changes with the language; this does not.
+      // The locale journey switches languages as the thing under test, so it
+      // needs one handle that survives the switch.
+      data-testid="stay-actions"
+
       className="bg-card flex flex-wrap items-center gap-x-3 gap-y-2 rounded border px-3 py-2"
     >
       <span className="text-sm font-medium">{stay.guestName ?? stay.reference}</span>
@@ -910,6 +919,15 @@ export function ReservationGrid({
   const nights = shown?.window.nights ?? [];
   const width = `calc(var(--grid-label) + ${nights.length} * var(--grid-night))`;
   const lastNight = shiftStayDays(view.to, -1);
+  /**
+   * Collapsed inside one month, spelled out when the window crosses one — the
+   * behaviour `formatRange` gave, assembled from calls that hydrate.
+   */
+  const windowLabel =
+    view.from.getUTCMonth() === lastNight.getUTCMonth() &&
+    view.from.getUTCFullYear() === lastNight.getUTCFullYear()
+      ? formats.header.format(view.from)
+      : `${formats.month.format(view.from)} – ${formats.header.format(lastNight)}`;
 
   return (
     <div className="space-y-3">
@@ -962,9 +980,7 @@ export function ReservationGrid({
             if (picked) setAnchor(picked);
           }}
         />
-        <span className="text-sm font-medium">
-          {formats.header.formatRange(view.from, lastNight)}
-        </span>
+        <span className="text-sm font-medium">{windowLabel}</span>
 
         <Select
           value={String(preferences.windowNights)}

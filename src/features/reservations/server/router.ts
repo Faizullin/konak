@@ -4,7 +4,7 @@ import { ConflictError, InvalidError, NotFoundError, refused } from "@/server/er
 import { createTRPCRouter, protectedProcedure } from "@/server/trpc";
 import { ReservationError } from "../model";
 import { createGuestPerson } from "@/features/directory/server";
-import { isRoomSellable, RoomStatus } from "@/features/properties";
+import { isRoomSellable, RoomStatus, statusAfterCheckOut } from "@/features/properties";
 import { requirePropertyMember } from "@/features/properties/server";
 import {
   assignRoomSchema,
@@ -387,8 +387,16 @@ export const reservationRouter = createTRPCRouter({
           status: true,
           property: { select: { timezone: true } },
           // Check-in reads the rooms and the dates, so the rule sees the whole
-          // booking rather than the column alone.
-          stays: { select: { roomId: true, checkIn: true, checkOut: true } },
+          // booking rather than the column alone. The room's own status comes
+          // with it, because check-out leaves work behind on it.
+          stays: {
+            select: {
+              roomId: true,
+              checkIn: true,
+              checkOut: true,
+              room: { select: { id: true, status: true } },
+            },
+          },
         },
       });
       if (!reservation) {
@@ -407,6 +415,23 @@ export const reservationRouter = createTRPCRouter({
         throw refused(refusal);
       }
 
+      /**
+       * A departure creates cleaning, and the desk should not have to remember.
+       *
+       * `product-shape.md` § 10 states this as true and nothing implemented it.
+       * The rule is a pure function so the exception is testable without a
+       * database: a room out of order stays out of order — that state was set
+       * by someone who found a fault, and a check-out is not news about it.
+       */
+      const toClean =
+        input.status === ReservationStatus.CHECKED_OUT
+          ? reservation.stays
+              .map((stay) => stay.room)
+              .filter((room) => room !== null)
+              .filter((room) => statusAfterCheckOut(room.status) !== null)
+              .map((room) => room.id)
+          : [];
+
       return ctx.db.$transaction(async (tx) => {
         // The stay carries its own status because the overlap constraint reads
         // it; the two must move together.
@@ -414,6 +439,13 @@ export const reservationRouter = createTRPCRouter({
           where: { reservationId: input.id },
           data: { status: input.status },
         });
+
+        if (toClean.length > 0) {
+          await tx.room.updateMany({
+            where: { id: { in: toClean } },
+            data: { status: RoomStatus.DIRTY, updatedById: user.id },
+          });
+        }
 
         return tx.reservation.update({
           where: { id: input.id },

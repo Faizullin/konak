@@ -6,6 +6,7 @@ import { getLocale, getMessages } from "next-intl/server";
 import { AppSidebar } from "@/components/layout/dashboard/sidebar/app-sidebar";
 import { Separator } from "@/components/ui/separator";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import { NiceModalProvider } from "@/store/nice-modal-context";
 import { UserRole } from "@/features/identity";
 import { auth } from "@/server/auth";
 
@@ -60,16 +61,20 @@ export default async function DashboardLayout({ children }: Readonly<{ children:
         validation: messages.validation,
       }}
     >
-      <SidebarProvider defaultOpen={defaultOpen}>
-        <AppSidebar user={user} />
-        <SidebarInset>
-          <header className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
-            <SidebarTrigger className="-ml-1" />
-            <Separator orientation="vertical" className="mr-2 h-4" />
-          </header>
-          <div className="mx-auto w-full max-w-5xl flex-1 p-6">{children}</div>
-        </SidebarInset>
-      </SidebarProvider>
+      {/* Inside the translator, not above it: a dialog is rendered where its
+          provider sits, and every one of ours reads `useTranslations`. */}
+      <NiceModalProvider>
+        <SidebarProvider defaultOpen={defaultOpen}>
+          <AppSidebar user={user} />
+          <SidebarInset>
+            <header className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
+              <SidebarTrigger className="-ml-1" />
+              <Separator orientation="vertical" className="mr-2 h-4" />
+            </header>
+            <div className="mx-auto w-full max-w-5xl flex-1 p-6">{children}</div>
+          </SidebarInset>
+        </SidebarProvider>
+      </NiceModalProvider>
     </NextIntlClientProvider>
   );
 }

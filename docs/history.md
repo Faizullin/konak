@@ -1312,3 +1312,38 @@ accessibility improvement first, a test handle second, which is the right way
 round.
 
 12 end-to-end tests.
+
+## 2026-09-13 — every dialog in the product was broken
+
+The sixth end-to-end journey opened the booking dialog and got a runtime error:
+
+> Failed to call `useTranslations` because the context from
+> `NextIntlClientProvider` was not found.
+
+**`NiceModal.Provider` was mounted in `components/layout/providers.tsx`**, which
+wraps every route — and `NextIntlClientProvider` is mounted in the dashboard
+layout, *below* it. A modal renders where its provider sits, so every dialog
+rendered outside the translator and threw the moment it opened. Seven of them
+read `useTranslations`: the walk-in, the room form, the room type form, the rate
+plan form, the organization form, the attachment upload, and the new booking.
+
+Nothing caught it because nothing opened a dialog. `confirm()` kept working and
+hid the shape of it — that one takes its title and description as props, already
+translated by the caller, so it never reaches for a translator itself.
+
+**The provider moved rather than the intl one.** Mounting `NextIntlClientProvider`
+at the root would fix it and undo a measured decision: `ui-patterns.md` gives a
+route the namespaces it renders because next-intl cost the two auth routes 39 kB
+each. Modals are a dashboard concern; the auth routes have none.
+
+**A second, quieter problem underneath.** `NiceModal.Provider` is a property of
+a client module's default export, and a Server Component cannot use one as JSX —
+the reference does not survive the boundary, and the whole dashboard stopped
+rendering. `store/nice-modal-context.tsx` names it now, so the layout mounts an
+ordinary client component.
+
+This is the third time the browser layer has paid for itself in a day: an origin
+check that made every sign-in fail silently, ninety-six error messages that never
+resolved, and now every form dialog in the product.
+
+214 unit tests, 136 integration, 20 journeys, 36 screenshots.

@@ -42,6 +42,25 @@ export function isRoomSellable(status: string): boolean {
 }
 
 /**
+ * What check-out leaves behind.
+ *
+ * A departure is the event that creates the cleaning, and expecting a
+ * receptionist to also remember is how a housekeeping board goes stale —
+ * `product-shape.md` § 10. Returns the new status, or `null` when there is
+ * nothing to change.
+ *
+ * **Out of order is not overwritten.** It is the one housekeeping state with a
+ * commercial consequence, set by someone who found a fault, and a departure is
+ * not news about the fault. Anything else becomes dirty, including `DIRTY`
+ * itself — which answers `null`, because writing it again is not a change.
+ */
+export function statusAfterCheckOut(current: string): RoomStatus | null {
+  if (current === RoomStatus.OUT_OF_ORDER) return null;
+  if (current === RoomStatus.DIRTY) return null;
+  return RoomStatus.DIRTY;
+}
+
+/**
  * Order two room numbers the way a corridor runs.
  *
  * Room numbers are strings — "2", "10", "101A", "Cottage 3" — and Postgres
