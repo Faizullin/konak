@@ -16,6 +16,7 @@ import {
   frontDeskDaySchema,
   gridWindowSchema,
   isValidStayRange,
+  listReservationsSchema,
   moveStaySchema,
   nightsOf,
   refuseStatusChange,
@@ -27,7 +28,13 @@ import {
   walkInSchema,
 } from "../model";
 import { quoteStay, refusalMessage } from "@/features/rates/server";
-import { availability, frontDeskDay, frontDeskGrid, nextSeriesNumber } from "./service";
+import {
+  availability,
+  frontDeskDay,
+  frontDeskGrid,
+  listReservations,
+  nextSeriesNumber,
+} from "./service";
 
 /**
  * Reservations — availability, and the four things a desk does to a booking.
@@ -137,31 +144,17 @@ export const reservationRouter = createTRPCRouter({
       return reservation;
     }),
 
-  list: protectedProcedure
-    .input(
-      z.object({
-        propertyId: z.number(),
-        from: z.coerce.date().optional(),
-        to: z.coerce.date().optional(),
-        status: z.string().optional(),
-      })
-    )
-    .query(async ({ ctx, input }) => {
-      await requirePropertyMember(ctx, input.propertyId);
-
-      return ctx.db.reservation.findMany({
-        where: {
-          propertyId: input.propertyId,
-          ...(input.status ? { status: input.status } : {}),
-          ...(input.from && input.to
-            ? { stays: { some: { checkIn: { lt: input.to }, checkOut: { gt: input.from } } } }
-            : {}),
-        },
-        include: { stays: true, booker: true },
-        orderBy: { bookedAt: "desc" },
-        take: 200,
-      });
-    }),
+  /**
+   * Bookings as a list, for the desk that knows a name and not a date.
+   *
+   * `{ filter, orderBy, pagination }` in and `{ items, total }` out, which is
+   * the contract `ui-patterns.md` states between a table and its procedure —
+   * the table is manual on all three, so every one of them is answered here.
+   */
+  list: protectedProcedure.input(listReservationsSchema).query(async ({ ctx, input }) => {
+    await requirePropertyMember(ctx, input.propertyId);
+    return listReservations(input);
+  }),
 
   create: protectedProcedure.input(createReservationSchema).mutation(async ({ ctx, input }) => {
     const { property: scope, user } = await requirePropertyMember(ctx, input.propertyId);
@@ -198,6 +191,7 @@ export const reservationRouter = createTRPCRouter({
       roomTypeId: input.roomTypeId,
       from: range.checkIn,
       to: range.checkOut,
+      exceptHoldKey: input.holdKey,
     });
     const soldOut = nights.find((night) => night.available < 1);
     if (soldOut) {
@@ -245,13 +239,41 @@ export const reservationRouter = createTRPCRouter({
         kind: "RESERVATION",
       });
 
+      // The hold and the booking it became commit together. Releasing it before
+      // the transaction opens a window where the room is free and someone else
+      // takes it; releasing it after means a rollback leaves a claim on a
+      // booking that does not exist.
+      if (input.holdKey) {
+        await tx.inventoryHold.deleteMany({ where: { holdKey: input.holdKey } });
+      }
+
+      // A named guest who is not in the directory is written into it, the way
+      // a walk-in's is. An id given outright wins: the desk found them already.
+      const bookerPersonId =
+        input.bookerPersonId ??
+        (input.firstName && input.lastName
+          ? (
+              await createGuestPerson(
+                tx,
+                {
+                  organizationId: scope.organizationId,
+                  firstName: input.firstName,
+                  lastName: input.lastName,
+                  email: input.email,
+                  phone: input.phone,
+                },
+                user.id
+              )
+            ).id
+          : undefined);
+
       return tx.reservation.create({
         data: {
           propertyId: input.propertyId,
           reference,
           status: ReservationStatus.CONFIRMED,
           source: input.source,
-          bookerPersonId: input.bookerPersonId,
+          bookerPersonId,
           companyId: input.companyId,
           currencyCode,
           totalMinor,

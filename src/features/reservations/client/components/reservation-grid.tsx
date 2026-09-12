@@ -2,27 +2,50 @@
 
 import { useEnumLabels } from "@/lib/labels";
 import { useTranslations } from "next-intl";
+import NiceModal from "@ebay/nice-modal-react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
-import { ChevronLeft, ChevronRight, X } from "lucide-react";
+import {
+  CalendarIcon,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
+  Plus,
+  Search,
+  X,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Fragment, useMemo, useRef, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useErrorHandlers, useRefusalText } from "@/lib/errors";
 import { cn } from "@/lib/utils";
 import { ROOM_STATUS_VALUES, RoomStatus } from "@/features/properties";
 import {
   assignLanes,
+  DEFAULT_WINDOW_NIGHTS,
+  GRID_WINDOW_NIGHTS,
   laneCount,
-  monthWindowOf,
   nextStatuses,
   refuseStatusChange,
   RESERVATION_STATUS_VALUES,
   ReservationStatus,
-  shiftMonths,
+  shiftStayDays,
   spanInWindow,
   todayAt,
+  windowFrom,
+  type GridWindowNights,
 } from "@/features/reservations";
+import { BookingFormNiceDialog } from "./booking-form-nice-dialog";
 import { useBookingActions } from "../hooks/use-booking-actions";
 import type { GeneralRouterOutputs } from "@/server/types";
 import { trpc } from "@/utils/trpc";
@@ -45,11 +68,6 @@ type GridStay = Grid["rooms"][number]["stays"][number];
  * variables back, so it narrows them here rather than trusting the shape.
  */
 const asDate = (value: unknown) => (value instanceof Date ? value : new Date(String(value)));
-
-/** A whole number of days from a stay date, which stays a stay date. */
-function shiftDays(date: Date, days: number): Date {
-  return new Date(date.getTime() + days * 86_400_000);
-}
 
 /** Matches the day lists: the two surfaces read the same stays. */
 const GRID_REFRESH_MS = 30_000;
@@ -110,7 +128,12 @@ const GRID_ACTION_KEYS = {
 
 const dayFormat = new Intl.DateTimeFormat("en", { day: "numeric", timeZone: "UTC" });
 const weekdayFormat = new Intl.DateTimeFormat("en", { weekday: "narrow", timeZone: "UTC" });
-const monthFormat = new Intl.DateTimeFormat("en", {
+/**
+ * The window's own label. `formatRange` collapses a span inside one month to
+ * "September 2026" and spells the boundary out when it crosses one, which is
+ * the whole reason a header could not stay a single month name.
+ */
+const headerFormat = new Intl.DateTimeFormat("en", {
   month: "long",
   year: "numeric",
   timeZone: "UTC",
@@ -121,7 +144,32 @@ const rangeFormat = new Intl.DateTimeFormat("en", {
   timeZone: "UTC",
 });
 
+/**
+ * The picker is opened once a navigation at most; the grid is opened all day.
+ *
+ * Measured: `react-day-picker` is **87 kB** of this route's first load, for a
+ * popover that is closed. Loading it when it opens is the difference between
+ * paying for the calendar and paying for the button that reveals it.
+ */
+const Calendar = dynamic(() => import("@/components/ui/calendar").then((m) => m.Calendar), {
+  ssr: false,
+  loading: () => <Skeleton className="h-72 w-64" />,
+});
+
 const isWeekend = (date: Date) => date.getUTCDay() === 0 || date.getUTCDay() === 6;
+
+/**
+ * The calendar works in the browser's local time; a stay date is UTC midnight.
+ *
+ * Converted by their *fields*, never by their instant — east of Greenwich an
+ * instant conversion lands on the day before, which is a desk jumping to the
+ * wrong date and never knowing why.
+ */
+const asStayDate = (local: Date) =>
+  new Date(Date.UTC(local.getFullYear(), local.getMonth(), local.getDate()));
+
+const asLocalDate = (stay: Date) =>
+  new Date(stay.getUTCFullYear(), stay.getUTCMonth(), stay.getUTCDate());
 
 /** Every stay on the grid, whichever row or band it is drawn in. */
 function everyStay(grid: Grid): GridStay[] {
@@ -492,15 +540,17 @@ export function ReservationGrid({
   const { label, confirmed } = useBookingActions(GRID_ACTION_KEYS);
   const t = useTranslations("reservations");
   const { handleError } = useErrorHandlers();
-  const [anchor, setAnchor] = useState(() => monthWindowOf(new Date()).from);
+  // Today, not the 1st: a desk opening on the 28th wants the days after it.
+  const [anchor, setAnchor] = useState(() => todayAt(timezone));
+  const [windowNights, setWindowNights] = useState<GridWindowNights>(DEFAULT_WINDOW_NIGHTS);
   const [refusal, setRefusal] = useState<string | null>(null);
   const [dragging, setDragging] = useState<{ id: number; grabNight: number } | null>(null);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const today = useMemo(() => todayAt(timezone), [timezone]);
 
-  const month = monthWindowOf(anchor);
+  const view = windowFrom(anchor, windowNights);
   const utils = trpc.useUtils();
-  const input = { propertyId, from: month.from, to: month.to };
+  const input = { propertyId, from: view.from, to: view.to };
 
   const { data, isLoading } = trpc.reservation.grid.useQuery(input, {
     // Keep last month on screen while the next one loads; a grid that blanks
@@ -636,8 +686,8 @@ export function ReservationGrid({
     move.mutate({
       propertyId,
       stayId: stay.id,
-      checkIn: shiftDays(stay.checkIn, days),
-      checkOut: shiftDays(stay.checkOut, days),
+      checkIn: shiftStayDays(stay.checkIn, days),
+      checkOut: shiftStayDays(stay.checkOut, days),
       roomId,
     });
   };
@@ -647,8 +697,8 @@ export function ReservationGrid({
     move.mutate({
       propertyId,
       stayId: stay.id,
-      checkIn: edge === "start" ? shiftDays(stay.checkIn, days) : stay.checkIn,
-      checkOut: edge === "end" ? shiftDays(stay.checkOut, days) : stay.checkOut,
+      checkIn: edge === "start" ? shiftStayDays(stay.checkIn, days) : stay.checkIn,
+      checkOut: edge === "end" ? shiftStayDays(stay.checkOut, days) : stay.checkOut,
     });
   };
 
@@ -670,30 +720,102 @@ export function ReservationGrid({
 
   const nights = data?.window.nights ?? [];
   const width = `calc(${LABEL_WIDTH} + ${nights.length * NIGHT_WIDTH}rem)`;
+  const lastNight = shiftStayDays(view.to, -1);
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <Button
           variant="outline"
           size="icon"
-          aria-label={t("grid.previousMonth")}
-          onClick={() => setAnchor((current) => shiftMonths(current, -1))}
+          aria-label={t("grid.previousWeek")}
+          onClick={() => setAnchor((current) => shiftStayDays(current, -7))}
+        >
+          <ChevronsLeft />
+        </Button>
+        <Button
+          variant="outline"
+          size="icon"
+          aria-label={t("grid.previousDay")}
+          onClick={() => setAnchor((current) => shiftStayDays(current, -1))}
         >
           <ChevronLeft />
         </Button>
+        <Button variant="ghost" onClick={() => setAnchor(todayAt(timezone))}>
+          {t("grid.today")}
+        </Button>
         <Button
           variant="outline"
           size="icon"
-          aria-label={t("grid.nextMonth")}
-          onClick={() => setAnchor((current) => shiftMonths(current, 1))}
+          aria-label={t("grid.nextDay")}
+          onClick={() => setAnchor((current) => shiftStayDays(current, 1))}
         >
           <ChevronRight />
         </Button>
-        <Button variant="ghost" onClick={() => setAnchor(monthWindowOf(new Date()).from)}>
-          {t("grid.today")}
+        <Button
+          variant="outline"
+          size="icon"
+          aria-label={t("grid.nextWeek")}
+          onClick={() => setAnchor((current) => shiftStayDays(current, 7))}
+        >
+          <ChevronsRight />
         </Button>
-        <span className="text-sm font-medium">{monthFormat.format(month.from)}</span>
+
+        {/* Reaching next March was eleven clicks. The window is an anchor now,
+            so it can simply be said. */}
+        <Popover>
+          <PopoverTrigger render={<Button variant="outline" size="sm" />}>
+            <CalendarIcon />
+            {headerFormat.formatRange(view.from, lastNight)}
+          </PopoverTrigger>
+          <PopoverContent className="w-auto p-0" align="start">
+            <Calendar
+              autoFocus
+              mode="single"
+              selected={asLocalDate(anchor)}
+              onSelect={(picked) => picked && setAnchor(asStayDate(picked))}
+            />
+          </PopoverContent>
+        </Popover>
+
+        <Select
+          value={String(windowNights)}
+          onValueChange={(value) => setWindowNights(Number(value) as GridWindowNights)}
+        >
+          <SelectTrigger size="sm" className="w-28">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {GRID_WINDOW_NIGHTS.map((length) => (
+              <SelectItem key={length} value={String(length)}>
+                {t("grid.nightsOption", { nights: length })}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        {/* The walk-in beside this books tonight. This is every other
+            booking — the only path to a date that is not today. */}
+        <Button
+          size="sm"
+          onClick={() => NiceModal.show(BookingFormNiceDialog, { propertyId, timezone })}
+        >
+          <Plus />
+          {t("booking.title")}
+        </Button>
+
+        {/* The grid is bounded by its window, so a guest ringing about next
+            March cannot be found on it at all. That question has its own
+            screen; this is the way to it. */}
+        <Button
+          nativeButton={false}
+          variant="outline"
+          size="sm"
+          render={<Link href={`/dashboard/orgs/${orgSlug}/front-desk/${propertySlug}/bookings`} />}
+        >
+          <Search />
+          {t("grid.findBooking")}
+        </Button>
 
         {/* The key to the marks. Without it the second cue is only decodable by
             someone who already knows what the colours mean. */}

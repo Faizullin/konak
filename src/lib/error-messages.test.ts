@@ -145,6 +145,7 @@ const ENUM_SOURCES: Record<string, string> = {
   mealPlan: "src/features/rates/model/plan.ts:MealPlan",
   dayRole: "src/features/reservations/model/day.ts:DayRole",
   reservationStatus: "src/features/reservations/model/status.ts:ReservationStatus",
+  bookingView: "src/features/reservations/model/list.ts:BookingView",
 };
 
 /** The keys of `export const X = { … } as const`, read from the source. */

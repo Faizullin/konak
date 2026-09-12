@@ -39,5 +39,10 @@
   "booking": {
     "description": "Booking {reference}, and every room it holds.",
     "backToDesk": "Back to the desk"
+  },
+  "bookings": {
+    "title": "Bookings",
+    "description": "Every booking at {property}, whatever its dates.",
+    "backToDesk": "Back to the desk"
   }
 }

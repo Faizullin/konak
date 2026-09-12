@@ -61,10 +61,15 @@ before(async () => {
   ]);
   roomIds = rooms.map((r) => r.id);
 
-  // Two rooms for five nights, plus a separate island at day 10 for the tests
-  // that need nights no earlier test has spent.
+  // Two rooms for five nights, plus separate islands for the tests that need
+  // nights no earlier test has spent. The holds tests take one island each, so
+  // a hold left behind by one cannot be what another one measures.
   await prisma.roomTypeInventory.createMany({
-    data: [0, 1, 2, 3, 4, 10, 11, 30].map((i) => ({ roomTypeId, date: day(i), totalRooms: 2 })),
+    data: [0, 1, 2, 3, 4, 10, 11, 30, 40, 41, 42, 50, 51, 60, 70].map((i) => ({
+      roomTypeId,
+      date: day(i),
+      totalRooms: 2,
+    })),
   });
 
   // Checking in is refused before the arrival day, so the tests that do it need
@@ -157,6 +162,142 @@ describe("availability", () => {
         }),
       (e) => code(e) === "CONFLICT" && field(e) === "checkIn"
     );
+  });
+});
+
+describe("holds", () => {
+  test("a hold is half-open, like the stay it will become", async () => {
+    const caller = callerFor(fx.owner);
+    const holdKey = `hold-${fx.tag}-a`;
+
+    await caller.reservation.hold({
+      propertyId,
+      roomTypeId,
+      checkIn: day(40),
+      checkOut: day(42),
+      quantity: 1,
+      holdKey,
+      minutes: 15,
+    });
+
+    const nights = await caller.reservation.availability({
+      propertyId,
+      roomTypeId,
+      from: day(40),
+      to: day(43),
+    });
+    // Two nights held and the departure night untouched. A hold that counted
+    // its last day would take a night off sale that the booking never uses.
+    assert.deepEqual(
+      nights.map((n) => n.held),
+      [1, 1, 0]
+    );
+    assert.deepEqual(
+      nights.map((n) => n.available),
+      [1, 1, 2]
+    );
+  });
+
+  test("a booking is not refused by its own hold", async () => {
+    // The bug this prevents: taking a hold made booking strictly harder than
+    // not taking one, because the search counted the searcher's own claim.
+    const caller = callerFor(fx.owner);
+    const holdKey = `hold-${fx.tag}-b`;
+
+    await caller.reservation.hold({
+      propertyId,
+      roomTypeId,
+      checkIn: day(50),
+      checkOut: day(52),
+      quantity: 2,
+      holdKey,
+      minutes: 15,
+    });
+
+    const heldOut = await caller.reservation.availability({
+      propertyId,
+      roomTypeId,
+      from: day(50),
+      to: day(52),
+    });
+    assert.deepEqual(
+      heldOut.map((n) => n.available),
+      [0, 0]
+    );
+
+    const booking = await caller.reservation.create({
+      propertyId,
+      roomTypeId,
+      checkIn: day(50),
+      checkOut: day(52),
+      adults: 2,
+      children: 0,
+      source: "DIRECT",
+      holdKey,
+    });
+    assert.ok(booking.reference);
+  });
+
+  test("the hold dies with the booking it became", async () => {
+    const caller = callerFor(fx.owner);
+    const holdKey = `hold-${fx.tag}-c`;
+
+    await caller.reservation.hold({
+      propertyId,
+      roomTypeId,
+      checkIn: day(60),
+      checkOut: day(61),
+      quantity: 1,
+      holdKey,
+      minutes: 15,
+    });
+    await caller.reservation.create({
+      propertyId,
+      roomTypeId,
+      checkIn: day(60),
+      checkOut: day(61),
+      adults: 1,
+      children: 0,
+      source: "DIRECT",
+      holdKey,
+    });
+
+    // A hold outliving its booking is a room nobody can sell for fifteen
+    // minutes, and the stay is already counted against the same night.
+    assert.equal(await prisma.inventoryHold.count({ where: { holdKey } }), 0);
+
+    const nights = await caller.reservation.availability({
+      propertyId,
+      roomTypeId,
+      from: day(60),
+      to: day(61),
+    });
+    assert.equal(nights[0]?.available, 1);
+  });
+
+  test("releasing a hold is idempotent, because an abandoned search may never return", async () => {
+    const caller = callerFor(fx.owner);
+    const holdKey = `hold-${fx.tag}-d`;
+
+    await caller.reservation.hold({
+      propertyId,
+      roomTypeId,
+      checkIn: day(70),
+      checkOut: day(71),
+      quantity: 1,
+      holdKey,
+      minutes: 15,
+    });
+    await caller.reservation.releaseHold({ propertyId, holdKey });
+    await caller.reservation.releaseHold({ propertyId, holdKey });
+
+    const nights = await caller.reservation.availability({
+      propertyId,
+      roomTypeId,
+      from: day(70),
+      to: day(71),
+    });
+    assert.equal(nights[0]?.available, 2);
   });
 });
 

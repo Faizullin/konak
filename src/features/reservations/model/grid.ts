@@ -38,18 +38,44 @@ export function gridWindowOf(from: Date, to: Date): GridWindow | null {
 }
 
 /**
- * The month a date falls in, as a window. The grid moves a month at a time, and
- * a month is what `GRID_MAX_NIGHTS` was sized for.
+ * The lengths the desk may choose, in nights.
+ *
+ * A fortnight reads without scrolling on a laptop, a month is what the row
+ * heights were sized for, and the cap is the cap — it is what bounds the query,
+ * so nothing above it can be offered.
  */
-export function monthWindowOf(anchor: Date): { from: Date; to: Date } {
-  const from = new Date(Date.UTC(anchor.getUTCFullYear(), anchor.getUTCMonth(), 1));
-  const to = new Date(Date.UTC(anchor.getUTCFullYear(), anchor.getUTCMonth() + 1, 1));
-  return { from, to };
+export const GRID_WINDOW_NIGHTS = [14, 31, GRID_MAX_NIGHTS] as const;
+
+export type GridWindowNights = (typeof GRID_WINDOW_NIGHTS)[number];
+
+export const DEFAULT_WINDOW_NIGHTS: GridWindowNights = 31;
+
+/**
+ * A window of `nights` beginning on `anchor`.
+ *
+ * **The calendar month is not the unit.** A month always begins on the 1st, so
+ * a stay crossing a boundary is cut by the view rather than drawn whole — and
+ * the last week of a month is exactly when a desk needs to see the days after
+ * it. An anchor and a length have neither problem.
+ *
+ * The length is clamped rather than refused: it comes from a control with a
+ * fixed set of options, and there is no screen state for a window of no nights.
+ */
+export function windowFrom(anchor: Date, nights: number): { from: Date; to: Date } {
+  const length = Math.min(Math.max(Math.trunc(nights) || 1, 1), GRID_MAX_NIGHTS);
+  const from = toStayDate(anchor);
+  return { from, to: shiftStayDays(from, length) };
 }
 
-/** December + 1 is January, which `Date.UTC` already knows. */
-export function shiftMonths(anchor: Date, months: number): Date {
-  return new Date(Date.UTC(anchor.getUTCFullYear(), anchor.getUTCMonth() + months, 1));
+/**
+ * A whole number of days from a stay date, which stays a stay date.
+ *
+ * Added as a field rather than as milliseconds: the end of a month and the end
+ * of a year are `Date.UTC`'s problem, not this function's.
+ */
+export function shiftStayDays(date: Date, days: number): Date {
+  const day = toStayDate(date);
+  return new Date(Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate() + days));
 }
 
 export type GridSpan = {

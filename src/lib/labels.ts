@@ -17,7 +17,14 @@ import { useTranslations } from "next-intl";
  * says rather than as blank.
  */
 export function useEnumLabels<T extends string>(
-  group: "userRole" | "orgRole" | "roomStatus" | "mealPlan" | "dayRole" | "reservationStatus",
+  group:
+    | "userRole"
+    | "orgRole"
+    | "roomStatus"
+    | "mealPlan"
+    | "dayRole"
+    | "reservationStatus"
+    | "bookingView",
   values: readonly T[]
 ): Record<T, string> {
   const t = useTranslations("enums");

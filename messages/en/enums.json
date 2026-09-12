@@ -35,5 +35,10 @@
     "CHECKED_OUT": "Checked out",
     "CANCELLED": "Cancelled",
     "NO_SHOW": "No show"
+  },
+  "bookingView": {
+    "NEW": "New",
+    "CURRENT": "Current",
+    "ARCHIVE": "Archive"
   }
 }

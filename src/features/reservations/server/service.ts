@@ -1,4 +1,5 @@
 import "server-only";
+import type { Prisma } from "@/generated/prisma/client";
 import { InvalidError, PreconditionError } from "@/server/errors";
 import prisma from "@/server/db";
 import { personDisplayName } from "@/features/directory";
@@ -16,10 +17,13 @@ import {
   nightsOf,
   occupiesInventory,
   ReservationError,
+  searchTerms,
   spanInWindow,
+  statusesInView,
   toStayDate,
   type GridSpan,
   type Laned,
+  type ListReservationsInput,
   type StayRange,
 } from "../model";
 
@@ -69,6 +73,14 @@ export async function availability(
     roomTypeId?: number;
     from: Date;
     to: Date;
+    /**
+     * The caller's own hold, discounted rather than counted.
+     *
+     * A desk that holds a room and then books it must not be refused by its own
+     * claim — the hold exists to keep the room *for this booking*, and counting
+     * it here would make taking one strictly worse than taking none.
+     */
+    exceptHoldKey?: string;
   },
   scope?: AvailabilityScope
 ): Promise<NightAvailability[]> {
@@ -118,6 +130,7 @@ export async function availability(
         checkIn: { lt: to },
         checkOut: { gt: from },
         releaseAt: { gt: new Date() },
+        ...(args.exceptHoldKey ? { holdKey: { not: args.exceptHoldKey } } : {}),
       },
       select: { roomTypeId: true, checkIn: true, checkOut: true, quantity: true },
     }),
@@ -510,5 +523,122 @@ export async function frontDeskDay(args: {
     arrivals: ordered(DayRole.ARRIVAL),
     departures: ordered(DayRole.DEPARTURE),
     inHouse: ordered(DayRole.IN_HOUSE),
+  };
+}
+
+/**
+ * One word of a search, against everywhere a desk might know a booking from.
+ *
+ * A name, a room number and a reference are four relations and the caller knows
+ * exactly one of them, so the word is offered to all four rather than asking
+ * which kind it is.
+ */
+function matchesTerm(term: string): Prisma.ReservationWhereInput {
+  const like = { contains: term, mode: "insensitive" } as const;
+
+  return {
+    OR: [
+      { reference: like },
+      { booker: { OR: [{ firstName: like }, { lastName: like }] } },
+      { guests: { some: { person: { OR: [{ firstName: like }, { lastName: like }] } } } },
+      { stays: { some: { room: { number: like } } } },
+    ],
+  };
+}
+
+/**
+ * Bookings, found without knowing their dates.
+ *
+ * The grid is bounded by a window and cannot answer "where is the booking for
+ * the person on the phone". This is that question, and it is paginated by
+ * offset with a total rather than by a cursor because the table it feeds
+ * renders a page count.
+ */
+export async function listReservations(input: ListReservationsInput) {
+  const { filter, orderBy, pagination } = input;
+
+  // An explicit status list beats the tab it came from: a filter the desk set
+  // is more specific than the tab it set it in.
+  const statuses = filter?.status?.length
+    ? filter.status
+    : filter?.view
+      ? statusesInView(filter.view)
+      : undefined;
+
+  // One `some`, not two: a booking matches when a *single* stay satisfies both
+  // the type and the nights, which is what "a Double, that week" means.
+  const stay: Prisma.RoomStayWhereInput = {
+    ...(filter?.roomTypeId ? { roomTypeId: filter.roomTypeId } : {}),
+    ...(filter?.from && filter?.to
+      ? { checkIn: { lt: filter.to }, checkOut: { gt: filter.from } }
+      : {}),
+  };
+
+  const terms = searchTerms(filter?.search ?? "");
+
+  const where: Prisma.ReservationWhereInput = {
+    propertyId: input.propertyId,
+    ...(statuses ? { status: { in: [...statuses] } } : {}),
+    ...(Object.keys(stay).length > 0 ? { stays: { some: stay } } : {}),
+    // Every word must match something, or "Ada Lovelace" finds every Ada.
+    ...(terms.length > 0 ? { AND: terms.map(matchesTerm) } : {}),
+  };
+
+  const [rows, total] = await Promise.all([
+    prisma.reservation.findMany({
+      where,
+      orderBy: orderBy ? { [orderBy.field]: orderBy.direction } : { bookedAt: "desc" },
+      skip: pagination.skip,
+      take: pagination.take,
+      select: {
+        id: true,
+        publicId: true,
+        reference: true,
+        status: true,
+        bookedAt: true,
+        currencyCode: true,
+        totalMinor: true,
+        booker: { select: { firstName: true, lastName: true } },
+        stays: {
+          select: {
+            checkIn: true,
+            checkOut: true,
+            roomType: { select: { name: true } },
+            room: { select: { number: true } },
+          },
+          orderBy: { checkIn: "asc" },
+        },
+      },
+    }),
+    prisma.reservation.count({ where }),
+  ]);
+
+  return {
+    items: rows.map((row) => {
+      // A reservation arrives when its earliest stay does and ends when its
+      // last one does — the same reading `refuseStatusChange` makes.
+      const arrival = row.stays.at(0)?.checkIn ?? null;
+      const departure = row.stays
+        .map((s) => s.checkOut)
+        .reduce<Date | null>((latest, end) => (!latest || end > latest ? end : latest), null);
+
+      return {
+        id: row.id,
+        publicId: row.publicId,
+        reference: row.reference,
+        status: row.status,
+        bookedAt: row.bookedAt,
+        currencyCode: row.currencyCode,
+        totalMinor: row.totalMinor,
+        guestName: row.booker ? personDisplayName(row.booker) : null,
+        checkIn: arrival,
+        checkOut: departure,
+        nights: arrival && departure ? nightsBetween(arrival, departure) : 0,
+        roomCount: row.stays.length,
+        rooms: row.stays.map((s) => s.room?.number).filter((n): n is string => Boolean(n)),
+        roomTypes: [...new Set(row.stays.map((s) => s.roomType.name))],
+      };
+    }),
+    total,
   };
 }

@@ -4,6 +4,7 @@ import { test } from "node:test";
 import {
   addedNights,
   appearsOnGrid,
+  BOOKING_VIEW_VALUES,
   assignLanes,
   DayRole,
   dayRoleOf,
@@ -11,9 +12,9 @@ import {
   canTransition,
   GRID_MAX_NIGHTS,
   gridWindowOf,
+  GRID_WINDOW_NIGHTS,
   isTerminal,
   laneCount,
-  monthWindowOf,
   isValidStayRange,
   nextStatuses,
   nightsBetween,
@@ -23,11 +24,15 @@ import {
   refuseStayMove,
   RESERVATION_STATUS_VALUES,
   ReservationStatus,
-  shiftMonths,
+  shiftStayDays,
+  searchTerms,
+  SEARCH_TERM_LIMIT,
   spanInWindow,
+  statusesInView,
   staysOverlap,
   todayAt,
   toStayDate,
+  windowFrom,
 } from "./index";
 
 const d = (day: number) => new Date(Date.UTC(2026, 8, day));
@@ -349,16 +354,51 @@ test("the grid draws everything a cancellation did not release", () => {
   assert.equal(appearsOnGrid(ReservationStatus.NO_SHOW), false);
 });
 
-test("a month is a window, and moving by one crosses the year", () => {
-  assert.deepEqual(monthWindowOf(new Date(Date.UTC(2026, 8, 17))), {
-    from: new Date(Date.UTC(2026, 8, 1)),
-    to: new Date(Date.UTC(2026, 9, 1)),
+test("a window begins where it is anchored, not on the 1st", () => {
+  // The point of the change: a stay from the 29th to the 3rd is drawn whole,
+  // where a calendar month would have cut it at the boundary.
+  assert.deepEqual(windowFrom(new Date(Date.UTC(2026, 8, 17)), 31), {
+    from: new Date(Date.UTC(2026, 8, 17)),
+    to: new Date(Date.UTC(2026, 9, 18)),
   });
-  assert.deepEqual(shiftMonths(new Date(Date.UTC(2026, 11, 5)), 1), new Date(Date.UTC(2027, 0, 1)));
+
+  // An anchor is a day, whatever time of day it arrives as.
+  assert.deepEqual(windowFrom(new Date(Date.UTC(2026, 8, 17, 22, 30)), 14).from, d(17));
+});
+
+test("a window is never shorter than a night or longer than the cap", () => {
+  const nights = (length: number) => {
+    const window = windowFrom(d(1), length);
+    return nightsBetween(window.from, window.to);
+  };
+
+  assert.equal(nights(0), 1);
+  assert.equal(nights(-5), 1);
+  assert.equal(nights(GRID_MAX_NIGHTS + 40), GRID_MAX_NIGHTS);
+
+  // Every length the screen offers is one the query will accept.
+  for (const length of GRID_WINDOW_NIGHTS) {
+    const window = windowFrom(d(1), length);
+    assert.notEqual(gridWindowOf(window.from, window.to), null);
+  }
+});
+
+test("stepping a day crosses the month, and stepping a week crosses the year", () => {
   assert.deepEqual(
-    shiftMonths(new Date(Date.UTC(2026, 0, 5)), -1),
-    new Date(Date.UTC(2025, 11, 1))
+    shiftStayDays(new Date(Date.UTC(2026, 8, 30)), 1),
+    new Date(Date.UTC(2026, 9, 1))
   );
+  assert.deepEqual(
+    shiftStayDays(new Date(Date.UTC(2026, 11, 29)), 7),
+    new Date(Date.UTC(2027, 0, 5))
+  );
+  assert.deepEqual(
+    shiftStayDays(new Date(Date.UTC(2026, 0, 3)), -7),
+    new Date(Date.UTC(2025, 11, 27))
+  );
+
+  // A time of day does not survive a step: a window is anchored on a day.
+  assert.deepEqual(shiftStayDays(new Date(Date.UTC(2026, 8, 1, 18, 0)), 0), d(1));
 });
 
 test("a day sorts a stay into exactly one of the desk's three lists", () => {
@@ -499,4 +539,27 @@ test("only genuinely new nights are asked about, so a stay never refuses itself"
     march(20),
     march(21),
   ]);
+});
+
+test("the three tabs partition the six states", () => {
+  const seen = BOOKING_VIEW_VALUES.flatMap((view) => [...statusesInView(view)]);
+
+  // Every status is reachable, and none is reachable twice — a desk working
+  // down the tabs cannot miss a booking or meet it in two of them.
+  assert.deepEqual(seen.toSorted(), [...RESERVATION_STATUS_VALUES].toSorted());
+  assert.equal(new Set(seen).size, seen.length);
+});
+
+test("an unrecognised tab shows everything rather than nothing", () => {
+  // A hand-edited URL must not read as "this property has no bookings".
+  assert.deepEqual([...statusesInView("nonsense")], RESERVATION_STATUS_VALUES);
+});
+
+test("a search is the words that must all match, and there are not many of them", () => {
+  assert.deepEqual(searchTerms("  Ada   Lovelace "), ["Ada", "Lovelace"]);
+  assert.deepEqual(searchTerms("101"), ["101"]);
+  assert.deepEqual(searchTerms("   "), []);
+
+  // Each word is its own OR across four relations, so the count is bounded.
+  assert.equal(searchTerms("a b c d e f g").length, SEARCH_TERM_LIMIT);
 });

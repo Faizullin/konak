@@ -22,14 +22,50 @@ export const createReservationSchema = z.object({
   adults: z.number().min(1).max(20).default(1),
   children: z.number().min(0).max(20).default(0),
   bookerPersonId: z.number().optional(),
+  /**
+   * A guest who is not in the directory yet, named here instead.
+   *
+   * The same pair a walk-in takes, and written the same way — most bookings are
+   * for somebody the hotel has never met, and making the desk create a person
+   * first is a second form for no reason.
+   */
+  firstName: z.string().min(1, "first_name_required").max(80).optional(),
+  lastName: z.string().min(1, "last_name_required").max(80).optional(),
+  email: z.email("email_invalid").optional().or(z.literal("")),
+  phone: z.string().max(40).optional(),
   companyId: z.number().optional(),
   /** Assigned now only if the desk already knows the room. */
   roomId: z.number().optional(),
+  /**
+   * The hold this booking is consuming, if the desk took one while searching.
+   *
+   * Discounted from the availability check and deleted in the same transaction
+   * that writes the booking — a hold that outlives the thing it was held for is
+   * a room nobody can sell for the next fifteen minutes.
+   */
+  holdKey: z.string().min(8).max(128).optional(),
   notes: z.string().max(2000).optional(),
   source: z.enum(["DIRECT", "WIDGET", "PHONE", "WALK_IN", "OTA"]).default("DIRECT"),
 });
 
 export type CreateReservationInput = z.infer<typeof createReservationSchema>;
+
+/**
+ * The booking dialog's half: the property comes from the route, the source is
+ * always the desk, and the hold key is the dialog's own bookkeeping.
+ *
+ * Defaults are re-declared rather than inherited. A Zod `.default()` beats
+ * `useForm`'s `defaultValues` and resets the field as it is typed into — so a
+ * form schema derived from one has to strip it.
+ */
+export const bookingFormSchema = createReservationSchema
+  .omit({ propertyId: true, source: true, holdKey: true, adults: true, children: true })
+  .extend({
+    adults: z.number().min(1).max(20),
+    children: z.number().min(0).max(20),
+  });
+
+export type BookingFormInput = z.infer<typeof bookingFormSchema>;
 
 export const setReservationStatusSchema = z.object({
   propertyId: z.number(),
