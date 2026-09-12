@@ -191,10 +191,13 @@ Three gestures, and each is a distinct commercial act:
 - **Drag an edge** — the stay lengthens or shortens. One date changes, the room
   does not.
 
-A move that would put two guests in one room on one night is refused before it
-is written, with the reason shown where the drag ended. Two bookings may not
-share a night in the same room — half-open, so the same-day turnover above still
-passes.
+A move that would put two guests in one room on one night is refused, with the
+reason shown where the drag ended. **The refusal is the database's**: an
+exclusion constraint over the room and the night range, which is the only answer
+that stays true when two clerks drag at once. What the application refuses
+before the write is everything the constraint cannot know — that an arrived
+guest arrived when they arrived, that nights already gone cannot be moved into.
+Half-open, so the same-day turnover above still passes.
 
 Cancelled and no-show bookings are not drawn. Drawing them would say a free room
 is taken, and the dangerous failure on this screen is hiding a booking that
@@ -372,8 +375,16 @@ the export and the year-end.
 The rules that hold everywhere, collected. Each is refused with a reason, and
 each has a commercial consequence behind it.
 
-1. **Two bookings may not share a night in one room.** Half-open, so same-day
-   turnover is not an overlap.
+1. **Two bookings that *hold* a room may not share a night in it.** Half-open,
+   so same-day turnover is not an overlap. Confirmed, checked-in and
+   checked-out hold; cancelled and no-show released what they held, and an
+   enquiry never held it — so none of those three is constrained. This is the
+   database's own `WHERE`, not a reading of it.
+
+   The rule is about a **room**; the overbooking allowance in §14 is about a
+   **type**. They do not conflict: a type may be sold beyond its count while no
+   room holds two guests, and that gap is exactly what the unassigned band
+   makes visible.
 2. **A stay is at least one night.**
 3. **A booking may not check in without an assigned room.**
 4. **A booking may not check in before its arrival day, or after its last

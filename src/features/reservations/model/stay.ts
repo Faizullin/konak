@@ -85,3 +85,22 @@ export function nightsOf(range: StayRange): Date[] {
 export function availableRooms(total: number, blocked: number, occupied: number, held: number) {
   return Math.max(0, total - blocked - occupied - held);
 }
+
+/**
+ * A stay date as `<input type="date">` spells it, and back.
+ *
+ * By **fields**, never by instant. A stay date is UTC midnight and the input is
+ * a bare `YYYY-MM-DD`; parsing one as a local instant lands on the day before
+ * east of Greenwich, which is a desk jumping to the wrong date and never
+ * knowing why.
+ */
+export function toDayInput(stay: Date): string {
+  return toStayDate(stay).toISOString().slice(0, 10);
+}
+
+/** `null` for an empty or half-typed input, which is every keystroke until the last. */
+export function fromDayInput(value: string): Date | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}

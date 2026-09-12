@@ -18,6 +18,7 @@ import {
   isValidStayRange,
   nextStatuses,
   nightsBetween,
+  fromDayInput,
   nightsOf,
   occupiesInventory,
   refuseStatusChange,
@@ -31,6 +32,7 @@ import {
   statusesInView,
   staysOverlap,
   todayAt,
+  toDayInput,
   toStayDate,
   windowFrom,
 } from "./index";
@@ -562,4 +564,21 @@ test("a search is the words that must all match, and there are not many of them"
 
   // Each word is its own OR across four relations, so the count is bounded.
   assert.equal(searchTerms("a b c d e f g").length, SEARCH_TERM_LIMIT);
+});
+
+test("a day survives the round trip through a date input", () => {
+  assert.equal(toDayInput(d(17)), "2026-09-17");
+  assert.deepEqual(fromDayInput("2026-09-17"), d(17));
+
+  // A time of day does not survive: the input holds a day, not an instant.
+  assert.equal(toDayInput(new Date(Date.UTC(2026, 8, 17, 23, 45))), "2026-09-17");
+});
+
+test("a half-typed date is not a date", () => {
+  // `<input type="date">` reports every keystroke, and "2026-0" parsed
+  // leniently would jump the grid to somewhere nobody asked for.
+  assert.equal(fromDayInput(""), null);
+  assert.equal(fromDayInput("2026-0"), null);
+  assert.equal(fromDayInput("17/09/2026"), null);
+  assert.equal(fromDayInput("2026-13-01"), null);
 });

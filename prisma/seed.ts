@@ -224,13 +224,26 @@ async function main() {
     },
   });
 
-  // Date-only: UTC midnight of the property-local day.
-  const day = (offset: number) => {
-    const d = new Date(Date.UTC(2026, 8, 14 + offset));
-    return d;
-  };
+  /**
+   * Date-only: UTC midnight of the property-local day, counted from **today**.
+   *
+   * Fixed dates rot. Three nights in September 2026 left the demo with a grid of
+   * empty columns the moment that week passed — a night with no
+   * `RoomTypeInventory` row is nought rooms, deliberately, so an undeclared day
+   * is not on sale and the booking dialog honestly reports nothing free.
+   */
+  const today = new Date();
+  const day = (offset: number) =>
+    new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate() + offset));
 
-  for (let i = 0; i < 3; i += 1) {
+  /**
+   * A quarter ahead, which is longer than the grid's own 62-night cap and about
+   * as far out as a hotel takes bookings at the desk. Yesterday too, so the
+   * arithmetic either side of today is visible.
+   */
+  const SEED_NIGHTS = 90;
+
+  for (let i = -1; i < SEED_NIGHTS; i += 1) {
     await prisma.rateCalendar.upsert({
       where: {
         ratePlanId_roomTypeId_date: {

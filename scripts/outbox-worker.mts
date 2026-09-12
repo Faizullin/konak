@@ -6,6 +6,7 @@ import {
   OUTBOX_HANDLERS,
 } from "../src/features/platform/server/outbox";
 import { countSweepable, sweepStorage } from "../src/features/platform/server/storage-sweep";
+import { countExpiredHolds, sweepExpiredHolds } from "../src/features/reservations/server/service";
 
 /**
  * The worker that drains `OutboxTask`.
@@ -49,9 +50,10 @@ async function once() {
   const due = await report();
 
   if (!commit) {
-    const [abandoned, expired] = await Promise.all([
+    const [abandoned, expired, holds] = await Promise.all([
       countSweepable("uploads"),
       countSweepable("retention"),
+      countExpiredHolds(),
     ]);
     console.log(
       due === 0
@@ -59,8 +61,9 @@ async function once() {
         : `Dry run: would claim up to ${Math.min(due, limit)} task(s).`
     );
     console.log(
-      `Dry run: would sweep ${abandoned} abandoned upload(s) and ${expired} past retention.` +
-        (due + abandoned + expired > 0 ? " Re-run with --commit." : "")
+      `Dry run: would sweep ${abandoned} abandoned upload(s), ${expired} past retention ` +
+        `and ${holds} expired hold(s).` +
+        (due + abandoned + expired + holds > 0 ? " Re-run with --commit." : "")
     );
     return;
   }
@@ -71,8 +74,11 @@ async function once() {
   );
 
   const swept = await sweepStorage();
+  // Holds are rows only — no bytes, so nothing can be left for the next pass.
+  const holds = await sweepExpiredHolds();
   console.log(
-    `swept: ${swept.uploads.removed} abandoned upload(s), ${swept.retention.removed} past retention` +
+    `swept: ${swept.uploads.removed} abandoned upload(s), ${swept.retention.removed} past retention, ` +
+      `${holds.removed} expired hold(s)` +
       (swept.uploads.failed + swept.retention.failed > 0
         ? ` · ${swept.uploads.failed + swept.retention.failed} left for the next pass`
         : "")

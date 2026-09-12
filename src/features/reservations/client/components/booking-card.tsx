@@ -15,12 +15,14 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { personDisplayName } from "@/features/directory";
+import Link from "next/link";
 import {
   nextStatuses,
   nightsBetween,
   refuseStatusChange,
   RESERVATION_STATUS_VALUES,
   ReservationStatus,
+  toDayInput,
   todayAt,
 } from "@/features/reservations";
 import { useErrorHandlers, useRefusalText } from "@/lib/errors";
@@ -53,10 +55,13 @@ export function BookingCard({
   propertyId,
   publicId,
   timezone,
+  gridHref,
 }: {
   propertyId: number;
   publicId: string;
   timezone: string;
+  /** The desk, so a booking can be seen in its own week rather than described. */
+  gridHref: string;
 }) {
   const t = useTranslations("reservations");
   const locale = useLocale();
@@ -89,6 +94,8 @@ export function BookingCard({
 
   return (
     <div className="space-y-8">
+      <Summary booking={data} locale={locale} gridHref={gridHref} />
+
       <BookingActions
         booking={data}
         today={today}
@@ -289,5 +296,67 @@ function Money({ booking, locale }: { booking: Booking; locale: string }) {
           columns, and nothing on this screen can move them. */}
       <p className="text-muted-foreground text-xs">{t("card.folioLater")}</p>
     </section>
+  );
+}
+
+/**
+ * The booking in one line.
+ *
+ * Most bookings are one room for a few nights, and a table, a money section and
+ * two headings is a page for a fact that fits in a sentence. The sections stay
+ * for the bookings that need them; this is for the ones that do not.
+ */
+function Summary({
+  booking,
+  locale,
+  gridHref,
+}: {
+  booking: Booking;
+  locale: string;
+  gridHref: string;
+}) {
+  const t = useTranslations("reservations");
+  const dates = useMemo(
+    () => new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", timeZone: "UTC" }),
+    [locale]
+  );
+
+  // A reservation arrives when its earliest stay does and ends when its last
+  // one does — the same reading the refusals make.
+  const arrival = booking.stays.at(0)?.checkIn ?? null;
+  const departure = booking.stays.reduce<Date | null>(
+    (latest, stay) => (!latest || stay.checkOut > latest ? stay.checkOut : latest),
+    null
+  );
+  const rooms = booking.stays.map((stay) => stay.room?.number).filter(Boolean);
+
+  return (
+    <div className="text-muted-foreground flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+      {arrival && departure && (
+        <span className="text-foreground font-medium whitespace-nowrap">
+          {dates.format(arrival)} → {dates.format(departure)}
+        </span>
+      )}
+      {arrival && departure && (
+        <span>{t("list.nightCount", { nights: nightsBetween(arrival, departure) })}</span>
+      )}
+      <span>
+        {rooms.length > 0
+          ? rooms.join(", ")
+          : [...new Set(booking.stays.map((stay) => stay.roomType.name))].join(", ")}
+      </span>
+      <span>{formatMoney(booking.totalMinor, booking.currencyCode, locale)}</span>
+
+      {/* "Show me this on the grid" is the question a list cannot answer and a
+          date-anchored window now can. */}
+      {arrival && (
+        <Link
+          href={`${gridHref}?on=${toDayInput(arrival)}`}
+          className="ml-auto underline-offset-4 hover:underline"
+        >
+          {t("card.showOnGrid")}
+        </Link>
+      )}
+    </div>
   );
 }

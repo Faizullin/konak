@@ -19,7 +19,9 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   bookingFormSchema,
+  fromDayInput,
   shiftStayDays,
+  toDayInput,
   todayAt,
   type BookingFormInput,
 } from "@/features/reservations";
@@ -197,8 +199,8 @@ export const BookingFormNiceDialog = NiceModal.create(
             <Input
               id={name}
               type="date"
-              value={asInputValue(field.value)}
-              onChange={(event) => field.onChange(fromInputValue(event.target.value))}
+              value={field.value instanceof Date ? toDayInput(field.value) : ""}
+              onChange={(event) => field.onChange(fromDayInput(event.target.value) ?? undefined)}
               disabled={create.isPending}
             />
             <FieldError errors={[fieldState.error]} />
@@ -336,12 +338,6 @@ export const BookingFormNiceDialog = NiceModal.create(
     );
   }
 );
-
-/** `<input type="date">` speaks `YYYY-MM-DD`; a stay date is UTC midnight. */
-const asInputValue = (value: unknown) =>
-  value instanceof Date ? value.toISOString().slice(0, 10) : "";
-
-const fromInputValue = (value: string) => (value ? new Date(`${value}T00:00:00.000Z`) : undefined);
 
 function TextField({
   control,

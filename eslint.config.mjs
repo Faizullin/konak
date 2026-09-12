@@ -73,6 +73,17 @@ const eslintConfig = [
     },
   },
   {
+    /**
+     * Playwright's fixtures take a callback named `use`, and the React plugin
+     * reads that as the `use` hook being called outside a component. It is a
+     * false positive on a file that never renders anything.
+     */
+    files: ["tests/e2e/**/*.ts", "playwright.config.ts"],
+    rules: {
+      "react-hooks/rules-of-hooks": "off",
+    },
+  },
+  {
     ignores: [
       "node_modules/**",
       ".next/**",

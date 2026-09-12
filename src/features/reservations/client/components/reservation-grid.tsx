@@ -3,22 +3,33 @@
 import { useEnumLabels } from "@/lib/labels";
 import { useLocale, useTranslations } from "next-intl";
 import NiceModal from "@ebay/nice-modal-react";
-import dynamic from "next/dynamic";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import {
-  CalendarIcon,
   ChevronLeft,
   ChevronRight,
   ChevronsLeft,
+  ChevronDown,
   ChevronsRight,
+  CircleQuestionMark,
   Plus,
   Search,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
-import { Fragment, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -32,14 +43,15 @@ import { cn } from "@/lib/utils";
 import { ROOM_STATUS_VALUES, RoomStatus } from "@/features/properties";
 import {
   assignLanes,
-  DEFAULT_WINDOW_NIGHTS,
   GRID_WINDOW_NIGHTS,
   laneCount,
   nextStatuses,
   refuseStatusChange,
   RESERVATION_STATUS_VALUES,
   ReservationStatus,
+  fromDayInput,
   shiftStayDays,
+  toDayInput,
   spanInWindow,
   todayAt,
   windowFrom,
@@ -47,6 +59,7 @@ import {
 } from "@/features/reservations";
 import { BookingFormNiceDialog } from "./booking-form-nice-dialog";
 import { useBookingActions } from "../hooks/use-booking-actions";
+import { DENSITY_VALUES, useDeskPreferences, type Density } from "../hooks/use-desk-preferences";
 import type { GeneralRouterOutputs } from "@/server/types";
 import { trpc } from "@/utils/trpc";
 
@@ -72,9 +85,21 @@ const asDate = (value: unknown) => (value instanceof Date ? value : new Date(Str
 /** Matches the day lists: the two surfaces read the same stays. */
 const GRID_REFRESH_MS = 30_000;
 
-const LABEL_WIDTH = "10rem";
-const NIGHT_WIDTH = 2.5;
-const LANE_HEIGHT = "1.75rem";
+/**
+ * The grid's three measurements, as custom properties rather than constants.
+ *
+ * A row, a label and a night are read by four components at three depths, and
+ * threading a density through all of them is prop drilling for a number that
+ * CSS already inherits. Set once on the scroll container, read with `var()`.
+ *
+ * `comfortable` is what the grid has always been, so nothing moves by default.
+ * `compact` is the same screen for a property with forty rooms rather than
+ * four — the reference trades days for no scroll, and this trades height.
+ */
+const DENSITY: Record<Density, { label: string; night: string; lane: string }> = {
+  comfortable: { label: "10rem", night: "2.5rem", lane: "1.75rem" },
+  compact: { label: "7rem", night: "1.75rem", lane: "1.25rem" },
+};
 
 /**
  * Temporary, and Phase 12 replaces the palette. What is **not** temporary is
@@ -159,32 +184,22 @@ function useGridFormats() {
   );
 }
 
-/**
- * The picker is opened once a navigation at most; the grid is opened all day.
- *
- * Measured: `react-day-picker` is **87 kB** of this route's first load, for a
- * popover that is closed. Loading it when it opens is the difference between
- * paying for the calendar and paying for the button that reveals it.
- */
-const Calendar = dynamic(() => import("@/components/ui/calendar").then((m) => m.Calendar), {
-  ssr: false,
-  loading: () => <Skeleton className="h-72 w-64" />,
-});
-
 const isWeekend = (date: Date) => date.getUTCDay() === 0 || date.getUTCDay() === 6;
 
 /**
- * The calendar works in the browser's local time; a stay date is UTC midnight.
- *
- * Converted by their *fields*, never by their instant — east of Greenwich an
- * instant conversion lands on the day before, which is a desk jumping to the
+ * `<input type="date">` speaks `YYYY-MM-DD` and a stay date is UTC midnight, so
+ * the two convert by their *fields*, never by their instant — east of Greenwich
+ * an instant conversion lands on the day before, which is a desk jumping to the
  * wrong date and never knowing why.
+ *
+ * The native input rather than a calendar popover, deliberately: it costs no
+ * bundle where `react-day-picker` cost this route 87 kB, it takes its first day
+ * of the week and its own formatting from the reader's system rather than from
+ * us, it is keyboard-reachable without any work — this screen's whole point —
+ * and on a phone it opens the platform's picker, which is better than anything
+ * we would draw. Looks are Phase 12's; this is the half that is not about
+ * looks. The conversions are `toDayInput`/`fromDayInput` in `model/`.
  */
-const asStayDate = (local: Date) =>
-  new Date(Date.UTC(local.getFullYear(), local.getMonth(), local.getDate()));
-
-const asLocalDate = (stay: Date) =>
-  new Date(stay.getUTCFullYear(), stay.getUTCMonth(), stay.getUTCDate());
 
 /** Every stay on the grid, whichever row or band it is drawn in. */
 function everyStay(grid: Grid): GridStay[] {
@@ -251,6 +266,7 @@ function StayChip({
   onSelect,
   onResize,
   selected,
+  uncommitted,
   disabled,
 }: {
   stay: GridStay;
@@ -259,6 +275,8 @@ function StayChip({
   onSelect: (stayId: number) => void;
   onResize: (stay: GridStay, edge: "start" | "end", days: number) => void;
   selected: boolean;
+  /** Moved by the keyboard and not yet sent — `Enter` sends it. */
+  uncommitted?: boolean;
   disabled: boolean;
 }) {
   const statusLabels = useEnumLabels("reservationStatus", RESERVATION_STATUS_VALUES);
@@ -340,7 +358,10 @@ function StayChip({
         // A clipped edge is not the real one, so it does not get a rounded cap.
         stay.continuesBefore && "rounded-l-none border-l-0",
         stay.continuesAfter && "rounded-r-none border-r-0",
-        selected && "ring-ring ring-2 ring-offset-1"
+        selected && "ring-ring ring-2 ring-offset-1",
+        // A chip the keyboard moved looks exactly like one that was committed,
+        // and the only difference that matters is whether it has been sent.
+        uncommitted && "ring-ring ring-dashed border-dashed opacity-70 ring-2 ring-offset-1"
       )}
       disabled={disabled}
     >
@@ -419,8 +440,8 @@ function NightArea({
     <div
       className={cn("relative grid flex-1", className)}
       style={{
-        gridTemplateColumns: `repeat(${nights.length}, minmax(${NIGHT_WIDTH}rem, 1fr))`,
-        gridTemplateRows: `repeat(${Math.max(lanes, 1)}, ${LANE_HEIGHT})`,
+        gridTemplateColumns: `repeat(${nights.length}, minmax(var(--grid-night), 1fr))`,
+        gridTemplateRows: `repeat(${Math.max(lanes, 1)}, var(--grid-lane))`,
       }}
       onDragOver={onDropStay ? (event) => event.preventDefault() : undefined}
       // The column is read from the pointer rather than from a per-cell
@@ -486,7 +507,11 @@ function StayActions({
   const reasons = [...new Set(actions.flatMap((action) => refusalText(action.refusal) ?? []))];
 
   return (
-    <div className="bg-card flex flex-wrap items-center gap-x-3 gap-y-2 rounded border px-3 py-2">
+    <div
+      role="group"
+      aria-label={t("grid.selectedBooking")}
+      className="bg-card flex flex-wrap items-center gap-x-3 gap-y-2 rounded border px-3 py-2"
+    >
       <span className="text-sm font-medium">{stay.guestName ?? stay.reference}</span>
       <span className="text-muted-foreground text-xs">
         {stay.reference} · {statusLabels[stay.status as ReservationStatus]} ·{" "}
@@ -533,7 +558,7 @@ function StayActions({
 function RowLabel({ children, className }: { children: ReactNode; className?: string }) {
   return (
     <div
-      style={{ width: LABEL_WIDTH }}
+      style={{ width: "var(--grid-label)" }}
       className={cn(
         "bg-background sticky left-0 z-20 flex shrink-0 items-center gap-2 border-r px-2 text-sm",
         className
@@ -561,15 +586,31 @@ export function ReservationGrid({
   const formats = useGridFormats();
   const t = useTranslations("reservations");
   const { handleError } = useErrorHandlers();
-  // Today, not the 1st: a desk opening on the 28th wants the days after it.
-  const [anchor, setAnchor] = useState(() => todayAt(timezone));
-  const [windowNights, setWindowNights] = useState<GridWindowNights>(DEFAULT_WINDOW_NIGHTS);
+  /**
+   * Where the window starts. Today by default — a desk opening on the 28th
+   * wants the days after it — and `?on=` when something sent the desk here to
+   * look at a particular date, which is what the booking card's "show on the
+   * grid" is. Read once, as the initial value: it is a starting point, not a
+   * binding, so stepping away from it must not be undone by a re-render.
+   */
+  const searchParams = useSearchParams();
+  const [anchor, setAnchor] = useState(
+    () => fromDayInput(searchParams.get("on") ?? "") ?? todayAt(timezone)
+  );
+  const { preferences, update, toggleCollapsed } = useDeskPreferences(propertyId);
   const [refusal, setRefusal] = useState<string | null>(null);
   const [dragging, setDragging] = useState<{ id: number; grabNight: number } | null>(null);
   const [selectedId, setSelectedId] = useState<number | null>(null);
+  /** A keyboard change not yet sent — see `nudge` below. */
+  const [pending, setPending] = useState<{
+    stayId: number;
+    checkIn: Date;
+    checkOut: Date;
+    roomId: number | null;
+  } | null>(null);
   const today = useMemo(() => todayAt(timezone), [timezone]);
 
-  const view = windowFrom(anchor, windowNights);
+  const view = windowFrom(anchor, preferences.windowNights);
   const utils = trpc.useUtils();
   const input = { propertyId, from: view.from, to: view.to };
 
@@ -583,6 +624,23 @@ export function ReservationGrid({
   });
 
   /**
+   * What is drawn: the server's answer, plus a keyboard change not yet sent.
+   *
+   * Through `rescheduleStay`, the same re-laning an optimistic drag uses — so a
+   * previewed move lands in the right room, at the right lane, and a chip that
+   * would overlap stacks rather than hiding what it covers.
+   */
+  const shown = useMemo(() => {
+    if (!data || !pending) return data;
+    return rescheduleStay(
+      data,
+      pending.stayId,
+      { checkIn: pending.checkIn, checkOut: pending.checkOut },
+      pending.roomId
+    );
+  }, [data, pending]);
+
+  /**
    * The payload grouped once, rather than scanned per cell: the counts row asks
    * for a type and a night, and `find` over the whole availability array for
    * every one of them is the window's length times the number of types.
@@ -592,18 +650,18 @@ export function ReservationGrid({
     const bands = new Map<number, Grid["unassigned"][number]>();
     const nightly = new Map<string, Grid["availability"][number]>();
 
-    for (const room of data?.rooms ?? []) {
+    for (const room of shown?.rooms ?? []) {
       const drawn = rooms.get(room.roomTypeId);
       if (drawn) drawn.push(room);
       else rooms.set(room.roomTypeId, [room]);
     }
-    for (const band of data?.unassigned ?? []) bands.set(band.roomTypeId, band);
-    for (const row of data?.availability ?? []) {
+    for (const band of shown?.unassigned ?? []) bands.set(band.roomTypeId, band);
+    for (const row of shown?.availability ?? []) {
       nightly.set(`${row.roomTypeId}:${row.date.getTime()}`, row);
     }
 
     return { rooms, bands, nightly };
-  }, [data]);
+  }, [shown]);
 
   const assign = trpc.reservation.assignRoom.useMutation({
     onMutate: async (variables) => {
@@ -676,11 +734,16 @@ export function ReservationGrid({
     },
   });
 
-  const stayById = (id: number) =>
-    [
-      ...(data?.rooms.flatMap((row) => row.stays) ?? []),
-      ...(data?.unassigned.flatMap((band) => band.stays) ?? []),
-    ].find((stay) => stay.id === id);
+  // Memoised because the keyboard handler closes over it: recreated each
+  // render, it would rebind the window listener on every keystroke.
+  const stayById = useCallback(
+    (id: number) =>
+      [
+        ...(data?.rooms.flatMap((row) => row.stays) ?? []),
+        ...(data?.unassigned.flatMap((band) => band.stays) ?? []),
+      ].find((stay) => stay.id === id),
+    [data]
+  );
 
   /**
    * A drop is one of two decisions, and which one is arithmetic.
@@ -725,22 +788,127 @@ export function ReservationGrid({
 
   // A status belongs to the booking, not to one of its rooms, so acting on a
   // chip acts on the reservation behind it.
+  /**
+   * The three gestures, without a mouse.
+   *
+   * Assignment, moving and resizing were drag-only, and a desk that works fast
+   * works on a keyboard. Arrows build a *pending* change rather than sending
+   * one per keypress — a drag is one mutation for the whole gesture and this
+   * has to be too, or holding an arrow for five nights is five refusals in a
+   * row. `Enter` sends it, `Escape` puts it back.
+   */
+  /**
+   * Every row a stay can land on, in the order they are drawn: each type's
+   * unassigned band, then its rooms. Up and down step through this, so the
+   * keyboard reaches the band exactly as a drag does.
+   */
+  const targets = useMemo(() => {
+    const rows: { roomId: number | null; roomTypeId: number }[] = [];
+    for (const type of data?.roomTypes ?? []) {
+      rows.push({ roomId: null, roomTypeId: type.id });
+      for (const room of byType.rooms.get(type.id) ?? []) {
+        rows.push({ roomId: room.roomId, roomTypeId: type.id });
+      }
+    }
+    return rows;
+  }, [data, byType]);
+
+  const nudge = useCallback(
+    (event: KeyboardEvent) => {
+      if (selectedId === null) return;
+      const stay = pending ? { ...stayById(selectedId), ...pending } : stayById(selectedId);
+      if (!stay?.id) return;
+
+      const from = pending ?? {
+        stayId: selectedId,
+        checkIn: stay.checkIn,
+        checkOut: stay.checkOut,
+        roomId: stay.roomId,
+      };
+
+      const step = (days: number, edge: boolean) =>
+        setPending({
+          ...from,
+          checkIn: edge ? from.checkIn : shiftStayDays(from.checkIn, days),
+          checkOut: shiftStayDays(from.checkOut, days),
+        });
+
+      const row = (delta: number) => {
+        // Only within the stay's own type: a room of another category is a
+        // different thing sold, not a different row.
+        const own = targets.filter((target) => target.roomTypeId === stay.roomTypeId);
+        const at = own.findIndex((target) => target.roomId === from.roomId);
+        const next = own[Math.min(Math.max(at + delta, 0), own.length - 1)];
+        if (next) setPending({ ...from, roomId: next.roomId });
+      };
+
+      switch (event.key) {
+        case "ArrowLeft":
+          step(-1, event.shiftKey);
+          break;
+        case "ArrowRight":
+          step(1, event.shiftKey);
+          break;
+        case "ArrowUp":
+          row(-1);
+          break;
+        case "ArrowDown":
+          row(1);
+          break;
+        case "Enter":
+          if (pending) {
+            move.mutate({
+              propertyId,
+              stayId: pending.stayId,
+              checkIn: pending.checkIn,
+              checkOut: pending.checkOut,
+              roomId: pending.roomId,
+            });
+            setPending(null);
+          }
+          return;
+        case "Escape":
+          // One press undoes the pending change, a second lets the chip go.
+          if (pending) setPending(null);
+          else setSelectedId(null);
+          return;
+        default:
+          return;
+      }
+
+      // Only now: a key this does not handle must still scroll the page.
+      event.preventDefault();
+    },
+    [selectedId, pending, targets, move, propertyId, stayById]
+  );
+
+  useEffect(() => {
+    if (selectedId === null) return;
+    window.addEventListener("keydown", nudge);
+    return () => window.removeEventListener("keydown", nudge);
+  }, [selectedId, nudge]);
+
+  // A selection that goes away takes its half-made change with it.
+  useEffect(() => {
+    if (selectedId === null) setPending(null);
+  }, [selectedId]);
+
   const act = async (stay: GridStay, status: ReservationStatus) => {
     if (!(await confirmed(status))) return;
     setStatus.mutate({ propertyId, id: stay.reservationId, status });
   };
 
-  const selected = data
+  const selected = shown
     ? [
-        ...data.rooms.flatMap((row) => row.stays.map((stay) => ({ stay, room: row.number }))),
-        ...data.unassigned.flatMap((band) =>
+        ...shown.rooms.flatMap((row) => row.stays.map((stay) => ({ stay, room: row.number }))),
+        ...shown.unassigned.flatMap((band) =>
           band.stays.map((stay) => ({ stay, room: null as string | null }))
         ),
       ].find((entry) => entry.stay.id === selectedId)
     : undefined;
 
-  const nights = data?.window.nights ?? [];
-  const width = `calc(${LABEL_WIDTH} + ${nights.length * NIGHT_WIDTH}rem)`;
+  const nights = shown?.window.nights ?? [];
+  const width = `calc(var(--grid-label) + ${nights.length} * var(--grid-night))`;
   const lastNight = shiftStayDays(view.to, -1);
 
   return (
@@ -784,24 +952,23 @@ export function ReservationGrid({
 
         {/* Reaching next March was eleven clicks. The window is an anchor now,
             so it can simply be said. */}
-        <Popover>
-          <PopoverTrigger render={<Button variant="outline" size="sm" />}>
-            <CalendarIcon />
-            {formats.header.formatRange(view.from, lastNight)}
-          </PopoverTrigger>
-          <PopoverContent className="w-auto p-0" align="start">
-            <Calendar
-              autoFocus
-              mode="single"
-              selected={asLocalDate(anchor)}
-              onSelect={(picked) => picked && setAnchor(asStayDate(picked))}
-            />
-          </PopoverContent>
-        </Popover>
+        <Input
+          type="date"
+          aria-label={t("grid.jumpToDate")}
+          className="h-8 w-40"
+          value={toDayInput(anchor)}
+          onChange={(event) => {
+            const picked = fromDayInput(event.target.value);
+            if (picked) setAnchor(picked);
+          }}
+        />
+        <span className="text-sm font-medium">
+          {formats.header.formatRange(view.from, lastNight)}
+        </span>
 
         <Select
-          value={String(windowNights)}
-          onValueChange={(value) => setWindowNights(Number(value) as GridWindowNights)}
+          value={String(preferences.windowNights)}
+          onValueChange={(value) => update({ windowNights: Number(value) as GridWindowNights })}
         >
           <SelectTrigger size="sm" className="w-28">
             <SelectValue />
@@ -810,6 +977,22 @@ export function ReservationGrid({
             {GRID_WINDOW_NIGHTS.map((length) => (
               <SelectItem key={length} value={String(length)}>
                 {t("grid.nightsOption", { nights: length })}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <Select
+          value={preferences.density}
+          onValueChange={(value) => update({ density: value as Density })}
+        >
+          <SelectTrigger size="sm" className="w-36">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {DENSITY_VALUES.map((value) => (
+              <SelectItem key={value} value={value}>
+                {t(value === "compact" ? "grid.densityCompact" : "grid.densityComfortable")}
               </SelectItem>
             ))}
           </SelectContent>
@@ -837,6 +1020,21 @@ export function ReservationGrid({
           <Search />
           {t("grid.findBooking")}
         </Button>
+
+        {/* Two paragraphs of instructions permanently under a screen read for
+            eight hours is clutter after the first day; the same words one click
+            away are there when a new receptionist needs them. */}
+        <Popover>
+          <PopoverTrigger
+            render={<Button variant="ghost" size="icon" aria-label={t("grid.howToUse")} />}
+          >
+            <CircleQuestionMark />
+          </PopoverTrigger>
+          <PopoverContent align="start" className="max-w-sm space-y-2 text-xs">
+            <p>{t("grid.help")}</p>
+            <p>{t("grid.keyboardHint")}</p>
+          </PopoverContent>
+        </Popover>
 
         {/* The key to the marks. Without it the second cue is only decodable by
             someone who already knows what the colours mean. */}
@@ -879,10 +1077,19 @@ export function ReservationGrid({
         </p>
       )}
 
-      {isLoading || !data ? (
+      {isLoading || !shown ? (
         <Skeleton className="h-96 w-full" />
       ) : (
-        <div className="overflow-x-auto rounded border">
+        <div
+          className="overflow-x-auto rounded border"
+          style={
+            {
+              "--grid-label": DENSITY[preferences.density].label,
+              "--grid-night": DENSITY[preferences.density].night,
+              "--grid-lane": DENSITY[preferences.density].lane,
+            } as CSSProperties
+          }
+        >
           <div style={{ minWidth: width }}>
             <div className="bg-muted/60 flex border-b">
               <RowLabel className="bg-muted/60 font-medium">{t("grid.room")}</RowLabel>
@@ -900,15 +1107,33 @@ export function ReservationGrid({
               </NightArea>
             </div>
 
-            {data.roomTypes.map((type) => {
+            {shown.roomTypes.map((type) => {
               const rooms = byType.rooms.get(type.id) ?? [];
               const band = byType.bands.get(type.id);
               if (rooms.length === 0 && !band) return null;
+
+              // Three categories do not need this; twenty are the difference
+              // between a screen and a scroll. The counts row stays either way
+              // — it is the answer a collapsed category is kept open for.
+              const collapsed = preferences.collapsed.includes(type.id);
 
               return (
                 <div key={type.id}>
                   <div className="bg-muted/30 flex border-b">
                     <RowLabel className="bg-muted/30 text-xs font-medium">
+                      <button
+                        type="button"
+                        onClick={() => toggleCollapsed(type.id)}
+                        aria-expanded={!collapsed}
+                        aria-label={collapsed ? t("grid.expandType") : t("grid.collapseType")}
+                        className="text-muted-foreground hover:text-foreground shrink-0"
+                      >
+                        {collapsed ? (
+                          <ChevronRight className="size-3.5" />
+                        ) : (
+                          <ChevronDown className="size-3.5" />
+                        )}
+                      </button>
                       <span className="truncate">{type.name}</span>
                       {type.archivedAt && (
                         <span className="text-muted-foreground text-[0.65rem]">archived</span>
@@ -917,7 +1142,7 @@ export function ReservationGrid({
                           two bare numbers stacked in a cell say nothing. */}
                       <span
                         className="text-muted-foreground ml-auto flex flex-col items-end text-[0.6rem] font-normal"
-                        style={{ lineHeight: LANE_HEIGHT }}
+                        style={{ lineHeight: "var(--grid-lane)" }}
                       >
                         <span>{t("grid.sold")}</span>
                         <span>{t("grid.free")}</span>
@@ -953,7 +1178,7 @@ export function ReservationGrid({
                     </NightArea>
                   </div>
 
-                  {band && (
+                  {!collapsed && band && (
                     <div className="flex border-b bg-amber-50/60">
                       <RowLabel className="text-muted-foreground bg-amber-50/60 text-xs">
                         {t("grid.unassigned")}
@@ -968,6 +1193,7 @@ export function ReservationGrid({
                             onSelect={setSelectedId}
                             onResize={resize}
                             selected={stay.id === selectedId}
+                            uncommitted={pending?.stayId === stay.id}
                             disabled={assign.isPending || move.isPending}
                           />
                         ))}
@@ -975,54 +1201,54 @@ export function ReservationGrid({
                     </div>
                   )}
 
-                  {rooms.map((room) => (
-                    <div key={room.roomId} className="flex border-b last:border-b-0">
-                      <RowLabel>
-                        <span className="truncate font-medium">{room.number}</span>
-                        {room.status !== RoomStatus.CLEAN && (
-                          <span
-                            className={cn(
-                              "text-[0.65rem]",
-                              room.status === RoomStatus.OUT_OF_ORDER
-                                ? "text-destructive"
-                                : "text-muted-foreground"
-                            )}
-                          >
-                            {labels[room.status as RoomStatus] ?? room.status}
-                          </span>
-                        )}
-                      </RowLabel>
-                      <NightArea
-                        nights={nights}
-                        lanes={room.lanes}
-                        onDropStay={drop(room.roomId)}
-                        className={cn(
-                          room.status === RoomStatus.OUT_OF_ORDER && "bg-destructive/5"
-                        )}
-                      >
-                        {room.stays.map((stay) => (
-                          <StayChip
-                            key={stay.id}
-                            stay={stay}
-                            onDragStart={(id, grabNight) => setDragging({ id, grabNight })}
-                            onDragEnd={() => setDragging(null)}
-                            onSelect={setSelectedId}
-                            onResize={resize}
-                            selected={stay.id === selectedId}
-                            disabled={assign.isPending || move.isPending}
-                          />
-                        ))}
-                      </NightArea>
-                    </div>
-                  ))}
+                  {!collapsed &&
+                    rooms.map((room) => (
+                      <div key={room.roomId} className="flex border-b last:border-b-0">
+                        <RowLabel>
+                          <span className="truncate font-medium">{room.number}</span>
+                          {room.status !== RoomStatus.CLEAN && (
+                            <span
+                              className={cn(
+                                "text-[0.65rem]",
+                                room.status === RoomStatus.OUT_OF_ORDER
+                                  ? "text-destructive"
+                                  : "text-muted-foreground"
+                              )}
+                            >
+                              {labels[room.status as RoomStatus] ?? room.status}
+                            </span>
+                          )}
+                        </RowLabel>
+                        <NightArea
+                          nights={nights}
+                          lanes={room.lanes}
+                          onDropStay={drop(room.roomId)}
+                          className={cn(
+                            room.status === RoomStatus.OUT_OF_ORDER && "bg-destructive/5"
+                          )}
+                        >
+                          {room.stays.map((stay) => (
+                            <StayChip
+                              key={stay.id}
+                              stay={stay}
+                              onDragStart={(id, grabNight) => setDragging({ id, grabNight })}
+                              onDragEnd={() => setDragging(null)}
+                              onSelect={setSelectedId}
+                              onResize={resize}
+                              selected={stay.id === selectedId}
+                              uncommitted={pending?.stayId === stay.id}
+                              disabled={assign.isPending || move.isPending}
+                            />
+                          ))}
+                        </NightArea>
+                      </div>
+                    ))}
                 </div>
               );
             })}
           </div>
         </div>
       )}
-
-      <p className="text-muted-foreground text-xs">{t("grid.help")}</p>
     </div>
   );
 }

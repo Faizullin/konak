@@ -642,3 +642,25 @@ export async function listReservations(input: ListReservationsInput) {
     total,
   };
 }
+
+/**
+ * Holds whose minutes are up.
+ *
+ * Not a correctness sweep: `availability` already filters on `releaseAt`, so an
+ * expired claim stops blocking the moment it expires. This is the rows, which
+ * otherwise accumulate one per abandoned search forever — and a table nobody
+ * ever deletes from is a table that eventually decides a query plan.
+ */
+export async function sweepExpiredHolds(now = new Date()): Promise<{ removed: number }> {
+  const { count } = await prisma.inventoryHold.deleteMany({ where: { releaseAt: { lte: now } } });
+  return { removed: count };
+}
+
+/**
+ * The predicate again, for the dry run — the same reason `countSweepable`
+ * duplicates the storage sweeps': a count that deleted things to count them is
+ * not a dry run.
+ */
+export async function countExpiredHolds(now = new Date()): Promise<number> {
+  return prisma.inventoryHold.count({ where: { releaseAt: { lte: now } } });
+}

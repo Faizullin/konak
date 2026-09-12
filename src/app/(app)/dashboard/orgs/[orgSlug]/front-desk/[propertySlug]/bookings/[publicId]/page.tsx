@@ -78,7 +78,12 @@ export default async function BookingPage({ params }: Params) {
         }
       />
 
-      <BookingCard propertyId={property.id} publicId={publicId} timezone={property.timezone} />
+      <BookingCard
+        propertyId={property.id}
+        publicId={publicId}
+        timezone={property.timezone}
+        gridHref={`/dashboard/orgs/${orgSlug}/front-desk/${propertySlug}`}
+      />
     </div>
   );
 }
