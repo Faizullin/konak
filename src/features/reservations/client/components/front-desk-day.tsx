@@ -2,11 +2,11 @@
 
 import { useEnumLabels } from "@/lib/labels";
 import { useTranslations } from "next-intl";
+import Link from "next/link";
 import NiceModal from "@ebay/nice-modal-react";
 import { ChevronLeft, ChevronRight, UserPlus } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { confirm } from "@/components/common/confirm-nice-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -22,6 +22,7 @@ import {
   toStayDate,
   todayAt,
 } from "@/features/reservations";
+import { useBookingActions } from "../hooks/use-booking-actions";
 import type { GeneralRouterOutputs } from "@/server/types";
 import { trpc } from "@/utils/trpc";
 import { WalkInFormNiceDialog } from "./walk-in-form-nice-dialog";
@@ -55,24 +56,11 @@ const ORDER = [DayRole.ARRIVAL, DayRole.DEPARTURE, DayRole.IN_HOUSE] as const;
  * A status arrives from the server as a string, so the key is checked before it
  * is read — an unrecognised one renders as itself rather than throwing.
  */
-function useActionLabel() {
-  const t = useTranslations("reservations");
-
-  return (status: string) => {
-    const key = `actions.${status}` as Parameters<typeof t.has>[0];
-    return t.has(key) ? t(key) : status;
-  };
-}
-
-const ASKS_FIRST: Record<string, { titleKey: string; descriptionKey: string }> = {
-  [ReservationStatus.CANCELLED]: {
-    titleKey: "day.cancelTitle",
-    descriptionKey: "day.cancelDescription",
-  },
-  [ReservationStatus.NO_SHOW]: {
-    titleKey: "day.noShowTitle",
-    descriptionKey: "day.noShowDescription",
-  },
+const DAY_ACTION_KEYS = {
+  cancelTitle: "day.cancelTitle",
+  cancelDescription: "day.cancelDescription",
+  noShowTitle: "day.noShowTitle",
+  noShowDescription: "day.noShowDescription",
 };
 
 const dayFormat = new Intl.DateTimeFormat("en", {
@@ -91,16 +79,18 @@ const shortFormat = new Intl.DateTimeFormat("en", {
 function DayRow({
   stay,
   today,
+  href,
   pending,
   onAct,
 }: {
   stay: DayStay;
   today: Date;
+  href: string;
   pending: boolean;
   onAct: (stay: DayStay, status: ReservationStatus) => void;
 }) {
   const statusLabels = useEnumLabels("reservationStatus", RESERVATION_STATUS_VALUES);
-  const actionLabel = useActionLabel();
+  const { label, asksFirst } = useBookingActions(DAY_ACTION_KEYS);
   const refusalText = useRefusalText();
 
   const actions = nextStatuses(stay.status).map((status) => ({
@@ -115,7 +105,9 @@ function DayRow({
       <span className="min-w-16 text-sm font-medium">
         {stay.roomNumber ?? <span className="text-muted-foreground italic">no room</span>}
       </span>
-      <span className="text-sm">{stay.guestName ?? stay.reference}</span>
+      <Link href={href} className="text-sm underline-offset-4 hover:underline">
+        {stay.guestName ?? stay.reference}
+      </Link>
       <span className="text-muted-foreground text-xs">
         {stay.roomTypeName} · {stay.nights} {stay.nights === 1 ? "night" : "nights"} ·{" "}
         {shortFormat.format(stay.checkIn)} → {shortFormat.format(stay.checkOut)}
@@ -129,15 +121,15 @@ function DayRow({
           <Button
             key={status}
             size="sm"
-            variant={ASKS_FIRST[status] ? "ghost" : "default"}
-            className={cn(ASKS_FIRST[status] && "text-destructive hover:text-destructive")}
+            variant={asksFirst(status) ? "ghost" : "default"}
+            className={cn(asksFirst(status) && "text-destructive hover:text-destructive")}
             disabled={pending || refusal !== null}
             // The reason travels with the disabled button, and both sides
             // resolve the same code — so they cannot say different things.
             title={refusalText(refusal)}
             onClick={() => onAct(stay, status)}
           >
-            {actionLabel(status)}
+            {label(status)}
           </Button>
         ))}
       </div>
@@ -149,12 +141,14 @@ function DayList({
   role,
   stays,
   today,
+  bookingsHref,
   pending,
   onAct,
 }: {
   role: DayRole;
   stays: DayStay[];
   today: Date;
+  bookingsHref: string;
   pending: boolean;
   onAct: (stay: DayStay, status: ReservationStatus) => void;
 }) {
@@ -171,7 +165,14 @@ function DayList({
       ) : (
         <ul>
           {stays.map((stay) => (
-            <DayRow key={stay.id} stay={stay} today={today} pending={pending} onAct={onAct} />
+            <DayRow
+              key={stay.id}
+              stay={stay}
+              today={today}
+              href={`${bookingsHref}/${stay.publicId}`}
+              pending={pending}
+              onAct={onAct}
+            />
           ))}
         </ul>
       )}
@@ -179,8 +180,18 @@ function DayList({
   );
 }
 
-export function FrontDeskDay({ propertyId, timezone }: { propertyId: number; timezone: string }) {
-  const actionLabel = useActionLabel();
+export function FrontDeskDay({
+  propertyId,
+  timezone,
+  orgSlug,
+  propertySlug,
+}: {
+  propertyId: number;
+  timezone: string;
+  orgSlug: string;
+  propertySlug: string;
+}) {
+  const { label, confirmed } = useBookingActions(DAY_ACTION_KEYS);
   const t = useTranslations("reservations");
   const { handleError } = useErrorHandlers();
   const today = useMemo(() => todayAt(timezone), [timezone]);
@@ -203,7 +214,7 @@ export function FrontDeskDay({ propertyId, timezone }: { propertyId: number; tim
   const setStatus = trpc.reservation.setStatus.useMutation({
     onMutate: () => setRefusal(null),
     onSuccess: (reservation) => {
-      toast.success(`${actionLabel(reservation.status)} — ${reservation.reference}`);
+      toast.success(`${label(reservation.status)} — ${reservation.reference}`);
     },
     onError: (error) => {
       const app = handleError(error, { toast: false });
@@ -218,18 +229,7 @@ export function FrontDeskDay({ propertyId, timezone }: { propertyId: number; tim
   // A status belongs to the booking, not to one of its rooms, so acting on a
   // row acts on the reservation behind it.
   const act = async (stay: DayStay, status: ReservationStatus) => {
-    const ask = ASKS_FIRST[status];
-    if (
-      ask &&
-      !(await confirm({
-        title: t(ask.titleKey as never),
-        description: t(ask.descriptionKey as never),
-        destructive: true,
-        confirmLabel: actionLabel(status),
-      }))
-    ) {
-      return;
-    }
+    if (!(await confirmed(status))) return;
     setStatus.mutate({ propertyId, id: stay.reservationId, status });
   };
 
@@ -296,6 +296,7 @@ export function FrontDeskDay({ propertyId, timezone }: { propertyId: number; tim
               role={role}
               stays={lists[role]}
               today={today}
+              bookingsHref={`/dashboard/orgs/${orgSlug}/front-desk/${propertySlug}/bookings`}
               pending={setStatus.isPending}
               onAct={act}
             />

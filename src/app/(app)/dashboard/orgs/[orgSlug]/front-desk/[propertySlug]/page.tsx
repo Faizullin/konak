@@ -63,8 +63,18 @@ export default async function PropertyGridPage({ params }: Params) {
       {/* The desk's day, not the browser's: whether a booking has arrived is
           answered in the hotel's timezone. Today's work first, the month under
           it — the order a receptionist reads them in. */}
-      <FrontDeskDay propertyId={property.id} timezone={property.timezone} />
-      <ReservationGrid propertyId={property.id} timezone={property.timezone} />
+      <FrontDeskDay
+        propertyId={property.id}
+        timezone={property.timezone}
+        orgSlug={orgSlug}
+        propertySlug={propertySlug}
+      />
+      <ReservationGrid
+        propertyId={property.id}
+        timezone={property.timezone}
+        orgSlug={orgSlug}
+        propertySlug={propertySlug}
+      />
     </div>
   );
 }

@@ -35,5 +35,9 @@
     "identityDocuments": "Identity documents",
     "consents": "Consents",
     "otherFiles": "Other files"
+  },
+  "booking": {
+    "description": "Booking {reference}, and every room it holds.",
+    "backToDesk": "Back to the desk"
   }
 }

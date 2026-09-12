@@ -2,10 +2,10 @@
 
 import { useEnumLabels } from "@/lib/labels";
 import { useTranslations } from "next-intl";
+import Link from "next/link";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import { toast } from "sonner";
-import { useMemo, useRef, useState, type ReactNode } from "react";
-import { confirm } from "@/components/common/confirm-nice-dialog";
+import { Fragment, useMemo, useRef, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useErrorHandlers, useRefusalText } from "@/lib/errors";
@@ -23,6 +23,7 @@ import {
   spanInWindow,
   todayAt,
 } from "@/features/reservations";
+import { useBookingActions } from "../hooks/use-booking-actions";
 import type { GeneralRouterOutputs } from "@/server/types";
 import { trpc } from "@/utils/trpc";
 
@@ -98,33 +99,13 @@ const STATUS_MARK: Record<string, string> = {
   [ReservationStatus.CHECKED_OUT]: "✓",
 };
 
-/** What the desk calls the transition, rather than the state it lands in. */
-/** Labels come from `actions.<status>`; cancelling reads longer here. */
-
-/** The two that end a booking and are not undone by setting the column back. */
-/**
- * What the desk calls the transition. Cancelling reads longer on the grid than
- * in the day lists, where the row already says which booking it is.
- */
-function useActionLabel() {
-  const t = useTranslations("reservations");
-
-  return (status: string) => {
-    if (status === ReservationStatus.CANCELLED) return t("grid.cancelAction");
-    const key = `actions.${status}` as Parameters<typeof t.has>[0];
-    return t.has(key) ? t(key) : status;
-  };
-}
-
-const ASKS_FIRST: Record<string, { titleKey: string; descriptionKey: string }> = {
-  [ReservationStatus.CANCELLED]: {
-    titleKey: "grid.cancelTitle",
-    descriptionKey: "grid.cancelDescription",
-  },
-  [ReservationStatus.NO_SHOW]: {
-    titleKey: "grid.noShowTitle",
-    descriptionKey: "grid.noShowDescription",
-  },
+/** Cancelling reads longer here than in the day lists: a chip is not a row. */
+const GRID_ACTION_KEYS = {
+  cancelAction: "grid.cancelAction",
+  cancelTitle: "grid.cancelTitle",
+  cancelDescription: "grid.cancelDescription",
+  noShowTitle: "grid.noShowTitle",
+  noShowDescription: "grid.noShowDescription",
 };
 
 const dayFormat = new Intl.DateTimeFormat("en", { day: "numeric", timeZone: "UTC" });
@@ -410,6 +391,7 @@ function StayActions({
   stay,
   today,
   roomNumber,
+  href,
   pending,
   onAct,
   onClose,
@@ -417,12 +399,13 @@ function StayActions({
   stay: GridStay;
   today: Date;
   roomNumber: string | null;
+  href: string;
   pending: boolean;
   onAct: (status: ReservationStatus) => void;
   onClose: () => void;
 }) {
   const statusLabels = useEnumLabels("reservationStatus", RESERVATION_STATUS_VALUES);
-  const actionLabel = useActionLabel();
+  const { label, asksFirst } = useBookingActions(GRID_ACTION_KEYS);
   const t = useTranslations("reservations");
   const refusalText = useRefusalText();
 
@@ -440,21 +423,28 @@ function StayActions({
       <span className="text-muted-foreground text-xs">
         {stay.reference} · {statusLabels[stay.status as ReservationStatus]} ·{" "}
         {rangeFormat.format(stay.checkIn)} → {rangeFormat.format(stay.checkOut)} ·{" "}
-        {roomNumber ? `room ${roomNumber}` : "no room yet"}
+        {roomNumber ? t("grid.roomNumber", { number: roomNumber }) : t("grid.noRoomYet")}
       </span>
 
       <div className="ml-auto flex items-center gap-2">
+        {/* This bar answers for the chip that was clicked. The reservation
+            behind it — its other rooms, its guests, its money — is on the
+            card, which is also the only version of this that survives a
+            refresh. */}
+        <Button nativeButton={false} size="sm" variant="outline" render={<Link href={href} />}>
+          {t("grid.open")}
+        </Button>
         {actions.map(({ status, refusal }) => (
           <Button
             key={status}
             size="sm"
-            variant={ASKS_FIRST[status] ? "ghost" : "default"}
-            className={cn(ASKS_FIRST[status] && "text-destructive hover:text-destructive")}
+            variant={asksFirst(status) ? "ghost" : "default"}
+            className={cn(asksFirst(status) && "text-destructive hover:text-destructive")}
             disabled={pending || refusal !== null}
             title={refusalText(refusal)}
             onClick={() => onAct(status)}
           >
-            {actionLabel(status)}
+            {label(status)}
           </Button>
         ))}
         {actions.length === 0 && (
@@ -489,13 +479,17 @@ function RowLabel({ children, className }: { children: ReactNode; className?: st
 export function ReservationGrid({
   propertyId,
   timezone,
+  orgSlug,
+  propertySlug,
 }: {
   propertyId: number;
   timezone: string;
+  orgSlug: string;
+  propertySlug: string;
 }) {
   const statusLabels = useEnumLabels("reservationStatus", RESERVATION_STATUS_VALUES);
   const labels = useEnumLabels("roomStatus", ROOM_STATUS_VALUES);
-  const actionLabel = useActionLabel();
+  const { label, confirmed } = useBookingActions(GRID_ACTION_KEYS);
   const t = useTranslations("reservations");
   const { handleError } = useErrorHandlers();
   const [anchor, setAnchor] = useState(() => monthWindowOf(new Date()).from);
@@ -516,6 +510,29 @@ export function ReservationGrid({
     // the note in `front-desk-day.tsx`, which sets the interval.
     refetchInterval: GRID_REFRESH_MS,
   });
+
+  /**
+   * The payload grouped once, rather than scanned per cell: the counts row asks
+   * for a type and a night, and `find` over the whole availability array for
+   * every one of them is the window's length times the number of types.
+   */
+  const byType = useMemo(() => {
+    const rooms = new Map<number, Grid["rooms"]>();
+    const bands = new Map<number, Grid["unassigned"][number]>();
+    const nightly = new Map<string, Grid["availability"][number]>();
+
+    for (const room of data?.rooms ?? []) {
+      const drawn = rooms.get(room.roomTypeId);
+      if (drawn) drawn.push(room);
+      else rooms.set(room.roomTypeId, [room]);
+    }
+    for (const band of data?.unassigned ?? []) bands.set(band.roomTypeId, band);
+    for (const row of data?.availability ?? []) {
+      nightly.set(`${row.roomTypeId}:${row.date.getTime()}`, row);
+    }
+
+    return { rooms, bands, nightly };
+  }, [data]);
 
   const assign = trpc.reservation.assignRoom.useMutation({
     onMutate: async (variables) => {
@@ -576,7 +593,7 @@ export function ReservationGrid({
   const setStatus = trpc.reservation.setStatus.useMutation({
     onMutate: () => setRefusal(null),
     onSuccess: (reservation) => {
-      toast.success(`${actionLabel(reservation.status)} — ${reservation.reference}`);
+      toast.success(`${label(reservation.status)} — ${reservation.reference}`);
     },
     onError: (error) => {
       const app = handleError(error, { toast: false });
@@ -638,18 +655,7 @@ export function ReservationGrid({
   // A status belongs to the booking, not to one of its rooms, so acting on a
   // chip acts on the reservation behind it.
   const act = async (stay: GridStay, status: ReservationStatus) => {
-    const ask = ASKS_FIRST[status];
-    if (
-      ask &&
-      !(await confirm({
-        title: t(ask.titleKey as never),
-        description: t(ask.descriptionKey as never),
-        destructive: true,
-        confirmLabel: actionLabel(status),
-      }))
-    ) {
-      return;
-    }
+    if (!(await confirmed(status))) return;
     setStatus.mutate({ propertyId, id: stay.reservationId, status });
   };
 
@@ -714,6 +720,7 @@ export function ReservationGrid({
           stay={selected.stay}
           today={today}
           roomNumber={selected.room}
+          href={`/dashboard/orgs/${orgSlug}/front-desk/${propertySlug}/bookings/${selected.stay.publicId}`}
           pending={setStatus.isPending}
           onAct={(status) => act(selected.stay, status)}
           onClose={() => setSelectedId(null)}
@@ -751,8 +758,8 @@ export function ReservationGrid({
             </div>
 
             {data.roomTypes.map((type) => {
-              const rooms = data.rooms.filter((room) => room.roomTypeId === type.id);
-              const band = data.unassigned.find((item) => item.roomTypeId === type.id);
+              const rooms = byType.rooms.get(type.id) ?? [];
+              const band = byType.bands.get(type.id);
               if (rooms.length === 0 && !band) return null;
 
               return (
@@ -763,26 +770,41 @@ export function ReservationGrid({
                       {type.archivedAt && (
                         <span className="text-muted-foreground text-[0.65rem]">archived</span>
                       )}
+                      {/* The key lives in the label column, one word per lane —
+                          two bare numbers stacked in a cell say nothing. */}
+                      <span
+                        className="text-muted-foreground ml-auto flex flex-col items-end text-[0.6rem] font-normal"
+                        style={{ lineHeight: LANE_HEIGHT }}
+                      >
+                        <span>{t("grid.sold")}</span>
+                        <span>{t("grid.free")}</span>
+                      </span>
                     </RowLabel>
-                    <NightArea nights={nights} lanes={1}>
+                    <NightArea nights={nights} lanes={2}>
                       {nights.map((night, index) => {
-                        const free = data.availability.find(
-                          (row) =>
-                            row.roomTypeId === type.id && row.date.getTime() === night.getTime()
-                        );
+                        const counts = byType.nightly.get(`${type.id}:${night.getTime()}`);
                         return (
-                          <div
-                            key={night.toISOString()}
-                            style={{ gridColumn: index + 1, gridRow: 1 }}
-                            className={cn(
-                              "z-10 flex items-center justify-center text-[0.65rem]",
-                              free && free.available === 0
-                                ? "text-destructive font-medium"
-                                : "text-muted-foreground"
-                            )}
-                          >
-                            {free?.available ?? "–"}
-                          </div>
+                          <Fragment key={night.toISOString()}>
+                            {/* Sold first: occupancy is the number a hotelier
+                                watches, and free is what is left of it. */}
+                            <div
+                              style={{ gridColumn: index + 1, gridRow: 1 }}
+                              className="z-10 flex items-center justify-center text-[0.65rem]"
+                            >
+                              {counts?.sold ?? "–"}
+                            </div>
+                            <div
+                              style={{ gridColumn: index + 1, gridRow: 2 }}
+                              className={cn(
+                                "z-10 flex items-center justify-center text-[0.65rem]",
+                                counts && counts.available === 0
+                                  ? "text-destructive font-medium"
+                                  : "text-muted-foreground"
+                              )}
+                            >
+                              {counts?.available ?? "–"}
+                            </div>
+                          </Fragment>
                         );
                       })}
                     </NightArea>
@@ -857,11 +879,7 @@ export function ReservationGrid({
         </div>
       )}
 
-      <p className="text-muted-foreground text-xs">
-        Click a booking for what can be done to it; drag it onto another room to assign it, or onto
-        its type&rsquo;s unassigned row to take the room back. Moving the dates needs a procedure
-        that does not exist yet.
-      </p>
+      <p className="text-muted-foreground text-xs">{t("grid.help")}</p>
     </div>
   );
 }

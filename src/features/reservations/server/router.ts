@@ -64,6 +64,79 @@ export const reservationRouter = createTRPCRouter({
     return frontDeskDay(input);
   }),
 
+  /**
+   * One booking, whole.
+   *
+   * Keyed on `publicId` rather than the row id: the column exists so a booking
+   * can be named outside the building, and a sequential id in a URL would say
+   * how many bookings the hotel has taken. The same key is what a guest link
+   * will carry.
+   *
+   * Reads every stay, not the one a chip was drawn for — a reservation holding
+   * two rooms is refused as one booking, and a card computing its buttons from
+   * a single stay would offer a check-in the server then refuses.
+   */
+  byPublicId: protectedProcedure
+    .input(z.object({ propertyId: z.number(), publicId: z.string().min(1) }))
+    .query(async ({ ctx, input }) => {
+      await requirePropertyMember(ctx, input.propertyId);
+
+      // The property is part of the lookup rather than checked after it: another
+      // tenant's booking has to be absent here, not forbidden.
+      const reservation = await ctx.db.reservation.findFirst({
+        where: { publicId: input.publicId, propertyId: input.propertyId },
+        select: {
+          id: true,
+          publicId: true,
+          reference: true,
+          status: true,
+          source: true,
+          notes: true,
+          currencyCode: true,
+          totalMinor: true,
+          paidMinor: true,
+          bookedAt: true,
+          cancelledAt: true,
+          cancellationReason: true,
+          booker: {
+            select: { id: true, firstName: true, lastName: true, email: true, phone: true },
+          },
+          company: { select: { id: true, name: true } },
+          guests: {
+            select: {
+              isPrimary: true,
+              person: { select: { id: true, firstName: true, lastName: true } },
+            },
+            orderBy: { isPrimary: "desc" },
+          },
+          stays: {
+            select: {
+              id: true,
+              status: true,
+              // `roomId` as well as the room: the check-in rule reads whether a
+              // door was chosen, and a name is not that question.
+              roomId: true,
+              checkIn: true,
+              checkOut: true,
+              adults: true,
+              children: true,
+              currencyCode: true,
+              totalMinor: true,
+              roomType: { select: { id: true, name: true, code: true } },
+              room: { select: { id: true, number: true } },
+              ratePlan: { select: { id: true, name: true } },
+            },
+            orderBy: { checkIn: "asc" },
+          },
+        },
+      });
+      if (!reservation) {
+        throw new NotFoundError(ReservationError.NOT_FOUND, "Reservation not found");
+      }
+
+      return reservation;
+    }),
+
   list: protectedProcedure
     .input(
       z.object({
