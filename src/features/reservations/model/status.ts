@@ -56,12 +56,6 @@ export function isTerminal(status: string): boolean {
   return nextStatuses(status).length === 0 && status in TRANSITIONS;
 }
 
-const arrivalFormat = new Intl.DateTimeFormat("en", {
-  day: "numeric",
-  month: "short",
-  timeZone: "UTC",
-});
-
 export type StatusChange = {
   from: string;
   to: string;
@@ -110,7 +104,10 @@ export function refuseStatusChange({ from, to, stays, today }: StatusChange): Re
   ) {
     return {
       code: ReservationError.ARRIVES_LATER,
-      values: { date: arrivalFormat.format(arrival), action: to },
+      // ISO, the way the router's own sold-out refusal passes a date. A
+      // refusal's values are substituted into a translated sentence, and an
+      // English month name inside a Russian one is worse than a plain date.
+      values: { date: toStayDate(arrival).toISOString().slice(0, 10), action: to },
       message: "That booking has not arrived yet",
     };
   }

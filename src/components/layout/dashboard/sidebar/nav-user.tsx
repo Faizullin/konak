@@ -1,7 +1,10 @@
 "use client";
 
-import { EllipsisVertical, LogOut } from "lucide-react";
+import { useLocale, useTranslations } from "next-intl";
+import { Check, EllipsisVertical, Languages, LogOut } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { LOCALE_COOKIE, LOCALE_LABELS, LOCALES } from "@/config/locales";
+import { cn } from "@/lib/utils";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -55,6 +58,20 @@ function initials(name: string) {
 export function NavUser({ user }: { user: SidebarUser }) {
   const { isMobile } = useSidebar();
   const router = useRouter();
+  const t = useTranslations("identity");
+  const locale = useLocale();
+
+  /**
+   * The language, as a cookie and a re-render.
+   *
+   * There is no locale in the URL — `lib/i18n.ts` says why — so the choice is a
+   * cookie the server reads on the next render, and `refresh()` is what asks
+   * for that render. A year, because a language is not a session.
+   */
+  const chooseLocale = (next: string) => {
+    document.cookie = `${LOCALE_COOKIE}=${next}; path=/; max-age=31536000; samesite=lax`;
+    router.refresh();
+  };
 
   const display = {
     name: user.name || "Account",
@@ -107,9 +124,22 @@ export function NavUser({ user }: { user: SidebarUser }) {
               </DropdownMenuLabel>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
+            <DropdownMenuGroup>
+              <DropdownMenuLabel className="text-muted-foreground text-xs">
+                <Languages className="mr-1 inline size-3" aria-hidden />
+                {t("account.language")}
+              </DropdownMenuLabel>
+              {LOCALES.map((value) => (
+                <DropdownMenuItem key={value} onClick={() => chooseLocale(value)}>
+                  <Check className={cn("size-4", value !== locale && "invisible")} aria-hidden />
+                  {LOCALE_LABELS[value]}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuGroup>
+            <DropdownMenuSeparator />
             <DropdownMenuItem onClick={handleSignOut}>
               <LogOut className="size-4" />
-              Sign out
+              {t("account.signOut")}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

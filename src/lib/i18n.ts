@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { getRequestConfig } from "next-intl/server";
 import { LOCALE_COOKIE, toLocale, type Locale } from "@/config/locales";
 import en from "../../messages/en/index";
+import ru from "../../messages/ru/index";
 
 /**
  * Which language a request is answered in, and the strings for it.
@@ -20,7 +21,7 @@ import en from "../../messages/en/index";
  * would be swapped wholesale for another library.
  */
 
-const MESSAGES = { en } satisfies Record<Locale, unknown>;
+const MESSAGES = { en, ru } satisfies Record<Locale, unknown>;
 
 export type Messages = typeof en;
 

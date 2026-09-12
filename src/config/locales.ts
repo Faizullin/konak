@@ -6,7 +6,7 @@
  * each keeping its own list.
  */
 
-export const LOCALES = ["en"] as const;
+export const LOCALES = ["en", "ru"] as const;
 
 export type Locale = (typeof LOCALES)[number];
 
@@ -15,6 +15,7 @@ export const DEFAULT_LOCALE: Locale = "en";
 /** In the language itself, which is how a person finds their own. */
 export const LOCALE_LABELS: Record<Locale, string> = {
   en: "English",
+  ru: "Русский",
 };
 
 /** The cookie a person's choice is remembered in. */

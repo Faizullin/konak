@@ -26,6 +26,9 @@ export function toStayDate(value: Date): Date {
  * property's column must not take the front desk down with it.
  */
 export function todayAt(timezone: string, now: Date = new Date()): Date {
+  // Pinned to "en" deliberately, and not a translation gap: this reads the
+  // numeric year, month and day out of `formatToParts`, so the language it
+  // would be *said* in never appears.
   const parts = (zone: string) =>
     new Intl.DateTimeFormat("en", {
       timeZone: zone,

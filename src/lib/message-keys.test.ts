@@ -111,6 +111,41 @@ test("every message is read by something", () => {
   );
 });
 
+test("every locale declares exactly the keys English does", () => {
+  // `Messages` is `typeof en`, so English alone decides the key *type* and a
+  // second locale cannot widen it. Whether a translation is complete is a
+  // runtime fact, and this is where it is held — in both directions, because a
+  // key left behind after a rename is as wrong as one never written.
+  const english = new Set(
+    readdirSync("messages/en")
+      .filter((file) => file.endsWith(".json"))
+      .flatMap((file) => flatten(JSON.parse(readFileSync(join("messages/en", file), "utf8")), file))
+  );
+
+  for (const locale of readdirSync("messages")) {
+    if (locale === "en" || !statSync(join("messages", locale)).isDirectory()) continue;
+
+    const theirs = new Set(
+      readdirSync(join("messages", locale))
+        .filter((file) => file.endsWith(".json"))
+        .flatMap((file) =>
+          flatten(JSON.parse(readFileSync(join("messages", locale, file), "utf8")), file)
+        )
+    );
+
+    assert.deepEqual(
+      [...english].filter((key) => !theirs.has(key)).sort(),
+      [],
+      `untranslated in ${locale}`
+    );
+    assert.deepEqual(
+      [...theirs].filter((key) => !english.has(key)).sort(),
+      [],
+      `in ${locale} but not in English — a rename left it behind`
+    );
+  }
+});
+
 test("every namespace in messages/ is mounted somewhere", () => {
   // A namespace no provider carries, and no Server Component reads, is a file
   // that will drift: nothing renders it, so nothing notices when it is wrong.

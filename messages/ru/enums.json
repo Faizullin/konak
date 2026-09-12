@@ -1,0 +1,44 @@
+{
+  "userRole": {
+    "USER": "Пользователь",
+    "ADMIN": "Администратор",
+    "MODERATOR": "Модератор"
+  },
+  "orgRole": {
+    "OWNER": "Владелец",
+    "ADMIN": "Администратор",
+    "MEMBER": "Сотрудник"
+  },
+  "roomStatus": {
+    "CLEAN": "Чистый",
+    "DIRTY": "Грязный",
+    "IN_PROGRESS": "Убирается",
+    "INSPECTED": "Проверен",
+    "OUT_OF_ORDER": "Вне продажи"
+  },
+  "mealPlan": {
+    "ROOM_ONLY": "Только номер",
+    "BREAKFAST": "Завтрак",
+    "HALF_BOARD": "Полупансион",
+    "FULL_BOARD": "Полный пансион",
+    "ALL_INCLUSIVE": "Всё включено"
+  },
+  "dayRole": {
+    "ARRIVAL": "Заезды",
+    "DEPARTURE": "Выезды",
+    "IN_HOUSE": "Проживают"
+  },
+  "reservationStatus": {
+    "ENQUIRY": "Запрос",
+    "CONFIRMED": "Подтверждено",
+    "CHECKED_IN": "Заселён",
+    "CHECKED_OUT": "Выехал",
+    "CANCELLED": "Отменено",
+    "NO_SHOW": "Не заехал"
+  },
+  "bookingView": {
+    "NEW": "Новые",
+    "CURRENT": "Текущие",
+    "ARCHIVE": "Архив"
+  }
+}

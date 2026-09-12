@@ -1,7 +1,7 @@
 "use client";
 
 import { useEnumLabels } from "@/lib/labels";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import NiceModal from "@ebay/nice-modal-react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
@@ -126,23 +126,38 @@ const GRID_ACTION_KEYS = {
   noShowDescription: "grid.noShowDescription",
 };
 
-const dayFormat = new Intl.DateTimeFormat("en", { day: "numeric", timeZone: "UTC" });
-const weekdayFormat = new Intl.DateTimeFormat("en", { weekday: "narrow", timeZone: "UTC" });
 /**
- * The window's own label. `formatRange` collapses a span inside one month to
- * "September 2026" and spells the boundary out when it crosses one, which is
- * the whole reason a header could not stay a single month name.
+ * The grid's dates, in the reader's language.
+ *
+ * Built per locale rather than once at module scope: a formatter pinned to one
+ * language is invisible to a language switch — the strings move and the dates
+ * do not, which reads as a half-translated screen.
+ *
+ * `headerFormat` uses `formatRange`, which collapses a span inside one month to
+ * "September 2026" and spells the boundary out when it crosses one. That is the
+ * whole reason the header could not stay a single month name.
  */
-const headerFormat = new Intl.DateTimeFormat("en", {
-  month: "long",
-  year: "numeric",
-  timeZone: "UTC",
-});
-const rangeFormat = new Intl.DateTimeFormat("en", {
-  day: "numeric",
-  month: "short",
-  timeZone: "UTC",
-});
+function useGridFormats() {
+  const locale = useLocale();
+
+  return useMemo(
+    () => ({
+      day: new Intl.DateTimeFormat(locale, { day: "numeric", timeZone: "UTC" }),
+      weekday: new Intl.DateTimeFormat(locale, { weekday: "narrow", timeZone: "UTC" }),
+      header: new Intl.DateTimeFormat(locale, {
+        month: "long",
+        year: "numeric",
+        timeZone: "UTC",
+      }),
+      range: new Intl.DateTimeFormat(locale, {
+        day: "numeric",
+        month: "short",
+        timeZone: "UTC",
+      }),
+    }),
+    [locale]
+  );
+}
 
 /**
  * The picker is opened once a navigation at most; the grid is opened all day.
@@ -247,6 +262,8 @@ function StayChip({
   disabled: boolean;
 }) {
   const statusLabels = useEnumLabels("reservationStatus", RESERVATION_STATUS_VALUES);
+  const t = useTranslations("reservations");
+  const formats = useGridFormats();
   const nights = Math.round((stay.checkOut.getTime() - stay.checkIn.getTime()) / 86_400_000);
   // Nights added or removed while the pointer is still down, so the edge
   // follows the cursor instead of jumping when the server answers.
@@ -313,7 +330,9 @@ function StayChip({
       onClick={() => onSelect(stay.id)}
       aria-pressed={selected}
       style={{ gridColumn: `${shownOffset + 1} / span ${shownNights}`, gridRow: stay.lane + 1 }}
-      title={`${stay.reference} · ${statusLabels[stay.status as ReservationStatus] ?? stay.status} · ${rangeFormat.format(stay.checkIn)} → ${rangeFormat.format(stay.checkOut)} · ${nights} night${nights === 1 ? "" : "s"}`}
+      // The chip's words, and the only place the status is said rather than
+      // marked — `STATUS_MARK` is `aria-hidden` precisely because this is here.
+      title={`${stay.reference} · ${statusLabels[stay.status as ReservationStatus] ?? stay.status} · ${formats.range.format(stay.checkIn)} → ${formats.range.format(stay.checkOut)} · ${t("list.nightCount", { nights })}`}
       className={cn(
         "relative z-10 mx-px flex items-center overflow-hidden rounded border px-1.5 text-xs whitespace-nowrap",
         "cursor-grab active:cursor-grabbing disabled:cursor-default",
@@ -454,6 +473,7 @@ function StayActions({
 }) {
   const statusLabels = useEnumLabels("reservationStatus", RESERVATION_STATUS_VALUES);
   const { label, asksFirst } = useBookingActions(GRID_ACTION_KEYS);
+  const formats = useGridFormats();
   const t = useTranslations("reservations");
   const refusalText = useRefusalText();
 
@@ -470,7 +490,7 @@ function StayActions({
       <span className="text-sm font-medium">{stay.guestName ?? stay.reference}</span>
       <span className="text-muted-foreground text-xs">
         {stay.reference} · {statusLabels[stay.status as ReservationStatus]} ·{" "}
-        {rangeFormat.format(stay.checkIn)} → {rangeFormat.format(stay.checkOut)} ·{" "}
+        {formats.range.format(stay.checkIn)} → {formats.range.format(stay.checkOut)} ·{" "}
         {roomNumber ? t("grid.roomNumber", { number: roomNumber }) : t("grid.noRoomYet")}
       </span>
 
@@ -538,6 +558,7 @@ export function ReservationGrid({
   const statusLabels = useEnumLabels("reservationStatus", RESERVATION_STATUS_VALUES);
   const labels = useEnumLabels("roomStatus", ROOM_STATUS_VALUES);
   const { label, confirmed } = useBookingActions(GRID_ACTION_KEYS);
+  const formats = useGridFormats();
   const t = useTranslations("reservations");
   const { handleError } = useErrorHandlers();
   // Today, not the 1st: a desk opening on the 28th wants the days after it.
@@ -766,7 +787,7 @@ export function ReservationGrid({
         <Popover>
           <PopoverTrigger render={<Button variant="outline" size="sm" />}>
             <CalendarIcon />
-            {headerFormat.formatRange(view.from, lastNight)}
+            {formats.header.formatRange(view.from, lastNight)}
           </PopoverTrigger>
           <PopoverContent className="w-auto p-0" align="start">
             <Calendar
@@ -872,8 +893,8 @@ export function ReservationGrid({
                     style={{ gridColumn: index + 1, gridRow: 1 }}
                     className="z-10 flex flex-col items-center justify-center text-[0.65rem] leading-none"
                   >
-                    <span className="text-muted-foreground">{weekdayFormat.format(night)}</span>
-                    <span>{dayFormat.format(night)}</span>
+                    <span className="text-muted-foreground">{formats.weekday.format(night)}</span>
+                    <span>{formats.day.format(night)}</span>
                   </div>
                 ))}
               </NightArea>

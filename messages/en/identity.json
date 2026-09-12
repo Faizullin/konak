@@ -4,7 +4,9 @@
     "description": "Your user row, as the server sees it.",
     "name": "Name",
     "email": "Email",
-    "role": "Role"
+    "role": "Role",
+    "language": "Language",
+    "signOut": "Sign out"
   },
   "table": {
     "name": "Name",

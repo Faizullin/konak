@@ -193,7 +193,15 @@ test("every group of labels is one `useEnumLabels` accepts", () => {
 
 test("every message is valid ICU, and names only placeholders it is given", async () => {
   const { createTranslator } = await import("use-intl/core");
-  const en = (await import("../../messages/en/index")).default;
+
+  // Every locale, not only English. A translation may reach for a plural
+  // category English does not have — Russian needs `few` and `many` where
+  // English needs neither — and a malformed one throws at render, on the
+  // screen, for the language nobody on the team reads.
+  const locales = {
+    en: (await import("../../messages/en/index")).default,
+    ru: (await import("../../messages/ru/index")).default,
+  };
 
   // Enough of a value bag that any placeholder resolves. A message naming
   // something outside this is either a typo or a value nobody passes.
@@ -216,17 +224,28 @@ test("every message is valid ICU, and names only placeholders it is given", asyn
     property: "Hotel",
     checkIn: "14:00",
     checkOut: "11:00",
+    used: 12,
+    quota: 5000,
+    size: 1024,
+    nights: 3,
+    free: 2,
+    adults: 2,
+    children: 1,
+    reference: "R-0001",
   };
 
   const broken: string[] = [];
-  for (const [namespace, group] of Object.entries(en)) {
-    const t = createTranslator({ locale: "en", messages: { [namespace]: group }, namespace });
-    for (const key of flatten(group, "")) {
-      try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (t as any)(key, values);
-      } catch (error) {
-        broken.push(`${namespace}.${key}: ${(error as Error).message.split("\n")[0]}`);
+  for (const locale of Object.keys(locales) as (keyof typeof locales)[]) {
+    const messages = locales[locale];
+    for (const [namespace, group] of Object.entries(messages)) {
+      const t = createTranslator({ locale, messages: { [namespace]: group }, namespace });
+      for (const key of flatten(group, "")) {
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (t as any)(key, values);
+        } catch (error) {
+          broken.push(`${locale}/${namespace}.${key}: ${(error as Error).message.split("\n")[0]}`);
+        }
       }
     }
   }

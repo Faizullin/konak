@@ -1,7 +1,7 @@
 "use client";
 
 import { useEnumLabels } from "@/lib/labels";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import Link from "next/link";
 import NiceModal from "@ebay/nice-modal-react";
 import { ChevronLeft, ChevronRight, UserPlus } from "lucide-react";
@@ -63,18 +63,31 @@ const DAY_ACTION_KEYS = {
   noShowDescription: "day.noShowDescription",
 };
 
-const dayFormat = new Intl.DateTimeFormat("en", {
-  weekday: "short",
-  day: "numeric",
-  month: "long",
-  timeZone: "UTC",
-});
+/**
+ * Per locale, not once at module scope. A formatter pinned to one language does
+ * not follow a language switch, and a screen whose words move while its dates
+ * stay put reads as half-translated.
+ */
+function useDayFormats() {
+  const locale = useLocale();
 
-const shortFormat = new Intl.DateTimeFormat("en", {
-  day: "numeric",
-  month: "short",
-  timeZone: "UTC",
-});
+  return useMemo(
+    () => ({
+      day: new Intl.DateTimeFormat(locale, {
+        weekday: "short",
+        day: "numeric",
+        month: "long",
+        timeZone: "UTC",
+      }),
+      short: new Intl.DateTimeFormat(locale, {
+        day: "numeric",
+        month: "short",
+        timeZone: "UTC",
+      }),
+    }),
+    [locale]
+  );
+}
 
 function DayRow({
   stay,
@@ -91,6 +104,8 @@ function DayRow({
 }) {
   const statusLabels = useEnumLabels("reservationStatus", RESERVATION_STATUS_VALUES);
   const { label, asksFirst } = useBookingActions(DAY_ACTION_KEYS);
+  const t = useTranslations("reservations");
+  const formats = useDayFormats();
   const refusalText = useRefusalText();
 
   const actions = nextStatuses(stay.status).map((status) => ({
@@ -109,8 +124,8 @@ function DayRow({
         {stay.guestName ?? stay.reference}
       </Link>
       <span className="text-muted-foreground text-xs">
-        {stay.roomTypeName} · {stay.nights} {stay.nights === 1 ? "night" : "nights"} ·{" "}
-        {shortFormat.format(stay.checkIn)} → {shortFormat.format(stay.checkOut)}
+        {stay.roomTypeName} · {t("list.nightCount", { nights: stay.nights })} ·{" "}
+        {formats.short.format(stay.checkIn)} → {formats.short.format(stay.checkOut)}
       </span>
       <Badge variant="outline" className="text-xs">
         {statusLabels[stay.status as ReservationStatus] ?? stay.status}
@@ -192,6 +207,7 @@ export function FrontDeskDay({
   propertySlug: string;
 }) {
   const { label, confirmed } = useBookingActions(DAY_ACTION_KEYS);
+  const formats = useDayFormats();
   const t = useTranslations("reservations");
   const { handleError } = useErrorHandlers();
   const today = useMemo(() => todayAt(timezone), [timezone]);
@@ -253,7 +269,7 @@ export function FrontDeskDay({
         >
           <ChevronLeft />
         </Button>
-        <span className="min-w-48 text-sm font-medium">{dayFormat.format(day)}</span>
+        <span className="min-w-48 text-sm font-medium">{formats.day.format(day)}</span>
         <Button
           variant="outline"
           size="icon"
