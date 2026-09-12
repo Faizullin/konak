@@ -61,4 +61,8 @@ next-env.d.ts
 /playwright-report
 /blob-report
 /playwright/.cache
+
+# Screenshot reports are a run's output, not a record. A committed one makes a
+# PNG diff part of code review; send the PDF instead.
+/reports
 .storage-e2e

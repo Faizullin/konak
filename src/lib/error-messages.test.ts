@@ -25,7 +25,7 @@ function flatten(value: unknown, prefix: string): string[] {
 
 const messages = JSON.parse(readFileSync("messages/en/errors.json", "utf8")) as Record<
   string,
-  string
+  Record<string, string>
 >;
 
 const validation = JSON.parse(readFileSync("messages/en/validation.json", "utf8")) as Record<
@@ -87,25 +87,33 @@ function declaredCodes(): Set<string> {
   return codes;
 }
 
+/** The file is nested now, and a code is the path through it. */
+const messageKeys = new Set(flatten(messages, ""));
+
 test("every domain code has a message", () => {
-  const missing = [...declaredCodes()].filter((code) => !(code in messages));
+  const missing = [...declaredCodes()].filter((code) => !messageKeys.has(code));
 
   assert.deepEqual(missing, [], `codes with no message in messages/en/errors.json`);
 });
 
 test("every message belongs to a code that exists", () => {
   const declared = declaredCodes();
-  const orphans = Object.keys(messages).filter((key) => !declared.has(key));
+  // Flattened, because the file is nested now — next-intl reads "." as nesting,
+  // so a flat "reservation.not_found" key resolved to nothing at all.
+  const orphans = [...messageKeys].filter((key) => !declared.has(key));
 
   assert.deepEqual(orphans, [], "messages/en/errors.json has keys no code declares");
 });
 
 test("no message is empty, and every placeholder is closed", () => {
-  for (const [key, value] of Object.entries(messages)) {
-    assert.ok(value.trim().length > 0, `${key} is empty`);
-    const opens = (value.match(/\{/g) ?? []).length;
-    const closes = (value.match(/\}/g) ?? []).length;
-    assert.equal(opens, closes, `${key} has unbalanced braces`);
+  for (const [group, entries] of Object.entries(messages)) {
+    for (const [leaf, value] of Object.entries(entries)) {
+      const key = `${group}.${leaf}`;
+      assert.ok(value.trim().length > 0, `${key} is empty`);
+      const opens = (value.match(/\{/g) ?? []).length;
+      const closes = (value.match(/\}/g) ?? []).length;
+      assert.equal(opens, closes, `${key} has unbalanced braces`);
+    }
   }
 });
 
@@ -189,6 +197,76 @@ test("every group of labels is one `useEnumLabels` accepts", () => {
   assert.deepEqual(Object.keys(enums).sort(), [...new Set(accepted)].sort());
 });
 
+/**
+ * Enough of a value bag that any placeholder resolves. A message naming
+ * something outside this is either a typo or a value nobody passes.
+ *
+ * Shared by the two tests that format every message — one asking whether it
+ * formats, the other whether it is reachable at all.
+ */
+const VALUES = {
+  from: "CONFIRMED",
+  to: "CHECKED_OUT",
+  status: "CLEAN",
+  action: "CHECKED_IN",
+  reason: "MIN_STAY",
+  date: "4 Mar",
+  module: "Directory",
+  kind: "RESERVATION",
+  count: 2,
+  max: 62,
+  available: 3,
+  needed: 4,
+  hours: 48,
+  name: "Acme",
+  number: "101",
+  property: "Hotel",
+  checkIn: "14:00",
+  checkOut: "11:00",
+  used: 12,
+  quota: 5000,
+  size: 1024,
+  nights: 3,
+  free: 2,
+  adults: 2,
+  children: 1,
+  reference: "R-0001",
+};
+
+/* --- resolution ---------------------------------------------------------- */
+
+test("every domain code actually resolves to its message", async () => {
+  /**
+   * The check the other three did not make.
+   *
+   * `error-messages.test.ts` proved the keys existed, `message-keys.test.ts`
+   * proved nothing was orphaned, and the ICU test proved every message
+   * *formats* — and all three passed while not one of these ninety-six
+   * messages ever reached a screen. next-intl reads "." as nesting, so a flat
+   * `"reservation.not_found"` key made `t.has()` false and `t()` return the
+   * key itself; every refusal fell back to the server's English, in both
+   * languages, for as long as the file was flat.
+   *
+   * Formatting is not resolving. This asserts the second.
+   */
+  const { createTranslator } = await import("use-intl/core");
+
+  for (const locale of ["en", "ru"] as const) {
+    const errors = JSON.parse(readFileSync(`messages/${locale}/errors.json`, "utf8"));
+    const t = createTranslator({ locale, messages: { errors }, namespace: "errors" });
+
+    const unreachable = flatten(errors, "").filter((key) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      if (!(t as any).has(key)) return true;
+      // A key that resolves to itself is next-intl's miss, not a message.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return (t as any)(key, VALUES) === `errors.${key}`;
+    });
+
+    assert.deepEqual(unreachable, [], `${locale}: codes whose message never reaches a screen`);
+  }
+});
+
 /* --- ICU --------------------------------------------------------------- */
 
 test("every message is valid ICU, and names only placeholders it is given", async () => {
@@ -203,36 +281,7 @@ test("every message is valid ICU, and names only placeholders it is given", asyn
     ru: (await import("../../messages/ru/index")).default,
   };
 
-  // Enough of a value bag that any placeholder resolves. A message naming
-  // something outside this is either a typo or a value nobody passes.
-  const values = {
-    from: "CONFIRMED",
-    to: "CHECKED_OUT",
-    status: "CLEAN",
-    action: "CHECKED_IN",
-    reason: "MIN_STAY",
-    date: "4 Mar",
-    module: "Directory",
-    kind: "RESERVATION",
-    count: 2,
-    max: 62,
-    available: 3,
-    needed: 4,
-    hours: 48,
-    name: "Acme",
-    number: "101",
-    property: "Hotel",
-    checkIn: "14:00",
-    checkOut: "11:00",
-    used: 12,
-    quota: 5000,
-    size: 1024,
-    nights: 3,
-    free: 2,
-    adults: 2,
-    children: 1,
-    reference: "R-0001",
-  };
+  const values = VALUES;
 
   const broken: string[] = [];
   for (const locale of Object.keys(locales) as (keyof typeof locales)[]) {

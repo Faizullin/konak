@@ -5,39 +5,24 @@ boxes. A finished item leaves here; the fact of it goes to `history.md`.
 
 Where this sits in the whole build: `plans/roadmap.md`.
 
-## File uploads — done
-Two phases, so nothing about a file is believed until storage is asked; per-kind
-size caps and type allowlists; a per-organization quota that counts unconfirmed
-reservations; sweeps for abandoned uploads and expired retention; bytes that die
-with their row, including through an organization cascade. Uploading and
-deleting are separate rights — a receptionist attaches a passport scan, a
-manager deletes one.
+## The screenshot report
+The browser suite exists and the `report` project in `playwright.config.ts` is
+configured and empty. A capture spec walking the screens across locale and
+theme, `scripts/report.mts` assembling an `index.html` from the manifest, and
+`page.pdf()` printing it. The manifest schema to reuse is the one already in
+`docs/screenshots-report/`, whose generator was never committed.
+`plans/e2e-and-reports.md`.
 
-The browser half is built and mounted on property setup: `lib/upload.ts`,
-`useAttachmentUpload`, `FileDropzone`, and `AttachmentsPanel` — the seam any
-feature can mount, or open as a dialog with `uploadAttachment()`.
+## Three more journeys
+Booking a date that is not tonight, the language switch, and finding a booking.
+The language one matters most: it has no server test and cannot have one, so a
+browser is the only thing that can see a Russian string overflowing its column.
 
-Two screens carry it: property setup, and the person detail route reached from
-the directory. What is left is the SDK for whichever provider production uses —
-nothing else, and nothing until a deployment picks one.
-`plans/file-uploads.md` and `plans/file-uploads-ui.md`.
-
-## Visual design and motion
-Once the product works. Density, colour-as-data, keyboard rules, and
-animation only where it explains something. Until then shadcn's defaults, which
-are good enough to run a hotel and cheap to replace.
-
-## Internationalisation
-The extraction is finished — refusals, Zod messages, page shells, every
-feature's components and the label tables. `npm test` fails on a message nothing
-reads and on a key nothing declares, in both directions.
-
-One thing remains: **a second locale**, and it waits on a reader rather than on code. Every
-string already comes from `messages/en/`, and the checks fail on a message
-nothing reads or a key nothing declares — so the machinery is finished and
-waiting. Adding a language before there is someone to read it proves nothing and
-dates immediately; adding it after the product settles is a translation job
-rather than a code one.
+## Phase 5 — guests and housekeeping
+The roadmap's next phase, and where a rule `product-shape.md` § 10 states but
+nothing implements belongs: **check-out does not mark the room dirty.** That is
+the event which creates the work, and expecting a receptionist to also remember
+is how boards go stale.
 
 ## An external API, with keys
 Last on purpose. Everything above is a product a hotel uses; this is a surface

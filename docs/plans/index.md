@@ -13,6 +13,7 @@ leaves here, what it taught moves into a guide, and the fact of it goes into
 | [external-api.md](external-api.md) | letting other software call this one, with scoped keys |
 | [file-uploads.md](file-uploads.md) | where the bytes go, and why the attachment table is empty |
 | [file-uploads-ui.md](file-uploads-ui.md) | the browser half of it: the components, and where each one lives |
+| [e2e-and-reports.md](e2e-and-reports.md) | a browser driving the real app, and the screenshot report that falls out of it |
 
 Files prefixed `v1_` are **not plans**. They are earlier ones recovered from
 git history, kept only because something in them had not shipped; each says at

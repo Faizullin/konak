@@ -1177,3 +1177,138 @@ That is the whole argument for codes, arriving on schedule: a rewording used to
 break tests, and now it cannot.
 
 154 unit tests, 114 integration.
+
+## 2026-09-13 — the MVP block, M1 to M7
+
+Seven phases between Phase 4 and Phase 5, measured against a brief benchmarked
+on a Russian PMS. Their plan has left `plans/` because the work shipped; this
+is what it taught.
+
+### The grid was telling users a working feature did not work
+
+The paragraph under it ended *"Moving the dates needs a procedure that does not
+exist yet."* `reservation.moveStay` had existed for a phase, and both drags
+called it. A sentence printed on a screen is a defect the audience can read,
+and it cost less to fix than the feature it denied. Two more strings beside it
+were hardcoded English — `room {number}` and `no room yet` — invisible to the
+orphan test because a template literal is not a `t()` call. That is the class
+of gap that test cannot see, and the second time it has cost something.
+
+**The sold row was already on the wire.** `NightAvailability` carried `sold`
+beside `available` and the screen drew only `available`. The cheapest item in
+the block was a row that needed no server change at all.
+
+### A booking had no address
+
+`StayActions` was the only place a booking could be looked at, and it lived in
+component state: nothing could be linked to, refreshed or sent to a colleague,
+and a reservation holding two rooms had no screen. Every other first-class
+object had a route.
+
+**Keyed on `publicId`, not `id`.** The column exists so a booking can be named
+outside the building; a sequential id in a URL leaks how many bookings the
+hotel has taken, and the same key is what a Phase 8 guest link will carry.
+
+**The refusal had been answering for the chip.** `refuseStatusChange` ran over
+one stay where the server runs it over all of them, so a two-room booking could
+be offered a check-in the server then refused. The card reads every stay.
+
+### The month was never the window's unit
+
+A calendar month always begins on the 1st, so a stay crossing a boundary was
+cut by the view — in the last week of a month, which is when a desk needs the
+days after it most. `windowFrom(anchor, nights)` replaced `monthWindowOf`, and
+the month helpers went with it rather than staying as tested exports nothing
+called.
+
+**A measurement changed the implementation.** The date picker put the desk's
+route at 1566 kB, +87 kB, all `react-day-picker`, for a popover that starts
+closed. Lazy-loading recovered 68 kB. It was later removed entirely for
+`<input type="date">`: no bundle, the reader's own first-day-of-week, keyboard
+reachable without work, and the platform's picker on a phone.
+
+### A hold made booking harder than not holding
+
+`availability` subtracts live holds, including the caller's own — so a desk
+that held a room and then booked it was refused by its own claim. Taking a hold
+was strictly worse than taking none, which makes the mechanism pointless.
+`exceptHoldKey` discounts it, and the hold is deleted **inside** the booking
+transaction: releasing before opens a window where someone else takes the room,
+releasing after leaves a claim on a booking that rolled back.
+
+### Russian, and the formatters that did not follow it
+
+The extraction had been finished for a phase; what was missing was a reader,
+and the demo audience is one. 477 strings across twelve namespaces, and two
+guards that did not exist because both only ever looked at English: every
+locale must declare exactly English's keys, in both directions, and every
+message must be valid ICU **in its own locale** — Russian needs `few` and
+`many` where English needs neither, and a malformed branch throws at render in
+the language nobody on the team reads.
+
+Six date formatters were pinned to `"en"` at module scope. A screen whose words
+move while its dates stay put reads as half-translated. `todayAt` keeps its
+pin, and now says why: it reads numeric fields out of `formatToParts`, so the
+language it would be *said* in never appears.
+
+### What the keyboard had to be
+
+Assignment, moving and resizing were drag only. Arrows build a *pending* change
+rather than sending one per keypress — a drag is one mutation for a whole
+gesture and this had to be too. The preview goes through `rescheduleStay`, the
+same re-laning an optimistic drag uses, so a previewed move lands in the right
+room at the right lane.
+
+**The three measurements became CSS custom properties.** A row, a label and a
+night are read by four components at three depths; threading a density through
+all of them is prop drilling for a number CSS already inherits.
+
+### The seed had three days of inventory, on fixed dates
+
+`Date.UTC(2026, 8, 14)` for three nights. A night with no `RoomTypeInventory`
+row is nought rooms — deliberately, so an undeclared day is not on sale — which
+meant five phases of work were invisible the moment that week passed. Now
+relative to today, ninety nights out.
+
+### `product-shape.md` § 19 rule 1 was wrong, and the database was not
+
+*"Two bookings may not share a night in one room"* omits what the constraint
+has always said: `WHERE ("roomId" IS NOT NULL AND "status" IN ('CONFIRMED',
+'CHECKED_IN', 'CHECKED_OUT'))`. Cancelled and no-show released what they held,
+and an enquiry never held it. The prose contradicted § 6 of its own file; the
+code never did.
+
+212 unit tests, 134 integration.
+
+## 2026-09-13 — a third layer: a browser
+
+`model/` proves a rule without a database and `tests/server/` proves a
+procedure asks the right question of one. Neither can see a dialog whose
+`setError("root")` renders nowhere, a translated string overflowing its column,
+or a button disabled for the wrong reason.
+
+**No Prisma in the test process.** The generated client is ESM-only
+(`import.meta`), `src/` is CommonJS, and Playwright's loader bridges neither —
+`type: module`, a directly constructed client and CJS interop each ended in a
+`require(esm)` cycle. The fixtures use `pg`. The trade is honest: this process
+drives a browser, it does not model a domain, and what it must never become is
+a second place the domain is expressed.
+
+**Three failures on the first run, all real.**
+
+`BETTER_AUTH_URL` is checked against the request's origin, so a server on
+another port refuses every sign-in with *"Invalid origin"* and the form
+silently does nothing — the exact failure class this layer exists to catch,
+caught by its own setup.
+
+A chip's accessible name is its **guest name**; the reference is in a `title`,
+which is not the accessible name when there is text content. And the suite is
+`fullyParallel` against one seeded property, so `Test Guest 1` matched another
+test's booking — every fixture tags its guests now.
+
+**One app fix.** `StayActions` had no accessible name, so nothing could tell
+its *Check in* from the day list's. It has `role="group"` and a label now: an
+accessibility improvement first, a test handle second, which is the right way
+round.
+
+12 end-to-end tests.
