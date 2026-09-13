@@ -1,0 +1,19 @@
+# The build context is uploaded to the daemon before any stage runs. Without
+# this, ~1.4 GB of node_modules and .next cross a 1-core box's I/O on every
+# build, and the deps stage's cache is invalidated by files it never reads.
+node_modules
+.next
+.git
+.github
+.storage
+.storage-test
+docs/screenshots-report
+tsconfig.tsbuildinfo
+npm-debug.log*
+.vscode
+
+# Never bake secrets into a layer. The runtime reads its environment from
+# compose, which loads the .env that lives outside the repo checkout.
+.env
+.env.*
+!.env.example

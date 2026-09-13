@@ -1,0 +1,76 @@
+# konak — konaq.kz
+#
+# Caddy provisions and renews TLS from Let's Encrypt automatically for every
+# hostname named in a site block. Both konaq.kz and www.konaq.kz already resolve
+# to this host (89.207.249.64), which is the only precondition — the HTTP-01
+# challenge needs port 80 reachable from the internet, so ufw must keep 80 open
+# even though all human traffic is redirected to 443.
+
+{
+	# Where expiry and renewal-failure notices go. Replace with a real inbox:
+	# the first warning that renewal is failing arrives here, 20 days before
+	# the certificate actually expires.
+	email admin@konaq.kz
+
+	# Caddy's own access/error log. Container logs are capped at 30 MB by the
+	# compose logging block.
+	admin off
+}
+
+# www redirects to the apex rather than serving the app.
+#
+# This is not cosmetic. BETTER_AUTH_URL is a single origin, and Better Auth
+# builds OAuth callback URLs and sets session cookies against it. Serving the
+# app on both origins means a session established on www is not sent to the
+# apex, and an OAuth callback registered for one is rejected from the other.
+# One canonical origin, everything else redirected.
+www.konaq.kz {
+	redir https://konaq.kz{uri} permanent
+}
+
+konaq.kz {
+	encode zstd gzip
+
+	# Attachment uploads (the storage feature). Caddy's default request body
+	# limit would reject a large passport scan with a 413 before the app sees it.
+	request_body {
+		max_size 25MB
+	}
+
+	# Security headers. HSTS is deliberately NOT set yet — see deployment.md.
+	# Turning it on commits every browser that has ever visited to HTTPS-only
+	# for `max_age`, which is unrecoverable if TLS breaks. Add it once the
+	# certificate has renewed at least once cleanly.
+	header {
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy strict-origin-when-cross-origin
+		# Caddy adds its own Server header; remove the version hint.
+		-Server
+	}
+
+	# `app` is the compose service name, resolved by Docker's embedded DNS on
+	# the `edge` network. It is not published to the host — this is the only
+	# route to it.
+	#
+	# THE LOAD-BALANCING ANSWER: when the app is scaled to N replicas, Docker
+	# DNS returns N A-records for `app` and Caddy load-balances across them with
+	# no change to this file. See deployment.md for why N is 1 on a 1 vCPU box.
+	reverse_proxy app:3000 {
+		# Next.js reads these to reconstruct the external URL. Without
+		# X-Forwarded-Proto the app believes it is on http and can build
+		# redirects that downgrade the scheme.
+		header_up X-Real-IP {remote_host}
+		header_up X-Forwarded-Proto {scheme}
+
+		# Do not hold a request forever if the single Node process is busy.
+		transport http {
+			dial_timeout 5s
+		}
+	}
+
+	log {
+		output stdout
+		format json
+	}
+}
