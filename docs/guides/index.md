@@ -27,7 +27,7 @@ split would silently drag database tests into the suite that must run anywhere.
 |---|---|---|---|
 | Unit | `src/**/*.test.ts`, beside the code | `npm test` | nothing |
 | Integration | `tests/server/**/*.test.ts` | `npm run test:server` | Postgres |
-| End-to-end | `e2e/**/*.spec.ts` *(none yet)* | — | the app running |
+| End-to-end | `tests/e2e/**/*.e2e.ts` | `npm run test:e2e` | Postgres on 5433, and the app |
 
 **`npm test` must stay runnable on a laptop with no Docker**, in CI with no
 services, in under a second.
@@ -45,6 +45,67 @@ Prisma at once — so `tests/server/` is their honest home. Every test that need
 permits *and* what the UI offers, so a disagreement between them is a button
 that 403s. `features/organizations/model/organization.test.ts` is the worked
 example.
+
+### The browser layer
+
+`tests/e2e/`, driven by Playwright against a **dev server on port 3100 and a
+second database**, `konak_e2e` on 5433. Both are built by `npm run e2e:db`,
+which the test commands run for you; uploads land in `.storage-e2e`. A browser
+test checks a guest in, and doing that to the database somebody is looking at
+makes both unreliable.
+
+**Projects are kinds, not browsers.** Chromium only — `setup` signs in once per
+role and saves the cookies, `journeys` asserts, `report` photographs. Fanning
+one suite across three engines buys almost nothing; add a browser when a real
+bug makes the case.
+
+**Fixtures, not page objects.** `lib/fixtures.ts` extends Playwright's `test`
+with `property`, `bookings` and `grid`, so a spec asks for a booking and neither
+makes nor cleans one. There is exactly one page object, `lib/grid.ts`, because
+the шахматка is the one screen genuinely re-driven; it holds locators and the
+smallest verbs and **never asserts** — a page object that asserts reports its
+failure in a file that does not say what was being attempted.
+
+Three rules the suite learnt the hard way, each written where it bit:
+
+- **Arrange by writing rows, assert only what a screen shows.** Getting a
+  booking into a given state through the UI makes every test depend on the
+  screen it is not testing.
+- **Ask for a free room, never name one.** Four specs once hard-coded
+  `roomIds[1]` and all booked tonight; the exclusion constraint refused three,
+  correctly. `bookings.create({ roomId: "free" })` claims one and retries
+  against the constraint.
+- **Nothing survives a run.** `e2e-db.mts` clears holds and housekeeping tasks
+  before seeding, because a test that fails half-way never reaches its cleanup
+  and what it leaves is not inert.
+
+`lib/db.ts` talks to Postgres through `pg` rather than Prisma: the generated
+client is CJS and Playwright's loader is ESM, and the interop failure surfaces
+as an error about `require(esm)` that says nothing about either.
+
+### The screenshot report
+
+`npm run report:ui` — the same suite, in its own project, photographing every
+screen in `tests/e2e/report/screens.ts` across both locales and both themes,
+then `scripts/report.mts` folds the shots into `reports/latest/index.html` and
+`report.pdf`. Adding a screen is a row in that file.
+
+It is a **deliverable, not a test**, and asserts almost nothing on purpose —
+with two exceptions, both of which exist because they were once needed:
+
+- **A 5xx fails the shot.** Sixty-eight green shots once hid a 500 on every
+  desk screen; a picture of an error page is worth nothing.
+- **It waits for the data.** `load` fires while every query is in flight, and
+  the шахматка photographed then is an empty grey box. It waits for no
+  `[data-slot="skeleton"]` to remain — `networkidle` cannot be the answer here,
+  because the desk polls forever.
+
+Each shot also files the console errors, page errors and failed requests beside
+it, which is what makes it a report: a screen that looks right while its console
+throws is a broken screen, and the manifest says so where a picture cannot.
+
+`/reports` is git-ignored. A committed screenshot report makes a PNG diff part
+of code review; send the PDF.
 
 **When a rule is fused to a query, split it rather than mock the query.** The
 last-admin guard needed a row count, so the decision moved to `model/user.ts`

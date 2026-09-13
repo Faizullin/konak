@@ -132,14 +132,19 @@ person, not three unrelated bookings.
 **Бронирования** → **Архив**. The cancellation and the no-show live here — neither
 occupies a room, which is exactly why neither is on the grid.
 
-### 10 — Both languages
+### 10 — Both languages, both themes
 
 Switch the language in the top bar. The client's staff work in Russian, and
 every screen here is translated — including the refusal reasons.
 
-A dark theme is **not** on this path. The tokens for one exist, on this surface
-and the old one, but nothing in the product flips them yet — see `todo.md`. Do
-not offer it and then go looking for the switch.
+Then the theme, beside it: System · Light · Dark. Front desks run dim, and both
+surfaces honour the same choice — a receptionist who sets the desk dark and
+opens the dashboard does not get a white screen, because light or dark is about
+the room they are sitting in.
+
+Worth one sentence if anyone asks about their own colours: a hotel's palette is
+a block of CSS variables and one registry line, because **no component here
+names a colour**. Do not promise a date.
 
 ## What not to promise
 
@@ -152,6 +157,6 @@ not offer it and then go looking for the switch.
 
 ## The screenshots
 
-`npm run test:e2e && npm run report:ui` produces the PDF over these screens in
-both languages — see [plans/e2e-and-reports.md](../plans/e2e-and-reports.md).
-Run it before the meeting, not during.
+`npm run report:ui` produces the PDF over these screens in both languages and
+both themes — see [index.md](index.md) § The screenshot report. Run it before the
+meeting, not during.

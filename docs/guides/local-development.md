@@ -47,6 +47,45 @@ sweeps would remove and removes it with `--commit`; run it, or abandoned uploads
 hold quota forever. `npm run test:server` writes to `.storage-test/` instead, so
 a test run never touches the seeded files.
 
+### The other layers
+
+```bash
+npm test           # unit — seconds, needs nothing
+npm run test:server  # integration — needs Postgres
+npm run test:e2e     # the browser — builds its own database first
+npm run report:ui    # the screenshot report, into reports/latest/
+npm run outbox       # drain the outbox; a dry run without -- --commit
+```
+
+**The long ones run at the end of a phase, not per edit.** `lint`,
+`format:check`, `test:server`, `build` and the browser suite are minutes each,
+and running them after every edit is most of a day. While working, `npx tsc
+--noEmit` is the one that earns its keep.
+
+At the end of a phase, in this order — each cheaper than the next, so a failure
+is found by the cheapest thing that can find it:
+
+```bash
+npx tsc --noEmit
+npm run lint
+npm run format:check
+npm test
+npm run test:server   # a router or the schema changed
+npm run build         # routing or config moved
+npm run test:e2e      # the browser, and the screenshot report
+npm run report:ui     # the PDF, when it is being shown to anybody
+```
+
+A phase is not finished until that block is green. Nothing between the start and
+the end of a phase is a gate.
+
+`test:e2e` and `report:ui` both run `npm run e2e:db` first, which creates
+`konak_e2e` on **port 5433** if it is absent, migrates it, clears the residue a
+failed run leaves behind, seeds it and loads the demo hotel. Uploads from those
+runs go to `.storage-e2e`, and the dev server they drive listens on 3100
+(`E2E_PORT`, `E2E_DATABASE_URL` to override). Nothing there touches the database
+you are looking at. `guides/index.md` § The browser layer describes the shape.
+
 ## Authentication
 
 Better Auth runs in-process. There is no dashboard, no tunnel and no webhook —
@@ -135,7 +174,7 @@ different questions: the seed is the **minimal chain that proves the model
 holds** — one room type, two rooms, one booking, the money behind it — and it
 is what the integration tests and a fresh clone want. The demo is the **dressed
 set**: ten rooms across three types, ninety nights of inventory and rates,
-thirteen bookings in every state, and a guest with three stays behind her.
+fifteen bookings in every state, and a guest with three stays behind her.
 Folding it into the seed would make every test fixture step around furniture it
 did not ask for.
 

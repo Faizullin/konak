@@ -24,22 +24,26 @@ src/
 ├── app/          ROUTING ONLY — page, layout, error, not-found
 │   ├── (auth)/   /sign-in, /sign-up — the not-signed-in guard + card
 │   ├── (app)/    /dashboard/* — the session guard + sidebar shell
+│   ├── desk/     /desk/<org>/<property>/* — the second surface, its own shell
 │   └── api/      route handlers (tRPC transport, Better Auth catch-all)
 ├── features/     THE DOMAIN — vertical slices, each complete
-│   └── <name>/       identity · organizations · directory · properties
-│                      platform · rates · reservations
+│   └── <name>/       billing · channels · desk · directory · housekeeping
+│                      identity · organizations · platform · properties
+│                      rates · reservations
 │       ├── server/   router, services, db access        ("server-only")
 │       ├── client/   "use client" components and hooks
 │       ├── model/    zod schemas, types, constants — isomorphic
 │       └── index.ts  re-exports model/ ONLY
 ├── server/       FRAMEWORK — trpc, root, db, auth, errors, provider
 ├── components/   SHARED UI — ui (shadcn), common (ours), data-table, layout (the shell)
-├── config/       data, not behaviour — nav-items.ts, locales.ts
+├── config/       data, not behaviour — nav-items.ts, locales.ts, surfaces.ts
 ├── hooks/        generic hooks only
-├── lib/          REPLACEABLE ADAPTERS — utils, auth-client, errors, i18n
+├── lib/          REPLACEABLE ADAPTERS — utils, auth-client, errors, i18n,
+│   │             money, labels, form, refusal, upload
 │   └── storage/  file storage, one class per provider — see below
-├── styles/       every stylesheet — shadcn's `globals.css`, and ours after it
-├── store/        client providers (nice-modal)
+├── styles/       every stylesheet — globals (shadcn's), then ours: overrides,
+│                  status (domain colour tokens), desk (a surface's block)
+├── store/        client providers — nice-modal, surface-links
 └── utils/ generated/
 ```
 
@@ -48,16 +52,21 @@ part of the app's module graph, and putting one under `src/` would put it in
 `tsc`'s and Next's. `messages/` sits beside it, for the same reason: one JSON file per namespace
 per locale, merged by `messages/<locale>/index.ts`. Content, not code.
 
-Two live in `scripts/`: `outbox-worker.mts`, which needs `--conditions=react-server`
-because it reaches a feature's `server/` — see
-[local-development.md](local-development.md#running-scripts-that-import-feature-code)
-— and `bundle.mts`, which reads build output and needs nothing.
+Five live in `scripts/`. Three need `--conditions=react-server` because they
+reach a feature's `server/` or the seed — `outbox-worker.mts`, `demo.mts` and
+the seed run by `e2e-db.mts`; see
+[local-development.md](local-development.md#running-scripts-that-import-feature-code).
+`bundle.mts` and `report.mts` read build and run output and need nothing.
 
-Seven features exist. `identity` (who the caller is) and `organizations` (the
-container the rest hangs off) exercise every layer, and `organizations` is the
-worked example. `directory` (people and companies) has a `model/` and a
-`server/`; `platform`, `rates` and `reservations` are `model/`-only so far —
-the rules the database cannot hold, tested without one.
+Eleven features exist and ten have a router; `identity` (who the caller is) and
+`organizations` (the container the rest hangs off) exercise every layer, and
+`organizations` is the worked example.
+
+**`desk` is the one with no `server/`, no `model/` and no barrel**, and that is
+its shape rather than an omission: a *surface* is a shell and a set of screens
+that compose other features' components and call their routers. It adds no
+capability, so it has nothing to put in a `model/` and nothing to export. A
+second surface looks the same — see `ui-patterns.md` § Surfaces and themes.
 
 ### When a router needs a `service.ts`
 
@@ -339,10 +348,17 @@ coincidence; three are a pattern, and only then does the wrapper pay for its
 indirection. Most `TRPCError` sites in the tree have exactly one caller and are
 meant to stay literal — the file to grow is the router, not `errors.ts`.
 
-**Every throw needs a message.** Every client mutation handler is
-`onError: (e) => toast.error(e.message)`, so the message *is* the UI: a throw
-without one ships an empty toast. That applies to the framework guards in
-`trpc.ts` as much as to feature routers.
+**Every throw needs a message.** It is the last fallback: `normalizeError` uses
+it when the error carries no domain code with a translation, so a throw without
+one ships an empty toast. That applies to the framework guards in `trpc.ts` as
+much as to feature routers.
+
+It is only the fallback. **No handler calls `toast.error(e.message)`** — that is
+the first entry in `CLAUDE.md` § Traps, because `authClient` *returns*
+`{ data, error }` rather than throwing and a wrong password would read as
+success. Handlers call `handleError` / `handleFormError` from `useErrorHandlers`
+(`ui-patterns.md` § Errors), which pick the destination from the kind and
+resolve the code in the current language.
 
 ### A refusal is a code, not only a sentence
 

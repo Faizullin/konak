@@ -1634,3 +1634,63 @@ The capture pass used to inject `document.documentElement.classList.add("dark")`
 after load. It writes the product's own stored preference before load now, so if
 the provider ever stops working the dark shots come back light and the report
 says so.
+
+## 2026-09-13 — three audits, and what they found
+
+The routers, the file tree and the documentation, read end to end. Written down
+because two of the findings are the kind that only a full read finds, and both
+had been true for weeks.
+
+### Nothing in the app can write room inventory
+
+`RoomTypeInventory` is read by `availability()` on every booking and drawn on
+every grid. It is written by `prisma/seed.ts` and `scripts/demo.mts`, and by
+nothing else. A missing row is nought rooms — deliberately, and the comment says
+so — which means a property created through `/front-desk/<slug>/setup` is sold
+out on every night for ever, and the demo property stops selling on night
+ninety-one.
+
+It had never been noticed because every path anyone had walked started from the
+seed. `roadmap.md` defers a *computed* availability; nobody had noticed that the
+uncomputed one has no writer either.
+
+### The series-number bug had four siblings
+
+Read a count, decide, write — with the decision and the write in different
+transactions. Availability before `reservation.create`, `walkIn` and
+`moveStay`; the folio in `folioForReservation` *and* `openFolioFor`;
+`takePayment`'s idempotency key; `close`'s frozen total; `enqueueOutbox`'s
+`findUnique`-then-`create`, which turns two cancellations in the same minute
+into a duplicate-key 500 that rolls the cancellation back.
+
+The exclusion constraint was believed to be the backstop for the first of those.
+It is not: it is `WHERE ("roomId" IS NOT NULL AND …)`, and an unassigned stay is
+the normal case for every advance booking and every channel booking.
+
+`lockOrganization` in `platform/server/attachments.ts` has been doing this
+correctly for the storage quota the whole time, which is where the fix comes
+from.
+
+### The import boundaries are enforced in one direction out of four
+
+`architecture.md` says the three-door rule is "enforced, not just documented".
+Probed with throwaway files: a `model/` importing `@/server/db` errors; a
+`client/` importing it **passes**, and `src/server/*` deliberately carries no
+`server-only` guard, so nothing at all stops a client component pulling Prisma
+toward the browser. Nothing checks a `server/` importing a `client/` either.
+Everything is clean today — which is the moment to add the zones, not after.
+
+### And the documentation had drifted in the direction of teaching a bug
+
+`architecture.md` said *"Every client mutation handler is
+`onError: (e) => toast.error(e.message)`"*. `CLAUDE.md`'s first trap says
+**never** — `authClient` returns `{ data, error }` rather than throwing, so a
+wrong password reads as success. The code was right and the guide was wrong, and
+a guide is binding, so it was the guide that had to move.
+
+Two whole layers were undocumented or denied: `guides/index.md` said the
+end-to-end suite did not exist, and `plans/e2e-and-reports.md` opened with
+"Nothing here is built" while nine specs, a fixture layer and a screenshot
+report ran in CI. Both are now in `guides/index.md` § The browser layer, and
+the plan is deleted — which is what the convention said to do the day it
+shipped.

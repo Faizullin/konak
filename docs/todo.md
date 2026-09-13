@@ -5,6 +5,22 @@ boxes. A finished item leaves here; the fact of it goes to `history.md`.
 
 Where this sits in the whole build: `plans/roadmap.md`.
 
+## Nothing can write room inventory
+A property created in the app can never sell a room: `RoomTypeInventory` is read
+by `availability()` and written only by the seed and `scripts/demo.mts`. A
+missing row is nought rooms by design, so a self-service property is sold out on
+every night for ever, and the demo itself stops selling on night ninety-one.
+`plans/server-hardening.md` § 1. **This is the top of the list** — nothing else
+matters if a hotel cannot sell a room.
+
+## The overselling races
+Availability is read before the transaction that writes the stay, and the
+exclusion constraint only protects an *assigned* room — while unassigned is the
+normal case for every advance and every channel booking. Same shape for folios:
+two "open the bill" presses make two folios. `plans/server-hardening.md` § 2.
+`lockOrganization` in `platform/server/attachments.ts` is the worked example of
+doing this right.
+
 ## Two questions for the client, in writing, before MVP sign-off
 Both break assumptions the schema turns on, and both are cheap to ask and
 expensive to retrofit.
@@ -28,8 +44,32 @@ genuinely is a problem and `--destructive` already means that everywhere. The
 first should follow the others into `styles/status.css` the next time anyone is
 in that file. `guides/ui-patterns.md` § Surfaces and themes is the rule.
 
+## The desk is photographed but never driven
+Every e2e journey uses `property.deskPath`, which is the *dashboard's* front
+desk. Nothing clicks `/desk`: not the booking tabs, not a chip opening a booking
+inside the shell, not the theme control. Two bugs this session shipped through
+that gap and were caught by a screenshot instead of a test — a 500 on every desk
+route, and a link that threw the user back into the dashboard.
+
+## Three small verified fixes
+- **Four desk pages have `\n` written as an escape sequence inside their JSDoc**
+  (`app/desk/.../{bookings,today,rooms,guests}/page.tsx`), so each renders as one
+  unreadable line. In a codebase where the comments are the documentation.
+- **`reservation-grid.tsx:107` has two consecutive JSDoc blocks** above
+  `STATUS_CLASS`; the first is the pre-token version and contradicts the second.
+- **`src/server/caller.ts` is dead** — nothing imports `trpcCaller`;
+  `tests/server/harness.ts` builds its own.
+
+## Three claims in the docs that are not reachable
+- `uploadAttachment()` has no production caller, while `architecture.md` and
+  `handoff.md` both say it opens the panel "from anywhere".
+- `docs/screenshots-report/` is 3 MB of light-only PNGs from a tool that no
+  longer exists, still tracked — while `.gitignore` now ignores `/reports` on
+  the argument that a committed report makes PNG diffs part of review.
+- The landing page says "Prisma on SQLite". It is Postgres.
+
 ## A channel-manager vendor
 Phase 7's server half is finished and the adapter registry is empty on purpose.
 `ChannelAdapter` is two methods; choosing the vendor is a commercial decision,
 and the market decides it — the same question as which jurisdiction is first.
-`plans/e2e-and-reports.md` for the browser suite that will prove it.
+`guides/index.md` § The browser layer for the suite that will prove it.

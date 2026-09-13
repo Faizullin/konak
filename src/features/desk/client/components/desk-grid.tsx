@@ -13,7 +13,7 @@ import { ReservationGrid } from "@/features/reservations/client/components/reser
  * either.
  *
  * Splitting the grid's logic from its markup, so a second visual treatment is a
- * stylesheet rather than a copy, is P3 in `plans/mvp-roadmap.md` — and the
+ * stylesheet rather than a copy, is `plans/second-surface.md` — and the
  * right order: prove the layout first, then earn the refactor.
  *
  * The breakpoint is `2xl` rather than `lg`: the grid is 88rem at comfortable

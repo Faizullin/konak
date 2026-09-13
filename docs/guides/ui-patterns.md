@@ -542,8 +542,12 @@ put every string in every bundle, and it is measurable — next-intl cost the tw
 auth routes 39 kB each and the shared chunk nothing at all.
 
 **There is no locale in the URL.** The language comes from a cookie, resolved in
-`lib/i18n.ts`. See `plans/internationalisation.md` for why, and for what is
-still English: the 77 domain codes and the 171 Zod messages.
+`lib/i18n.ts`; `plans/internationalisation.md` says why.
+
+What is still English is **five refusals**, and deliberately: their sentence is
+computed by a rule in `model/` rather than looked up, so the words depend on
+why — see § Errors above. Everything else, the domain codes and the Zod
+messages, resolves from `messages/`.
 
 ---
 

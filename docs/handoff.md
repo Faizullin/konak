@@ -37,10 +37,11 @@ the registry is deliberately empty, so say "ready for", not "connected to".
 down the left, its own layout, its own token block under
 `[data-surface="desk"]`. It imports the routers and edits nothing that already
 existed; deleting it would leave the dashboard byte-identical. Built for the
-MVP demonstration under `plans/mvp-roadmap.md`.
+MVP demonstration; `guides/ui-patterns.md` § Surfaces and themes is the rule it
+was built under.
 
 **Load the demo data before showing anyone.** `npm run demo`, after the seed:
-ten rooms across three types, ninety nights priced, thirteen bookings in every
+ten rooms across three types, ninety nights priced, fifteen bookings in every
 state, a guest with three stays. It clears its own previous run, so rehearse
 freely. `guides/demo.md` is the path through it — ten stops, the client's eight
 items, and what not to promise.
@@ -90,10 +91,17 @@ Uploading is a MEMBER right and deleting is a manager's, because deleting takes
 the bytes with it. Try it on the demo: sign in as `admin@konak.dev`, open
 Directory, click **Ada Lovelace**.
 
-**The MVP roadmap has shipped, all six phases.** `plans/mvp-roadmap.md` is kept
-only until someone confirms the guides carry what it taught; what is left of the
-interface work is `plans/dashboard-header.md` — the dashboard header as a
-component, the language switch moving into it, the notification bell.
+**The MVP roadmap shipped, all six phases, and the plan is gone** — what it
+taught is in `guides/ui-patterns.md` § Surfaces and themes,
+`guides/architecture.md` and `guides/demo.md`, and the gate block moved to
+`guides/local-development.md`. `plans/e2e-and-reports.md` and
+`plans/file-uploads-ui.md` went the same way.
+
+**An audit on 2026-09-13 read every router.** Start with
+`plans/server-hardening.md` § 1: **nothing in the app can write
+`RoomTypeInventory`**, so a property created through the UI can never sell a
+room, and the demo stops selling on night ninety-one. Then § 2, five
+read-then-write races of the shape `nextSeriesNumber` already taught.
 
 **Dark mode works, and a person chooses it.** `next-themes` at the root,
 `AppearanceToggle` in the dashboard header and in the desk's bar. Both surfaces
@@ -111,13 +119,14 @@ untouched and still works.
 — see `guides/architecture.md`. Without it every link out of the desk landed
 back in the dashboard.
 
-**Where to start.** `docs/todo.md`, top entry.
+**Where to start.** `docs/todo.md`, top entry — which is the inventory write
+path.
 
 **Before you finish — once, not per edit.** `lint`, `format:check`,
 `test:server`, `build` and the browser suite are minutes each on this machine,
 so they run at the *end* of a phase in one pass. While working, `npx tsc
---noEmit` and nothing else. `plans/mvp-roadmap.md` § Gates has the block and its
-order.
+--noEmit` and nothing else. `guides/local-development.md` § The other layers has
+the block and its order.
 
 **What is binding.** `docs/guides/` describes how things are. `CLAUDE.md` lists
 the traps that fail silently.

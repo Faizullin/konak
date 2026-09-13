@@ -2,7 +2,7 @@
  * The surfaces this product draws, as data.
  *
  * A **surface** is a shell with its own layout: `basic` is the dashboard,
- * `desk` is the front desk (`plans/mvp-roadmap.md`). Each names itself in the
+ * `desk` is the front desk. Each names itself in the
  * DOM with `data-surface`, and `styles/*.css` scopes a block of tokens to that
  * name — which is why a second palette is a CSS block rather than a second set
  * of components. No component names a colour.
