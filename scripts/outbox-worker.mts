@@ -7,6 +7,13 @@ import {
 } from "../src/features/platform/server/outbox";
 import { countSweepable, sweepStorage } from "../src/features/platform/server/storage-sweep";
 import { countExpiredHolds, sweepExpiredHolds } from "../src/features/reservations/server/service";
+// The files, not the barrel. A barrel caught in a cycle can be only partly
+// initialised by the time Node links this, and the symptom is an export that
+// "does not exist" — see the same reason `inbound.ts` reaches for a service
+// module rather than a feature's `server/`.
+import { enqueueChannelPulls } from "../src/features/channels/server/enqueue";
+import { PULL_HANDLERS } from "../src/features/channels/server/pull";
+import { PUSH_HANDLERS } from "../src/features/channels/server/push";
 
 /**
  * The worker that drains `OutboxTask`.
@@ -38,7 +45,15 @@ const commit = args.has("--commit");
 const limit = valueOf("limit", 20);
 const intervalSeconds = valueOf("interval", 0);
 
-const registered = Object.keys(OUTBOX_HANDLERS);
+/**
+ * Everything this worker can run.
+ *
+ * Composed here rather than inside `outbox.ts`: a feature that enqueues its own
+ * work imports `enqueueOutbox`, and a registry that imported it back would be a
+ * cycle. The worker is the one place that legitimately knows about all of them.
+ */
+const handlers = { ...OUTBOX_HANDLERS, ...PUSH_HANDLERS, ...PULL_HANDLERS };
+const registered = Object.keys(handlers);
 
 async function report() {
   const [summary, due] = await Promise.all([outboxSummary(), countDueOutbox()]);
@@ -68,7 +83,13 @@ async function once() {
     return;
   }
 
-  const result = await drainOutbox({ limit });
+  // Asked for before the drain, so a pull queued now runs in this same pass:
+  // a booking made on a channel happens where we cannot see it, and the only
+  // way to learn about it is to ask.
+  const pulls = await enqueueChannelPulls();
+  if (pulls > 0) console.log(`queued a pull for ${pulls} connection(s)`);
+
+  const result = await drainOutbox({ limit, handlers });
   console.log(
     `claimed ${result.claimed} · done ${result.done} · retried ${result.retried} · dead-lettered ${result.deadLettered}`
   );

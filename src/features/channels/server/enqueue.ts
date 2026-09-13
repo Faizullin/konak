@@ -1,7 +1,9 @@
 import "server-only";
 import type { Prisma } from "@/generated/prisma/client";
+import prisma from "@/server/db";
 import { enqueueOutbox } from "@/features/platform/server/outbox";
 import { PUSH_HORIZON_NIGHTS, pushKey } from "../model";
+import { CHANNEL_PULL, type ChannelPullPayload } from "./pull";
 import { CHANNEL_PUSH, type ChannelPushPayload } from "./push";
 
 /**
@@ -50,6 +52,38 @@ export async function enqueueChannelPush(
       // Ten changes in a minute are one message: the push is a diff and
       // already carries what all of them did.
       idempotencyKey: pushKey(connection.id, from, now),
+    });
+  }
+
+  return connections.length;
+}
+
+/**
+ * A pull for every live connection, once a minute at most.
+ *
+ * Enqueued by the worker rather than by an event, because there is no event: a
+ * booking made on Booking.com happens where we cannot see it, and the only way
+ * to learn about it is to ask. The same minute-grained key the push uses keeps
+ * a worker running every fifteen seconds from queueing four times the work.
+ */
+export async function enqueueChannelPulls(): Promise<number> {
+  // Its own client rather than one handed in: this is a scheduled job, not a
+  // participant in somebody's transaction — unlike `enqueueChannelPush`, whose
+  // whole point is committing with the change it announces.
+  const connections = await prisma.channelConnection.findMany({
+    where: { status: "ACTIVE" },
+    select: { id: true, property: { select: { organizationId: true } } },
+  });
+
+  const minute = Math.floor(Date.now() / 60_000);
+
+  for (const connection of connections) {
+    const payload: ChannelPullPayload = { connectionId: connection.id };
+    await enqueueOutbox(prisma, {
+      type: CHANNEL_PULL,
+      payload: payload as unknown as Record<string, unknown>,
+      organizationId: connection.property.organizationId,
+      idempotencyKey: `channel.pull:${connection.id}:${minute}`,
     });
   }
 

@@ -10,7 +10,6 @@ import {
   type EnqueueOutboxInput,
 } from "../model";
 import { STORAGE_HANDLERS } from "./storage-sweep";
-import { CHANNEL_HANDLERS } from "@/features/channels/server";
 
 /**
  * The outbox worker: claiming work, running it, and deciding what a failure
@@ -54,10 +53,14 @@ export type OutboxHandlers = Record<string, OutboxHandler>;
  *
  * `storage-sweep` imports only *types* from here, so composing its handlers
  * into this object is not a cycle at runtime.
+ *
+ * **A feature whose handlers need `enqueueOutbox` cannot be composed here** —
+ * that is a cycle, and `channels` is the first one: it enqueues its own work.
+ * Those are composed by the worker instead, which is the right layer anyway.
+ * Infrastructure knowing the name of a feature is backwards.
  */
 export const OUTBOX_HANDLERS: OutboxHandlers = {
   ...STORAGE_HANDLERS,
-  ...CHANNEL_HANDLERS,
 };
 
 /** The client a caller's transaction hands us, or the plain one. */

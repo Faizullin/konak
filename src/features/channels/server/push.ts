@@ -1,7 +1,11 @@
 import "server-only";
 import prisma from "@/server/db";
 import type { OutboxHandler, OutboxHandlers } from "@/features/platform/server/outbox";
-import { availability } from "@/features/reservations/server";
+// The service module, not `@/features/reservations/server` — that barrel
+// re-exports the router, the router enqueues a channel push, and importing it
+// from here closes a cycle Node refuses to instantiate. The barrel is the
+// convention; a cycle is the exception to it.
+import { availability } from "@/features/reservations/server/service";
 import {
   ChannelError,
   nightsToPush,
@@ -190,6 +194,6 @@ const pushAvailability: OutboxHandler = async (payload) => {
   });
 };
 
-export const CHANNEL_HANDLERS: OutboxHandlers = {
+export const PUSH_HANDLERS: OutboxHandlers = {
   [CHANNEL_PUSH]: pushAvailability,
 };

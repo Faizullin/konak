@@ -1,7 +1,11 @@
 import "server-only";
 import prisma from "@/server/db";
 import { createGuestPerson } from "@/features/directory/server";
-import { nextSeriesNumber } from "@/features/reservations/server";
+// The service module, not `@/features/reservations/server` — that barrel
+// re-exports the router, the router enqueues a channel push, and importing it
+// from here closes a cycle Node refuses to instantiate. The barrel is the
+// convention; a cycle is the exception to it.
+import { nextSeriesNumber } from "@/features/reservations/server/service";
 import { ChannelError } from "../model";
 import type { InboundReservation } from "./adapter";
 

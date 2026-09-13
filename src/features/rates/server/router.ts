@@ -9,6 +9,7 @@ import {
 } from "@/server/errors";
 import { createTRPCRouter, protectedProcedure } from "@/server/trpc";
 import { requirePropertyMember } from "@/features/properties/server";
+import { enqueueChannelPush } from "@/features/channels/server";
 import { nightsOf, toStayDate } from "@/features/reservations";
 import {
   archiveRatePlanSchema,
@@ -130,7 +131,7 @@ export const rateRouter = createTRPCRouter({
   }),
 
   setRates: protectedProcedure.input(setRatesSchema).mutation(async ({ ctx, input }) => {
-    const { role } = await requirePropertyMember(ctx, input.propertyId);
+    const { property: scope, role } = await requirePropertyMember(ctx, input.propertyId);
     if (!canSetRates(role)) {
       throw new ForbiddenError(RateError.PRICES_FORBIDDEN, "You cannot change prices");
     }
@@ -172,6 +173,15 @@ export const rateRouter = createTRPCRouter({
           priceMinor: input.priceMinor,
         })),
       });
+
+      // A price is half of what a channel is told. Recorded in the same
+      // transaction as the change, and from the first day written rather than
+      // from today — a season set for August is news about August.
+      await enqueueChannelPush(tx, {
+        propertyId: input.propertyId,
+        organizationId: scope.organizationId,
+        from: days[0],
+      });
     });
 
     return { days: days.length };
@@ -180,7 +190,7 @@ export const rateRouter = createTRPCRouter({
   setRestrictions: protectedProcedure
     .input(setRestrictionsSchema)
     .mutation(async ({ ctx, input }) => {
-      const { role } = await requirePropertyMember(ctx, input.propertyId);
+      const { property: scope, role } = await requirePropertyMember(ctx, input.propertyId);
       if (!canSetRates(role)) {
         throw new ForbiddenError(
           RateError.RESTRICTIONS_FORBIDDEN,
@@ -220,6 +230,15 @@ export const rateRouter = createTRPCRouter({
             date,
             ...values,
           })),
+        });
+
+        // A minimum stay or a closed arrival is what makes a rate plan a
+        // commercial instrument rather than a number, and a channel selling
+        // against the old one is selling something the hotel withdrew.
+        await enqueueChannelPush(tx, {
+          propertyId: input.propertyId,
+          organizationId: scope.organizationId,
+          from: days[0],
         });
       });
 

@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import { after, before, describe, test } from "node:test";
 import { createFixture, prisma, type Fixture } from "./harness";
-import { applyInboundReservation, enqueueChannelPush } from "@/features/channels/server";
+import {
+  applyInboundReservation,
+  enqueueChannelPulls,
+  enqueueChannelPush,
+} from "@/features/channels/server";
 import type { InboundReservation } from "@/features/channels/server";
 
 /**
@@ -192,5 +196,21 @@ describe("telling the channels", () => {
       where: { id: connection.id },
       data: { status: "ACTIVE" },
     });
+  });
+});
+
+describe("asking the channels", () => {
+  test("a pull is queued once a minute per live connection", async () => {
+    // There is no event for a booking made on Booking.com: it happens where we
+    // cannot see it, and the only way to learn about it is to ask.
+    await prisma.outboxTask.deleteMany({ where: { organizationId: fx.org.id } });
+
+    await enqueueChannelPulls();
+    await enqueueChannelPulls();
+
+    const tasks = await prisma.outboxTask.count({
+      where: { organizationId: fx.org.id, type: "channel.pull" },
+    });
+    assert.equal(tasks, 1);
   });
 });
