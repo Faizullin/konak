@@ -31,8 +31,7 @@
     "not_found": "That bill was not found",
     "closed": "That bill is closed — a correction is a new line, not an edit",
     "void": "That bill was voided",
-    "unbalanced": "That bill does not balance yet",
-    "currency_mismatch": "That is a different currency from the bill's"
+    "unbalanced": "That bill does not balance yet"
   },
   "folio_line": {
     "not_found": "That line was not found",
@@ -64,8 +63,7 @@
   },
   "payment": {
     "not_found": "That payment was not found",
-    "not_captured": "Only a captured payment can be refunded",
-    "amount_invalid": "A payment is an amount above zero"
+    "not_captured": "Only a captured payment can be refunded"
   },
   "person": {
     "archive_forbidden": "Only managers can archive people",

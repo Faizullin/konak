@@ -46,7 +46,7 @@
     "money": "Money",
     "paid": "Paid",
     "balance": "Balance",
-    "folioLater": "The reservation's own totals. Charges, payments and a folio that closes arrive with billing.",
+    "quotedHint": "What the booking was quoted. The bill below is what is actually owed.",
     "guests": "Guests",
     "notes": "Notes",
     "showOnGrid": "Show on the grid"

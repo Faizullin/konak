@@ -6,6 +6,7 @@ import { ReservationError } from "../model";
 import { createGuestPerson } from "@/features/directory/server";
 import { isRoomSellable, RoomStatus, statusAfterCheckOut } from "@/features/properties";
 import { TaskType } from "@/features/housekeeping";
+import { openFolioFor, postRoomCharges } from "@/features/billing/server";
 import { requirePropertyMember } from "@/features/properties/server";
 import {
   assignRoomSchema,
@@ -379,22 +380,25 @@ export const reservationRouter = createTRPCRouter({
   setStatus: protectedProcedure
     .input(setReservationStatusSchema)
     .mutation(async ({ ctx, input }) => {
-      const { user } = await requirePropertyMember(ctx, input.propertyId);
+      const { property: scope, user } = await requirePropertyMember(ctx, input.propertyId);
 
       const reservation = await ctx.db.reservation.findFirst({
         where: { id: input.id, propertyId: input.propertyId },
         select: {
           id: true,
           status: true,
+          currencyCode: true,
           property: { select: { timezone: true } },
           // Check-in reads the rooms and the dates, so the rule sees the whole
           // booking rather than the column alone. The room's own status comes
           // with it, because check-out leaves work behind on it.
           stays: {
             select: {
+              id: true,
               roomId: true,
               checkIn: true,
               checkOut: true,
+              totalMinor: true,
               room: { select: { id: true, status: true } },
             },
           },
@@ -463,6 +467,32 @@ export const reservationRouter = createTRPCRouter({
               dueDate,
               createdById: user.id,
             })),
+          });
+        }
+
+        /**
+         * And the bill becomes real.
+         *
+         * Three things follow from one departure — the room is dirty, the floor
+         * is owed a clean, the guest is owed a bill — and all three are written
+         * by the transaction that records it. A folio opened here rather than
+         * at booking is a number taken when there is something to number.
+         *
+         * `postRoomCharges` skips a stay that already has a line, so a
+         * departure recorded twice does not bill twice.
+         */
+        if (departed) {
+          const folio = await openFolioFor(tx, {
+            organizationId: scope.organizationId,
+            propertyId: input.propertyId,
+            reservationId: input.id,
+            currencyCode: reservation.currencyCode,
+            userId: user.id,
+          });
+          await postRoomCharges(tx, {
+            folioId: folio.id,
+            userId: user.id,
+            stays: reservation.stays,
           });
         }
 

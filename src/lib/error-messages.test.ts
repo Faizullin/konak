@@ -158,6 +158,10 @@ const ENUM_SOURCES: Record<string, string> = {
   taskStatus: "src/features/housekeeping/model/task.ts:TaskStatus",
   issueSeverity: "src/features/housekeeping/model/issue.ts:IssueSeverity",
   issueStatus: "src/features/housekeeping/model/issue.ts:IssueStatus",
+  lineType: "src/features/billing/model/line.ts:LineType",
+  paymentMethod: "src/features/billing/model/folio.ts:PaymentMethod",
+  paymentStatus: "src/features/billing/model/folio.ts:PaymentStatus",
+  folioStatus: "src/features/billing/model/folio.ts:FolioStatus",
 };
 
 /** The keys of `export const X = { … } as const`, read from the source. */

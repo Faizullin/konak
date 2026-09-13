@@ -31,6 +31,7 @@ import { formatMoney } from "@/lib/money";
 import { cn } from "@/lib/utils";
 import type { GeneralRouterOutputs } from "@/server/types";
 import { trpc } from "@/utils/trpc";
+import { FolioPanel } from "@/features/billing/client/components/folio-panel";
 import { useBookingActions } from "../hooks/use-booking-actions";
 
 type Booking = GeneralRouterOutputs["reservation"]["byPublicId"];
@@ -136,7 +137,11 @@ export function BookingCard({
         </div>
       </section>
 
+      {/* What was quoted, and beneath it what is actually owed. They are
+          different numbers the moment anything is added, voided or paid. */}
       <Money booking={data} locale={locale} />
+
+      <FolioPanel propertyId={propertyId} reservationId={data.id} />
 
       {data.guests.length > 0 && (
         <section className="space-y-3">
@@ -302,9 +307,7 @@ function Money({ booking, locale }: { booking: Booking; locale: string }) {
           <dd className={cn("font-medium", balance > 0 && "text-destructive")}>{money(balance)}</dd>
         </div>
       </dl>
-      {/* Phase 6 owns the folio. Until it exists these are the reservation's own
-          columns, and nothing on this screen can move them. */}
-      <p className="text-muted-foreground text-xs">{t("card.folioLater")}</p>
+      <p className="text-muted-foreground text-xs">{t("card.quotedHint")}</p>
     </section>
   );
 }

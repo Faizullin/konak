@@ -1,0 +1,23 @@
+{
+  "heading": "Bill",
+  "openBill": "Open the bill",
+  "openHint": "A bill takes a number from the property's series, so it is opened when there is something to number.",
+  "empty": "Nothing on it yet.",
+  "status": {
+    "open": "Open",
+    "closed": "Closed"
+  },
+  "charged": "Charged",
+  "taken": "Taken",
+  "balance": "Balance",
+  "void": "Void",
+  "paid": "Paid",
+  "refunded": "Refunded",
+  "post": "Post",
+  "descriptionPlaceholder": "What it is for",
+  "amountPlaceholder": "Minor units",
+  "takeBalance": "Take the balance",
+  "close": "Close the bill",
+  "closed": "Bill closed",
+  "mustBalance": "A bill closes only when it balances."
+}

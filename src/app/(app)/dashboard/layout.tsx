@@ -49,6 +49,7 @@ export default async function DashboardLayout({ children }: Readonly<{ children:
     <NextIntlClientProvider
       locale={locale}
       messages={{
+        billing: messages.billing,
         directory: messages.directory,
         enums: messages.enums,
         errors: messages.errors,

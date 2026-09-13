@@ -65,5 +65,32 @@
     "IN_PROGRESS": "Being fixed",
     "RESOLVED": "Fixed",
     "WONT_FIX": "Not fixing"
+  },
+  "lineType": {
+    "ROOM": "Room",
+    "EXTRA": "Extra",
+    "SERVICE": "Service",
+    "TAX": "Tax",
+    "DISCOUNT": "Discount",
+    "CITY_TAX": "City tax"
+  },
+  "paymentMethod": {
+    "CASH": "Cash",
+    "CARD": "Card",
+    "BANK_TRANSFER": "Bank transfer",
+    "ONLINE": "Online",
+    "VOUCHER": "Voucher",
+    "OTA_COLLECT": "Collected by the channel"
+  },
+  "paymentStatus": {
+    "PENDING": "Pending",
+    "CAPTURED": "Taken",
+    "FAILED": "Failed",
+    "REFUNDED": "Refunded"
+  },
+  "folioStatus": {
+    "OPEN": "Open",
+    "CLOSED": "Closed",
+    "VOID": "Void"
   }
 }

@@ -28,7 +28,11 @@ export function useEnumLabels<T extends string>(
     | "taskType"
     | "taskStatus"
     | "issueSeverity"
-    | "issueStatus",
+    | "issueStatus"
+    | "lineType"
+    | "paymentMethod"
+    | "paymentStatus"
+    | "folioStatus",
   values: readonly T[]
 ): Record<T, string> {
   const t = useTranslations("enums");

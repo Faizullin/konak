@@ -36,14 +36,26 @@ before(async () => {
       name: `Hotel ${fx.tag}`,
       slug: `hotel-${fx.tag}`,
       currencyCode: "EUR",
+      // Both, because a departure needs both: a booking takes a reference and
+      // the bill it becomes takes a folio number. A property with only one of
+      // them can be booked into and never checked out of.
       numberSeries: {
-        create: {
-          organizationId: fx.org.id,
-          kind: "RESERVATION",
-          prefix: "R-",
-          period: "2027",
-          counter: 0,
-        },
+        create: [
+          {
+            organizationId: fx.org.id,
+            kind: "RESERVATION",
+            prefix: "R-",
+            period: "2027",
+            counter: 0,
+          },
+          {
+            organizationId: fx.org.id,
+            kind: "FOLIO",
+            prefix: "R-F-",
+            period: "2027",
+            counter: 0,
+          },
+        ],
       },
       roomTypes: {
         create: { name: "Double", code: "DBL", maxOccupancy: 2 },
@@ -197,6 +209,15 @@ describe("check-out and the floor", () => {
 
     const room = await prisma.room.findUniqueOrThrow({ where: { id: roomId } });
     assert.equal(room.status, "DIRTY");
+
+    // And the bill became real. Three things follow from one departure, and
+    // all three are written by the transaction that records it.
+    const folio = await prisma.folio.findFirst({
+      where: { reservationId: booking.id },
+      include: { lines: true },
+    });
+    assert.ok(folio, "a departure opens the bill");
+    assert.match(folio.number, /^R-F-/);
 
     // And the floor is owed the work. Two things follow from one event, and a
     // board that has to be told separately is a board that goes stale.

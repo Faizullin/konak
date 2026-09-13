@@ -65,5 +65,32 @@
     "IN_PROGRESS": "Чинят",
     "RESOLVED": "Устранена",
     "WONT_FIX": "Не чиним"
+  },
+  "lineType": {
+    "ROOM": "Проживание",
+    "EXTRA": "Дополнительно",
+    "SERVICE": "Услуга",
+    "TAX": "Налог",
+    "DISCOUNT": "Скидка",
+    "CITY_TAX": "Курортный сбор"
+  },
+  "paymentMethod": {
+    "CASH": "Наличные",
+    "CARD": "Карта",
+    "BANK_TRANSFER": "Перевод",
+    "ONLINE": "Онлайн",
+    "VOUCHER": "Ваучер",
+    "OTA_COLLECT": "Удержано каналом"
+  },
+  "paymentStatus": {
+    "PENDING": "Ожидает",
+    "CAPTURED": "Получен",
+    "FAILED": "Ошибка",
+    "REFUNDED": "Возвращён"
+  },
+  "folioStatus": {
+    "OPEN": "Открыт",
+    "CLOSED": "Закрыт",
+    "VOID": "Аннулирован"
   }
 }
