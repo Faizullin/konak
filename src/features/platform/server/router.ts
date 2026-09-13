@@ -14,6 +14,7 @@ import {
   listAttachmentsSchema,
   requestUploadSchema,
   createTagSchema,
+  listSubjectTagsSchema,
   hasExactlyOneSubject,
   listActivitiesSchema,
   subjectOf,
@@ -196,6 +197,24 @@ export const platformRouter = createTRPCRouter({
         orderBy: { name: "asc" },
       });
     }),
+
+  /** One subject's tags — the shape `listAttachments` uses for its files. */
+  listSubjectTags: protectedProcedure.input(listSubjectTagsSchema).query(async ({ ctx, input }) => {
+    await requireOrgMember(ctx, input.organizationId);
+    await assertSubjectInOrg(input.organizationId, input);
+
+    const rows = await ctx.db.entityTag.findMany({
+      where: {
+        personId: input.personId ?? undefined,
+        companyId: input.companyId ?? undefined,
+        propertyId: input.propertyId ?? undefined,
+        tag: { organizationId: input.organizationId },
+      },
+      select: { tag: { select: { id: true, name: true, colour: true } } },
+    });
+
+    return rows.map((row) => row.tag).toSorted((a, b) => a.name.localeCompare(b.name));
+  }),
 
   createTag: protectedProcedure.input(createTagSchema).mutation(async ({ ctx, input }) => {
     await requireOrgMember(ctx, input.organizationId);

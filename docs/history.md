@@ -1347,3 +1347,73 @@ check that made every sign-in fail silently, ninety-six error messages that neve
 resolved, and now every form dialog in the product.
 
 214 unit tests, 136 integration, 20 journeys, 36 screenshots.
+
+## 2026-09-13 — Phase 5: the floor, and the guest behind a booking
+
+**Done when** a full stay cycle happens in the app: booked, arrived, occupied,
+departed, cleaned. It does, and one end-to-end journey asserts the whole of it.
+
+### What a task does to a room is a rule, not a decision at the call site
+
+`Room.status` is what a room *is*; a task is the work that changes it. Two
+tables that can disagree, so every write moves both in one transaction and
+*what* it moves them to is a pure function — which is what makes the awkward
+cases testable without a database:
+
+- an **inspection** that passes leaves the room `INSPECTED`, not `CLEAN`. They
+  are different claims, and a manager who inspected wants the difference to
+  survive.
+- a room **out of order** is never moved by finishing a clean, the same rule
+  check-out already obeyed.
+- a **fixed fault gives the room back dirty**. The repair is done; somebody
+  still has to go in. And a lesser fault never closed the room, so closing it
+  must not reopen it — otherwise a dripping tap quietly puts a sold room back
+  on sale.
+
+`BLOCKED` is the one task state that goes backwards, deliberately: it means the
+work could not be done, and when the fault is fixed the work is still owed.
+
+### Check-out creates the work, not only the dirt
+
+Two things follow from one event and both belong in the transaction that
+records it: the room becomes dirty and the floor is owed a `DEPARTURE_CLEAN`,
+dated on the property's own day. A board that has to be told separately is a
+board that goes stale.
+
+### Cards, because of who reads them
+
+The board is cards and not a table, and that is a statement about a person: it
+is read standing up, on a small screen, by somebody moving between floors with
+one hand free. One column on a phone, two when there is room, one decision per
+row, buttons the size of a thumb. The grid's density belongs to a receptionist
+sitting down.
+
+### The two halves of the product finally join
+
+A directory entry is worth keeping because of what it is attached to. Stay
+history reads **booked *or* slept in** — the person who books is often not the
+person who sleeps, so a history on `bookerPersonId` alone would lose half of
+them. Each row opens the booking; each guest on a booking opens the person.
+
+### What the end-of-phase pass found
+
+**Server.** `createTask` made three sequential round trips where neither answer
+decided whether to ask for the other. Two now.
+
+**Client.** The floor is **819,257 bytes**, down 5.9 kB. `NiceModal.Provider`
+moved out of the root to fix every dialog in the product, and the second half of
+that move was the auth routes and the landing page no longer carrying a modal
+registry they never open.
+
+**Data.** The board groups its three queries in memory with `Map`s rather than
+scanning per room — the same lesson the grid learned in M1, applied before it
+cost anything.
+
+### A flake that was a bug
+
+A hold lives fifteen minutes, and one left behind by a test that failed
+half-way sells out a two-room demo for the *next* run. The e2e bootstrap clears
+`inventory_holds` now, and the run after the fix printed `cleared 2 leftover
+hold(s)` — the diagnosis confirming itself.
+
+220 unit tests, 145 integration, 27 journeys.

@@ -2,6 +2,7 @@ import auth from "./auth.json";
 import directory from "./directory.json";
 import enums from "./enums.json";
 import errors from "./errors.json";
+import housekeeping from "./housekeeping.json";
 import identity from "./identity.json";
 import organizations from "./organizations.json";
 import pages from "./pages.json";
@@ -23,6 +24,7 @@ const en = {
   directory,
   enums,
   errors,
+  housekeeping,
   identity,
   organizations,
   pages,

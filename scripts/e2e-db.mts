@@ -48,4 +48,17 @@ const run = (command: string, args: string[]) =>
 run("npx", ["prisma", "migrate", "deploy"]);
 run("npx", ["tsx", "--conditions=react-server", "prisma/seed.ts"]);
 
+/**
+ * Holds do not survive a run.
+ *
+ * A claim lives fifteen minutes, so one left behind by a test that failed
+ * half-way sells the rooms out for the *next* run — and a two-room demo needs
+ * only two of them. Nothing here is a claim anybody is waiting on.
+ */
+const holds = new Client({ connectionString: url.toString() });
+await holds.connect();
+const { rowCount: cleared } = await holds.query("delete from inventory_holds");
+await holds.end();
+if (cleared) console.log(`cleared ${cleared} leftover hold(s)`);
+
 console.log("e2e database ready");

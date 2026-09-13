@@ -83,6 +83,7 @@ export default async function BookingPage({ params }: Params) {
         publicId={publicId}
         timezone={property.timezone}
         gridHref={`/dashboard/orgs/${orgSlug}/front-desk/${propertySlug}`}
+        directoryHref={`/dashboard/orgs/${orgSlug}/directory`}
       />
     </div>
   );

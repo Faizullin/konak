@@ -268,6 +268,28 @@ async function main() {
     });
   }
 
+  // A folio number is a legal number, so it comes from a series too — and a
+  // property without one cannot bill at all, which is why the seed writes it
+  // beside the reservation series rather than leaving it to be discovered.
+  await prisma.numberSeries.upsert({
+    where: {
+      organizationId_propertyId_kind: {
+        organizationId: organization.id,
+        propertyId: property.id,
+        kind: "FOLIO",
+      },
+    },
+    update: {},
+    create: {
+      organizationId: organization.id,
+      propertyId: property.id,
+      kind: "FOLIO",
+      prefix: "SEA-F-",
+      period: "2026",
+      counter: 0,
+    },
+  });
+
   await prisma.numberSeries.upsert({
     where: {
       organizationId_propertyId_kind: {

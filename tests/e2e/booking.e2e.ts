@@ -13,7 +13,11 @@ import { toDayInput } from "./lib/dates";
 
 test.use({ storageState: storageStateFor("admin") });
 
-test("a booking is made for next month, against real availability", async ({ grid, page }) => {
+test("a booking is made for next month, against real availability", async ({
+  grid,
+  page,
+  property,
+}) => {
   const arrival = toDayInput(30);
   const departure = toDayInput(32);
   const surname = `Future-${Date.now()}`;
@@ -49,6 +53,7 @@ test("a booking is made for next month, against real availability", async ({ gri
   await expect(grid.chip(`Nora ${surname}`)).toBeVisible();
 
   await cleanUp(surname);
+  await releaseHolds(property.roomTypeId);
 });
 
 test("a dialog closed without booking gives the room back", async ({ grid, page, property }) => {
@@ -75,7 +80,16 @@ test("a dialog closed without booking gives the room back", async ({ grid, page,
   await page.getByRole("button", { name: "Cancel", exact: true }).click();
   await expect(dialog).toBeHidden();
 
-  await expect.poll(free, { timeout: 5_000 }).toBe(before);
+  // Generously: `releaseHold` is fired as the dialog closes and nothing waits
+  // for it — which is right for a person walking away, and means the test has
+  // to wait rather than assume. Five seconds was tight enough to flake under a
+  // parallel run against a dev server still compiling routes.
+  await expect.poll(free, { timeout: 20_000, intervals: [250, 500, 1_000] }).toBe(before);
+
+  // And whatever happened above, this test's claim does not outlive it: a hold
+  // lasts fifteen minutes, and one left behind sells the rooms out for the run
+  // after this one.
+  await releaseHolds(property.roomTypeId);
 });
 
 /* --- helpers ------------------------------------------------------------- */
@@ -92,6 +106,11 @@ async function freeOn(propertyId: number, roomTypeId: number, day: string) {
   );
   void propertyId;
   return Number(row?.held ?? 0);
+}
+
+/** Any claim this test left, expired or not. */
+async function releaseHolds(roomTypeId: number) {
+  await query(`delete from inventory_holds where "roomTypeId" = $1`, [roomTypeId]);
 }
 
 /** The dialog writes a person and a reservation; both are this test's to remove. */

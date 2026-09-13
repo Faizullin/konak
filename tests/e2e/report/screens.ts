@@ -55,6 +55,13 @@ export const SCREENS: Screen[] = [
     path: "/dashboard/orgs/:org/front-desk/:property/bookings",
   },
   {
+    shot: "housekeeping",
+    title: "Housekeeping",
+    description:
+      "The floor's day, on a phone. Cards rather than a table, because this is read standing up by somebody moving between floors with one hand free. Every room appears, not only the ones with work owed on them.",
+    path: "/dashboard/orgs/:org/front-desk/:property/housekeeping",
+  },
+  {
     shot: "property-setup",
     title: "Property setup",
     description:

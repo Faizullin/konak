@@ -40,5 +40,30 @@
     "NEW": "Новые",
     "CURRENT": "Текущие",
     "ARCHIVE": "Архив"
+  },
+  "taskType": {
+    "DEPARTURE_CLEAN": "Уборка после выезда",
+    "STAY_OVER": "Текущая уборка",
+    "DEEP_CLEAN": "Генеральная уборка",
+    "INSPECTION": "Проверка",
+    "TURNDOWN": "Вечерний сервис"
+  },
+  "taskStatus": {
+    "PENDING": "К уборке",
+    "IN_PROGRESS": "Убирается",
+    "DONE": "Убрано",
+    "BLOCKED": "Не убрать"
+  },
+  "issueSeverity": {
+    "LOW": "Мелочь",
+    "MEDIUM": "Нужно починить",
+    "HIGH": "Срочно",
+    "BLOCKING": "Номер непригоден"
+  },
+  "issueStatus": {
+    "OPEN": "Открыта",
+    "IN_PROGRESS": "Чинят",
+    "RESOLVED": "Устранена",
+    "WONT_FIX": "Не чиним"
   }
 }

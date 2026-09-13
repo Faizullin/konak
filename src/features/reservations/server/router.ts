@@ -5,6 +5,7 @@ import { createTRPCRouter, protectedProcedure } from "@/server/trpc";
 import { ReservationError } from "../model";
 import { createGuestPerson } from "@/features/directory/server";
 import { isRoomSellable, RoomStatus, statusAfterCheckOut } from "@/features/properties";
+import { TaskType } from "@/features/housekeeping";
 import { requirePropertyMember } from "@/features/properties/server";
 import {
   assignRoomSchema,
@@ -422,15 +423,18 @@ export const reservationRouter = createTRPCRouter({
        * The rule is a pure function so the exception is testable without a
        * database: a room out of order stays out of order — that state was set
        * by someone who found a fault, and a check-out is not news about it.
+       *
+       * Two things follow from one event, and both belong in the transaction
+       * that records it: the room becomes dirty, and the floor is owed a clean.
+       * A board that has to be told separately is a board that goes stale.
        */
-      const toClean =
-        input.status === ReservationStatus.CHECKED_OUT
-          ? reservation.stays
-              .map((stay) => stay.room)
-              .filter((room) => room !== null)
-              .filter((room) => statusAfterCheckOut(room.status) !== null)
-              .map((room) => room.id)
-          : [];
+      const departed = input.status === ReservationStatus.CHECKED_OUT;
+      const rooms = departed
+        ? reservation.stays.map((stay) => stay.room).filter((room) => room !== null)
+        : [];
+      const toClean = rooms
+        .filter((room) => statusAfterCheckOut(room.status) !== null)
+        .map((room) => room.id);
 
       return ctx.db.$transaction(async (tx) => {
         // The stay carries its own status because the overlap constraint reads
@@ -444,6 +448,21 @@ export const reservationRouter = createTRPCRouter({
           await tx.room.updateMany({
             where: { id: { in: toClean } },
             data: { status: RoomStatus.DIRTY, updatedById: user.id },
+          });
+        }
+
+        if (rooms.length > 0) {
+          // On the property's day, not the server's — a departure at 01:00 is
+          // still today's work at the desk it left from.
+          const dueDate = todayAt(reservation.property.timezone);
+          await tx.housekeepingTask.createMany({
+            data: rooms.map((room) => ({
+              propertyId: input.propertyId,
+              roomId: room.id,
+              type: TaskType.DEPARTURE_CLEAN,
+              dueDate,
+              createdById: user.id,
+            })),
           });
         }
 

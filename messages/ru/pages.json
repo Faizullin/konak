@@ -34,7 +34,8 @@
     "phone": "Телефон",
     "identityDocuments": "Документы, удостоверяющие личность",
     "consents": "Согласия",
-    "otherFiles": "Прочие файлы"
+    "otherFiles": "Прочие файлы",
+    "notesHeading": "Заметки"
   },
   "booking": {
     "description": "Бронирование {reference} и все его номера.",
@@ -43,6 +44,11 @@
   "bookings": {
     "title": "Бронирования",
     "description": "Все бронирования объекта {property}, на любые даты.",
+    "backToDesk": "К стойке"
+  },
+  "housekeeping": {
+    "title": "Уборка",
+    "description": "Номера объекта {property} на сегодня и что по ним нужно сделать.",
     "backToDesk": "К стойке"
   }
 }

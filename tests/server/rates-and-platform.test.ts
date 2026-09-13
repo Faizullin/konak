@@ -691,3 +691,75 @@ describe("attachments", () => {
     assert.equal(response.status, 404);
   });
 });
+
+describe("tags", () => {
+  test("a tag is created once, however it was typed", async () => {
+    const caller = callerFor(fx.owner);
+
+    const first = await caller.platform.createTag({
+      organizationId: fx.org.id,
+      name: `VIP ${fx.tag}`,
+    });
+
+    // Untrimmed and double-spaced is the same word to a person, and
+    // `@@unique([organizationId, name])` compares exactly — so the normalising
+    // has to happen before the duplicate check, not after it.
+    await assert.rejects(
+      caller.platform.createTag({
+        organizationId: fx.org.id,
+        name: `  VIP   ${fx.tag}  `,
+      }),
+      (e) => /already exists/i.test(e instanceof Error ? e.message : "")
+    );
+
+    await prisma.tag.delete({ where: { id: first.id } });
+  });
+
+  test("a person's tags are read back, and only theirs", async () => {
+    const caller = callerFor(fx.owner);
+
+    const [tag, person, other] = await Promise.all([
+      caller.platform.createTag({ organizationId: fx.org.id, name: `High floor ${fx.tag}` }),
+      prisma.person.create({
+        data: { organizationId: fx.org.id, firstName: "Tagged", lastName: fx.tag },
+      }),
+      prisma.person.create({
+        data: { organizationId: fx.org.id, firstName: "Untagged", lastName: fx.tag },
+      }),
+    ]);
+
+    await caller.platform.attachTag({
+      organizationId: fx.org.id,
+      tagId: tag.id,
+      personId: person.id,
+    });
+
+    const mine = await caller.platform.listSubjectTags({
+      organizationId: fx.org.id,
+      personId: person.id,
+    });
+    assert.deepEqual(
+      mine.map((t) => t.name),
+      [`High floor ${fx.tag}`]
+    );
+
+    const theirs = await caller.platform.listSubjectTags({
+      organizationId: fx.org.id,
+      personId: other.id,
+    });
+    assert.deepEqual(theirs, []);
+
+    await caller.platform.detachTag({
+      organizationId: fx.org.id,
+      tagId: tag.id,
+      personId: person.id,
+    });
+    assert.deepEqual(
+      await caller.platform.listSubjectTags({ organizationId: fx.org.id, personId: person.id }),
+      []
+    );
+
+    await prisma.person.deleteMany({ where: { id: { in: [person.id, other.id] } } });
+    await prisma.tag.delete({ where: { id: tag.id } });
+  });
+});

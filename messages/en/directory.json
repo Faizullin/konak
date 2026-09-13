@@ -15,5 +15,10 @@
     "companies": "Companies",
     "added": "Added",
     "search": "Search name or email…"
+  },
+  "stays": {
+    "heading": "Stays",
+    "empty": "No stays yet.",
+    "nightCount": "{nights, plural, one {# night} other {# nights}}"
   }
 }

@@ -27,6 +27,17 @@
     "link_subject_not_found": "Person or company not found",
     "no_access": "No access to the directory"
   },
+  "folio": {
+    "not_found": "That bill was not found",
+    "closed": "That bill is closed — a correction is a new line, not an edit",
+    "void": "That bill was voided",
+    "unbalanced": "That bill does not balance yet",
+    "currency_mismatch": "That is a different currency from the bill's"
+  },
+  "folio_line": {
+    "not_found": "That line was not found",
+    "already_void": "That line is already void"
+  },
   "grid": {
     "window_invalid": "A grid window is between one and {max} nights"
   },
@@ -50,6 +61,11 @@
     "owner_cannot_leave": "Transfer ownership or delete the organization before leaving",
     "owner_required": "Only the organization owner can perform this action",
     "slug_taken": "That slug is already taken"
+  },
+  "payment": {
+    "not_found": "That payment was not found",
+    "not_captured": "Only a captured payment can be refunded",
+    "amount_invalid": "A payment is an amount above zero"
   },
   "person": {
     "archive_forbidden": "Only managers can archive people",

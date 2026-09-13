@@ -34,7 +34,8 @@
     "phone": "Phone",
     "identityDocuments": "Identity documents",
     "consents": "Consents",
-    "otherFiles": "Other files"
+    "otherFiles": "Other files",
+    "notesHeading": "Notes"
   },
   "booking": {
     "description": "Booking {reference}, and every room it holds.",
@@ -43,6 +44,11 @@
   "bookings": {
     "title": "Bookings",
     "description": "Every booking at {property}, whatever its dates.",
+    "backToDesk": "Back to the desk"
+  },
+  "housekeeping": {
+    "title": "Housekeeping",
+    "description": "Today's rooms at {property}, and what is owed on each.",
     "backToDesk": "Back to the desk"
   }
 }

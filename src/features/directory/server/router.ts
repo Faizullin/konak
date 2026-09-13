@@ -3,6 +3,9 @@ import { z } from "zod";
 import type { Prisma } from "@/generated/prisma/client";
 import { requireOrgMember } from "@/server/auth";
 import { requireOrgModule } from "@/features/organizations/server";
+// A night count is the reservations feature's arithmetic, and it is in
+// `model/` — a shared definition read, not a reach into another feature.
+import { nightsBetween } from "@/features/reservations";
 import { ConflictError, ForbiddenError, NotFoundError } from "@/server/errors";
 import { createTRPCRouter, protectedProcedure } from "@/server/trpc";
 import {
@@ -107,6 +110,79 @@ export const directoryRouter = createTRPCRouter({
         throw new NotFoundError(DirectoryError.PERSON_NOT_FOUND, "Person not found");
       }
       return person;
+    }),
+
+  /**
+   * Where this person has stayed, and what it came to.
+   *
+   * The two halves of the product meet here: a directory entry is only worth
+   * keeping because of what it is attached to, and a receptionist with a guest
+   * on the phone wants "have they been here before" answered before anything
+   * else. `product-shape.md` § 11 calls it stay history and this is it.
+   *
+   * **Booked *or* slept in.** The person who books is often not the person who
+   * sleeps — a company books for a colleague, a parent for a child — so a
+   * history that read only `bookerPersonId` would lose half of them.
+   */
+  stayHistory: protectedProcedure
+    .input(z.object({ organizationId: z.number(), personId: z.number() }))
+    .query(async ({ ctx, input }) => {
+      const { role } = await requireOrgMember(ctx, input.organizationId);
+      await requireOrgModule(input.organizationId, "DIRECTORY");
+      if (!canReadDirectory(role)) {
+        throw new ForbiddenError(DirectoryError.NO_ACCESS, "No access to the directory");
+      }
+
+      // The tenant is in the lookup rather than checked after it, and it is the
+      // *property's* organization: a reservation belongs to a hotel, and the
+      // hotel to the customer whose directory this is.
+      const reservations = await ctx.db.reservation.findMany({
+        where: {
+          property: { organizationId: input.organizationId },
+          OR: [
+            { bookerPersonId: input.personId },
+            { guests: { some: { personId: input.personId } } },
+          ],
+        },
+        select: {
+          id: true,
+          publicId: true,
+          reference: true,
+          status: true,
+          bookedAt: true,
+          currencyCode: true,
+          totalMinor: true,
+          property: { select: { slug: true, name: true } },
+          stays: {
+            select: {
+              checkIn: true,
+              checkOut: true,
+              roomType: { select: { name: true } },
+              room: { select: { number: true } },
+            },
+            orderBy: { checkIn: "asc" },
+          },
+        },
+        orderBy: { bookedAt: "desc" },
+        take: 50,
+      });
+
+      return reservations.map((reservation) => {
+        const arrival = reservation.stays.at(0)?.checkIn ?? null;
+        const departure = reservation.stays.reduce<Date | null>(
+          (latest, stay) => (!latest || stay.checkOut > latest ? stay.checkOut : latest),
+          null
+        );
+
+        return {
+          ...reservation,
+          checkIn: arrival,
+          checkOut: departure,
+          nights: arrival && departure ? nightsBetween(arrival, departure) : 0,
+          rooms: reservation.stays.map((stay) => stay.room?.number).filter(Boolean) as string[],
+          roomTypes: [...new Set(reservation.stays.map((stay) => stay.roomType.name))],
+        };
+      });
     }),
 
   createPerson: protectedProcedure.input(createPersonSchema).mutation(async ({ ctx, input }) => {

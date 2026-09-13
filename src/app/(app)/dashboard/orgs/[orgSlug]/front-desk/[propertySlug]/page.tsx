@@ -51,13 +51,24 @@ export default async function PropertyGridPage({ params }: Params) {
           checkOut: formatDayMinutes(property.checkOutMinutes),
         })}
         actions={
-          <Button
-            nativeButton={false}
-            variant="outline"
-            render={<Link href={`/dashboard/orgs/${orgSlug}/front-desk/${propertySlug}/setup`} />}
-          >
-            {t("property.setup")}
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              nativeButton={false}
+              variant="outline"
+              render={
+                <Link href={`/dashboard/orgs/${orgSlug}/front-desk/${propertySlug}/housekeeping`} />
+              }
+            >
+              {t("housekeeping.title")}
+            </Button>
+            <Button
+              nativeButton={false}
+              variant="outline"
+              render={<Link href={`/dashboard/orgs/${orgSlug}/front-desk/${propertySlug}/setup`} />}
+            >
+              {t("property.setup")}
+            </Button>
+          </div>
         }
       />
       {/* The desk's day, not the browser's: whether a booking has arrived is

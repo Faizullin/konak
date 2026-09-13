@@ -162,10 +162,12 @@ surprises:
 - **`RoomTypeInventory` has no computed availability.** Sold is derived on every
   read by design — correct, and the first thing to measure when a channel push
   is doing it for ninety days at once in **Phase 7**.
-- **Bundle floor.** `npm run bundle`, after a build: **825,174 bytes shared by
-  every route**, and `/dashboard` at 1420.6 kB. Re-recorded at the end of the
-  M1–M7 block; the previous pair (824,582 and 1428.9 kB) predated the
-  attachment work and had drifted in both directions. Anything that moves those
+- **Bundle floor.** `npm run bundle`, after a build: **819,257 bytes shared by
+  every route**. Re-recorded at the end of Phase 5, and it went *down* by 5.9 kB
+  — `NiceModal.Provider` moved out of the root `Providers` and into the
+  dashboard layout, so the auth routes and the landing page stopped carrying a
+  modal registry they never open. The move was made to fix every dialog in the
+  product; this was the second, unlooked-for half of it. Anything that moves those
   without adding a screen is a regression. Re-record them when a phase ends: a
   floor left behind by two phases reads as a regression that never happened.
 

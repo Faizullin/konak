@@ -33,9 +33,30 @@ export const listActivitiesSchema = subjectInputSchema.extend({
 
 export type ListActivitiesInput = z.infer<typeof listActivitiesSchema>;
 
+/**
+ * A tag's name, as it is compared.
+ *
+ * `@@unique([organizationId, name])` compares exactly, so " VIP " and "VIP"
+ * would be two tags that look identical in a list and match different people —
+ * and the hotel's own vocabulary is exactly where that costs something. Trimmed
+ * and with runs of whitespace collapsed, once, where both the write and the
+ * duplicate check can read it.
+ *
+ * Case is **kept**: "VIP" and VIP are the same word, but a hotel that writes
+ * "Allergic to feathers" did not mean "allergic to feathers".
+ */
+export function normaliseTagName(name: string): string {
+  return name.trim().replace(/\s+/g, " ");
+}
+
 export const createTagSchema = z.object({
   organizationId: z.number(),
-  name: z.string().min(1, "name_required").max(48),
+  name: z
+    .string()
+    .min(1, "name_required")
+    .max(48)
+    .transform(normaliseTagName)
+    .refine((name) => name.length > 0, "name_required"),
   colour: z.string().max(16).optional(),
 });
 
@@ -47,6 +68,12 @@ export const tagSubjectSchema = subjectInputSchema.extend({
 });
 
 export type TagSubjectInput = z.infer<typeof tagSubjectSchema>;
+
+export const listSubjectTagsSchema = subjectInputSchema.extend({
+  organizationId: z.number(),
+});
+
+export type ListSubjectTagsInput = z.infer<typeof listSubjectTagsSchema>;
 
 export const ATTACHMENT_KINDS = ["FILE", "CONSENT", "IDENTITY_DOCUMENT", "CONTRACT"] as const;
 

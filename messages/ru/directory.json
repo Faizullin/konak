@@ -15,5 +15,10 @@
     "companies": "Компании",
     "added": "Добавлен",
     "search": "Поиск по имени или почте…"
+  },
+  "stays": {
+    "heading": "Проживания",
+    "empty": "Проживаний пока нет.",
+    "nightCount": "{nights, plural, one {# ночь} few {# ночи} many {# ночей} other {# ночей}}"
   }
 }

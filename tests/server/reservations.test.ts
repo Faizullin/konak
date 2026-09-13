@@ -197,6 +197,14 @@ describe("check-out and the floor", () => {
 
     const room = await prisma.room.findUniqueOrThrow({ where: { id: roomId } });
     assert.equal(room.status, "DIRTY");
+
+    // And the floor is owed the work. Two things follow from one event, and a
+    // board that has to be told separately is a board that goes stale.
+    const tasks = await prisma.housekeepingTask.findMany({
+      where: { roomId, type: "DEPARTURE_CLEAN" },
+    });
+    assert.equal(tasks.length, 1);
+    assert.equal(tasks[0]?.status, "PENDING");
   });
 
   test("out of order survives a departure", async () => {

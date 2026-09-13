@@ -302,3 +302,82 @@ describe("module enablement", () => {
     );
   });
 });
+
+describe("stay history", () => {
+  test("a person's stays are the ones they booked and the ones they slept in", async () => {
+    // The person who books is often not the person who sleeps — a company for a
+    // colleague, a parent for a child — so a history reading only the booker
+    // would lose half of them.
+    const caller = callerFor(fx.owner);
+
+    const booker = await prisma.person.create({
+      data: { organizationId: fx.org.id, firstName: "Booked", lastName: `By ${fx.tag}` },
+    });
+    const sleeper = await prisma.person.create({
+      data: { organizationId: fx.org.id, firstName: "Slept", lastName: `In ${fx.tag}` },
+    });
+
+    const property = await prisma.property.create({
+      data: {
+        organizationId: fx.org.id,
+        name: `Stays ${fx.tag}`,
+        slug: `stays-${fx.tag}`,
+        currencyCode: "EUR",
+        roomTypes: { create: { name: "Twin", code: "TWN", maxOccupancy: 2 } },
+      },
+      include: { roomTypes: true },
+    });
+
+    const reservation = await prisma.reservation.create({
+      data: {
+        propertyId: property.id,
+        reference: `HIST-${fx.tag}`,
+        status: "CONFIRMED",
+        currencyCode: "EUR",
+        totalMinor: 15000,
+        bookerPersonId: booker.id,
+        guests: { create: [{ personId: sleeper.id, isPrimary: true }] },
+        stays: {
+          create: [
+            {
+              roomTypeId: property.roomTypes[0]!.id,
+              status: "CONFIRMED",
+              checkIn: new Date(Date.UTC(2027, 4, 1)),
+              checkOut: new Date(Date.UTC(2027, 4, 4)),
+              currencyCode: "EUR",
+            },
+          ],
+        },
+      },
+    });
+
+    for (const personId of [booker.id, sleeper.id]) {
+      const history = await caller.directory.stayHistory({
+        organizationId: fx.org.id,
+        personId,
+      });
+      assert.equal(history.length, 1);
+      assert.equal(history[0]?.reference, `HIST-${fx.tag}`);
+      assert.equal(history[0]?.nights, 3);
+    }
+
+    await prisma.reservation.deleteMany({ where: { id: reservation.id } });
+    await prisma.roomType.deleteMany({ where: { propertyId: property.id } });
+    await prisma.property.deleteMany({ where: { id: property.id } });
+    await prisma.person.deleteMany({ where: { id: { in: [booker.id, sleeper.id] } } });
+  });
+
+  test("another tenant's stays are not this person's history", async () => {
+    const other = await createFixture();
+    try {
+      await assert.rejects(
+        callerFor(other.owner).directory.stayHistory({
+          organizationId: fx.org.id,
+          personId: 1,
+        })
+      );
+    } finally {
+      await other.cleanup();
+    }
+  });
+});

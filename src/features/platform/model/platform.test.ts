@@ -15,6 +15,7 @@ import {
   OutboxStatus,
   subjectOf,
   subjectsOf,
+  normaliseTagName,
 } from "./index";
 
 /**
@@ -117,4 +118,20 @@ test("every outbox status has a label", () => {
   for (const status of OUTBOX_STATUS_VALUES) {
     assert.equal(typeof OUTBOX_STATUS_LABELS[status], "string", status);
   }
+});
+
+test("a tag name is compared the way a person would compare it", () => {
+  // `@@unique([organizationId, name])` compares exactly, so an untrimmed name
+  // is a second tag that looks identical in a list and matches different people.
+  assert.equal(normaliseTagName("  VIP  "), "VIP");
+  assert.equal(normaliseTagName("Allergic  to   feathers"), "Allergic to feathers");
+  assert.equal(normaliseTagName("\tHigh floor\n"), "High floor");
+
+  // Case is kept: a hotel that wrote "Allergic to feathers" did not mean
+  // "allergic to feathers".
+  assert.equal(normaliseTagName("VIP"), "VIP");
+  assert.notEqual(normaliseTagName("vip"), normaliseTagName("VIP"));
+
+  // Whitespace alone is not a name; the schema refuses it after the transform.
+  assert.equal(normaliseTagName("   "), "");
 });

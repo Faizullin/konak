@@ -5,9 +5,11 @@ import { Mail, Phone } from "lucide-react";
 import { PageHeader } from "@/components/common/page-header";
 import { Button } from "@/components/ui/button";
 import { personDisplayName } from "@/features/directory";
+import { StayHistory } from "@/features/directory/client/components/stay-history";
 import { isOrgModuleEnabled } from "@/features/organizations";
 import { organizationBySlug } from "@/features/organizations/server";
 import { AttachmentsPanel } from "@/features/platform/client/components/attachments-panel";
+import { EntityTags } from "@/features/platform/client/components/entity-tags";
 import prisma from "@/server/db";
 
 type Params = { params: Promise<{ orgSlug: string; personId: string }> };
@@ -50,7 +52,14 @@ export default async function PersonPage({ params }: Params) {
   // another tenant must be indistinguishable from one that is absent.
   const person = await prisma.person.findFirst({
     where: { id, organizationId: organization.id },
-    select: { id: true, firstName: true, lastName: true, email: true, phone: true },
+    select: {
+      id: true,
+      firstName: true,
+      lastName: true,
+      email: true,
+      phone: true,
+      notes: true,
+    },
   });
   if (!person) {
     notFound();
@@ -92,6 +101,21 @@ export default async function PersonPage({ params }: Params) {
           )}
         </dl>
       )}
+
+      {/* The hotel's own vocabulary. Above the notes, because a tag is what
+          someone scans for and a note is what they then read. */}
+      <EntityTags organizationId={organization.id} subject={subject} />
+
+      {person.notes && (
+        <section className="space-y-2">
+          <h2 className="text-lg font-medium">{t("person.notesHeading")}</h2>
+          <p className="text-muted-foreground text-sm whitespace-pre-wrap">{person.notes}</p>
+        </section>
+      )}
+
+      {/* The two halves of the product join here: a directory entry is worth
+          keeping because of what it is attached to. */}
+      <StayHistory organizationId={organization.id} personId={person.id} orgSlug={orgSlug} />
 
       {/* The quota is one number for the whole organization, so only the first
           panel says it. */}

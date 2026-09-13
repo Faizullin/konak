@@ -11,7 +11,9 @@ const compat = new FlatCompat({
 
 /** Every feature. Adding one here is what extends the boundaries below to it. */
 const FEATURES = [
+  "billing",
   "directory",
+  "housekeeping",
   "identity",
   "organizations",
   "platform",

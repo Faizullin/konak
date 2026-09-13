@@ -52,6 +52,7 @@ export default async function DashboardLayout({ children }: Readonly<{ children:
         directory: messages.directory,
         enums: messages.enums,
         errors: messages.errors,
+        housekeeping: messages.housekeeping,
         identity: messages.identity,
         organizations: messages.organizations,
         platform: messages.platform,

@@ -40,5 +40,30 @@
     "NEW": "New",
     "CURRENT": "Current",
     "ARCHIVE": "Archive"
+  },
+  "taskType": {
+    "DEPARTURE_CLEAN": "Departure clean",
+    "STAY_OVER": "Stay-over",
+    "DEEP_CLEAN": "Deep clean",
+    "INSPECTION": "Inspection",
+    "TURNDOWN": "Turndown"
+  },
+  "taskStatus": {
+    "PENDING": "To do",
+    "IN_PROGRESS": "Being cleaned",
+    "DONE": "Done",
+    "BLOCKED": "Blocked"
+  },
+  "issueSeverity": {
+    "LOW": "Minor",
+    "MEDIUM": "Needs fixing",
+    "HIGH": "Urgent",
+    "BLOCKING": "Room unusable"
+  },
+  "issueStatus": {
+    "OPEN": "Open",
+    "IN_PROGRESS": "Being fixed",
+    "RESOLVED": "Fixed",
+    "WONT_FIX": "Not fixing"
   }
 }

@@ -26,5 +26,11 @@
     },
     "dialogHint": "Files are stored privately and only people in this organization can open them.",
     "done": "Done"
+  },
+  "tags": {
+    "add": "Tag",
+    "placeholder": "VIP, high floor…",
+    "create": "Create “{name}”",
+    "remove": "Remove {name}"
   }
 }

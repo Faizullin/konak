@@ -1,0 +1,31 @@
+{
+  "board": {
+    "today": "Today",
+    "previousDay": "Previous day",
+    "nextDay": "Next day",
+    "empty": "No rooms yet.",
+    "nothingOwed": "Nothing owed",
+    "floor": "Floor {floor}",
+    "start": "Start",
+    "done": "Mark clean",
+    "block": "Blocked",
+    "resume": "Resume",
+    "addTask": "Add a clean",
+    "taskAdded": "Added",
+    "moved": "Done",
+    "unassigned": "Nobody"
+  },
+  "issue": {
+    "report": "Report a fault",
+    "title": "Report a fault",
+    "description": "A blocking fault takes the room out of sale until it is fixed.",
+    "submit": "Report it",
+    "reported": "Reported",
+    "what": "What is wrong",
+    "detail": "Anything else",
+    "severity": "How bad",
+    "blockingWarning": "This takes the room out of sale.",
+    "resolve": "Fixed",
+    "resolved": "Marked fixed"
+  }
+}

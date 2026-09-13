@@ -56,12 +56,15 @@ export function BookingCard({
   publicId,
   timezone,
   gridHref,
+  directoryHref,
 }: {
   propertyId: number;
   publicId: string;
   timezone: string;
   /** The desk, so a booking can be seen in its own week rather than described. */
   gridHref: string;
+  /** The directory, so a guest can be read rather than only named. */
+  directoryHref: string;
 }) {
   const t = useTranslations("reservations");
   const locale = useLocale();
@@ -141,9 +144,16 @@ export function BookingCard({
           <ul className="flex flex-wrap gap-2">
             {data.guests.map((guest) => (
               <li key={guest.person.id}>
-                <Badge variant={guest.isPrimary ? "default" : "outline"}>
-                  {personDisplayName(guest.person)}
-                </Badge>
+                {/* A name that opens the person: their other stays, their
+                    documents, and what the hotel knows about them. */}
+                <Link href={`${directoryHref}/${guest.person.id}`}>
+                  <Badge
+                    variant={guest.isPrimary ? "default" : "outline"}
+                    className="hover:underline"
+                  >
+                    {personDisplayName(guest.person)}
+                  </Badge>
+                </Link>
               </li>
             ))}
           </ul>
