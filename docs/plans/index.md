@@ -15,7 +15,10 @@ leaves here, what it taught moves into a guide, and the fact of it goes into
 | [file-uploads.md](file-uploads.md) | where the bytes go, and why the attachment table is empty |
 | [server-hardening.md](server-hardening.md) | what a full audit of the routers found: a missing write path, five races, and the guard chain |
 | [second-surface.md](second-surface.md) | a `desk2` with its own CSS base, its own components and its own way in — and what that actually costs |
+| [desk-generation.md](desk-generation.md) | the machinery that makes a second desk a registry entry instead of a copied layout — and the sidebar the one desk is missing |
+| [notifications.md](notifications.md) | an in-app feed and the bell the header already has a hole for |
 | [dashboard-header.md](dashboard-header.md) | what is left of the dashboard's header: the language switch, and an inbox |
+| [data-table.md](data-table.md) | making URL state optional, so a table can live in a dialog — a port of a fix already shipped upstream |
 
 Files prefixed `v1_` are **not plans**. They are earlier ones recovered from
 git history, kept only because something in them had not shipped; each says at

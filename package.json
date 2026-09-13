@@ -21,9 +21,10 @@
     "test": "tsx --test \"src/**/*.test.ts\"",
     "test:server": "STORAGE_FS_ROOT=.storage-test tsx --conditions=react-server --test --test-concurrency=1 \"tests/server/**/*.test.ts\"",
     "e2e:db": "tsx scripts/e2e-db.mts",
-    "test:e2e": "npm run e2e:db && playwright test",
-    "test:e2e:ui": "npm run e2e:db && playwright test --ui",
-    "report:ui": "npm run e2e:db && playwright test --project=report && tsx scripts/report.mts"
+    "test:e2e": "npm run e2e:db && playwright test --project=journeys --project=report",
+    "test:e2e:ui": "npm run e2e:db && playwright test --project=journeys --ui",
+    "report:ui": "npm run e2e:db && playwright test --project=report && tsx scripts/report.mts",
+    "report:mvp": "npm run e2e:db && playwright test --project=mvp && tsx scripts/mvp-report.mts"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",

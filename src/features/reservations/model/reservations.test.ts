@@ -29,6 +29,9 @@ import {
   searchTerms,
   SEARCH_TERM_LIMIT,
   columnOf,
+  reservationDates,
+  availabilityInputSchema,
+  MAX_RANGE_NIGHTS,
   occupancyOf,
   spanInWindow,
   statusesInView,
@@ -615,4 +618,67 @@ test("a departure with nobody arriving leaves the night free", () => {
   // The room is available from that morning — the whole point of half-open.
   assert.equal(occupancyOf(d(4), [out]), null);
   assert.equal(occupancyOf(d(9), [out]), null);
+});
+
+test("a range nobody meant is refused by the schema, on the field they mistyped", () => {
+  const base = { propertyId: 1, from: new Date("2026-01-01") };
+
+  // The ordinary case, and the longest legitimate one.
+  assert.ok(availabilityInputSchema.safeParse({ ...base, to: new Date("2026-01-08") }).success);
+  assert.ok(
+    availabilityInputSchema.safeParse({
+      ...base,
+      to: new Date(Date.UTC(2026, 0, 1 + MAX_RANGE_NIGHTS)),
+    }).success
+  );
+
+  /**
+   * A decade, which is what a typed year produces. `availability()` builds a row
+   * per room type per night in memory, so this was thirty-six thousand of them
+   * for free, to any signed-in member.
+   */
+  const decade = availabilityInputSchema.safeParse({ ...base, to: new Date("2036-01-01") });
+  assert.equal(decade.success, false);
+  assert.equal(decade.error?.issues[0]?.message, "range_out_of_bounds");
+
+  // Named on `to`, because that is the field somebody got wrong.
+  assert.deepEqual(decade.error?.issues[0]?.path, ["to"]);
+
+  // Backwards is not a range either.
+  assert.equal(
+    availabilityInputSchema.safeParse({ ...base, to: new Date("2025-12-01") }).success,
+    false
+  );
+});
+
+test("a reservation's dates are the earliest arrival and the latest departure, in any order", () => {
+  const d = (day: number) => new Date(Date.UTC(2026, 2, day));
+
+  // One room: the ordinary case.
+  assert.deepEqual(reservationDates([{ checkIn: d(3), checkOut: d(5) }]), {
+    arrival: d(3),
+    departure: d(5),
+    nights: 2,
+  });
+
+  /**
+   * Three rooms, handed over **out of order** — which is the point. Two callers
+   * used to take `stays.at(0).checkIn` and were right only because their
+   * queries ordered by `checkIn`. Nothing in a type says they must.
+   */
+  const scattered = reservationDates([
+    { checkIn: d(10), checkOut: d(12) },
+    { checkIn: d(4), checkOut: d(6) },
+    { checkIn: d(7), checkOut: d(20) },
+  ]);
+  assert.deepEqual(scattered.arrival, d(4));
+  assert.deepEqual(scattered.departure, d(20));
+
+  // The span of the booking, not the sum of its stays: a guest with two rooms
+  // for the same two nights was here for two nights, not four.
+  assert.equal(scattered.nights, 16);
+
+  // No stays is no dates rather than an invented one — a booking mid-creation,
+  // or one whose rooms were all cancelled.
+  assert.deepEqual(reservationDates([]), { arrival: null, departure: null, nights: 0 });
 });

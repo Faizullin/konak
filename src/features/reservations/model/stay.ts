@@ -104,3 +104,39 @@ export function fromDayInput(value: string): Date | null {
   const parsed = new Date(`${value}T00:00:00.000Z`);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
+
+/**
+ * When a reservation arrives, when it leaves, and how long that is.
+ *
+ * A booking may hold several rooms over different dates — it arrives when its
+ * **earliest** stay does and ends when its **latest** one does. One reading, in
+ * one place, because it was three: `refuseStatusChange` took the true minimum,
+ * while the bookings list and the guest's stay history each took
+ * `stays.at(0).checkIn` and were correct only because both queries happened to
+ * order by `checkIn`. Remove that `orderBy` for any reason and two screens
+ * start reporting the wrong arrival, silently — a coupling nobody would think
+ * to preserve, because nobody knew it was there.
+ *
+ * Empty is `null` rather than a guess: a reservation with no stays is a booking
+ * mid-creation or one whose rooms were all cancelled, and inventing a date for
+ * it would be worse than saying there is none.
+ */
+export function reservationDates(stays: readonly StayRange[]): {
+  arrival: Date | null;
+  departure: Date | null;
+  nights: number;
+} {
+  if (stays.length === 0) return { arrival: null, departure: null, nights: 0 };
+
+  let arrival = toStayDate(stays[0]!.checkIn);
+  let departure = toStayDate(stays[0]!.checkOut);
+
+  for (const stay of stays) {
+    const from = toStayDate(stay.checkIn);
+    const to = toStayDate(stay.checkOut);
+    if (from < arrival) arrival = from;
+    if (to > departure) departure = to;
+  }
+
+  return { arrival, departure, nights: nightsBetween(arrival, departure) };
+}

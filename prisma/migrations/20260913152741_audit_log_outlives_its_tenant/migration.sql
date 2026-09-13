@@ -1,0 +1,13 @@
+-- The audit trail stops being deleted with the thing it audits.
+--
+-- `audit_logs.organizationId` was a foreign key with `ON DELETE CASCADE`, four
+-- lines below a comment reading "Append-only. Nothing updates or deletes a row
+-- here." Deleting an organization erased its entire trail — including the row
+-- recording who deleted it, which is the one most worth keeping.
+--
+-- `Restrict` would be worse: it would make the deletion fail instead, so a
+-- tenant could never be removed at all. The column is a **scope to filter by**,
+-- not a parent to inherit from — the same reading `actorUserId` already has,
+-- which is a user id with no foreign key precisely so the trail survives a
+-- membership being removed.
+ALTER TABLE "audit_logs" DROP CONSTRAINT IF EXISTS "audit_logs_organizationId_fkey";

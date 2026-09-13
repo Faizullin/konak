@@ -14,6 +14,7 @@
   "name_required": "Укажите название",
   "password_required": "Введите пароль",
   "password_too_short": "Не менее 8 символов",
+  "range_out_of_bounds": "Диапазон — от одной ночи до 400",
   "room_number_required": "Укажите номер комнаты",
   "slug_format": "Только строчные латинские буквы, цифры и дефисы",
   "slug_too_long": "Не более 48 символов",

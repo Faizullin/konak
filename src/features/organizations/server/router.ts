@@ -6,10 +6,12 @@ import {
   ConflictError,
   ForbiddenError,
   InvalidError,
-  NotFoundError,
   memberNotFound,
+  noOrgAccess,
+  NotFoundError,
 } from "@/server/errors";
 import { createTRPCRouter, protectedProcedure } from "@/server/trpc";
+import { like } from "@/server/search";
 import { enqueueStorageRemoval } from "@/features/platform/server";
 import {
   OrgRole,
@@ -21,6 +23,8 @@ import {
   updateOrganizationSchema,
 } from "../model";
 import { assertSlugAvailable, createOrganizationWithOwner, transferOwnership } from "./service";
+import { AuditAction } from "@/features/platform";
+import { writeAudit } from "@/features/platform/server";
 
 /**
  * Organizations feature — the container the rest of the domain hangs off.
@@ -83,10 +87,8 @@ export const organizationRouter = createTRPCRouter({
       ...(filter?.name || filter?.slug
         ? {
             organization: {
-              // SQLite has no `mode: "insensitive"`; `contains` is already
-              // case-insensitive there for ASCII. On Postgres, add it.
-              ...(filter.name ? { name: { contains: filter.name } } : {}),
-              ...(filter.slug ? { slug: { contains: filter.slug } } : {}),
+              ...(filter.name ? { name: like(filter.name) } : {}),
+              ...(filter.slug ? { slug: like(filter.slug) } : {}),
             },
           }
         : {}),
@@ -142,7 +144,7 @@ export const organizationRouter = createTRPCRouter({
       const organizations = await ctx.db.organization.findMany({
         where: {
           members: { some: { userId: user.id } },
-          ...(input.search ? { name: { contains: input.search } } : {}),
+          ...(input.search ? { name: like(input.search) } : {}),
         },
         orderBy: { name: "asc" },
         skip: input.offset,
@@ -159,21 +161,45 @@ export const organizationRouter = createTRPCRouter({
   moduleAccess: protectedProcedure
     .input(z.object({ slug: z.string() }))
     .query(async ({ ctx, input }) => {
+      /**
+       * One round trip, which is what the comment above has always claimed.
+       *
+       * It was three, strictly sequential — the organization by slug, then the
+       * membership, then the toggles — on a query the shell runs on **every
+       * navigation**. All three are one row and its two relations, so they are
+       * one query.
+       *
+       * This is the only place outside `requireOrgMember` that decides whether
+       * somebody is a member, which is why the refusal is `noOrgAccess()` and
+       * not a second sentence: one place to change the words, one to change the
+       * code.
+       */
       const organization = await ctx.db.organization.findUnique({
         where: { slug: input.slug },
-        select: { id: true },
+        select: {
+          id: true,
+          members: {
+            where: { userId: ctx.session.user.id },
+            select: { role: true },
+            take: 1,
+          },
+          organizationModules: { select: { moduleId: true, enabled: true } },
+        },
       });
       if (!organization) {
         throw new NotFoundError(OrganizationError.NOT_FOUND, "Organization not found");
       }
 
-      const { role } = await requireOrgMember(ctx, organization.id);
-      const toggles = await ctx.db.organizationModule.findMany({
-        where: { organizationId: organization.id },
-        select: { moduleId: true, enabled: true },
-      });
+      const membership = organization.members[0];
+      if (!membership) {
+        throw noOrgAccess();
+      }
 
-      return { organizationId: organization.id, role, toggles };
+      return {
+        organizationId: organization.id,
+        role: membership.role as OrgRole,
+        toggles: organization.organizationModules,
+      };
     }),
 
   getById: protectedProcedure.input(z.object({ id: z.number() })).query(async ({ ctx, input }) => {
@@ -211,14 +237,50 @@ export const organizationRouter = createTRPCRouter({
       await requireOrgOwner(ctx, input.id);
 
       return ctx.db.$transaction(async (tx) => {
-        // Rows cascade — `onDelete: Cascade` in organizations.prisma — but bytes
-        // do not, and afterwards nothing knows the keys. Filed first, and with a
-        // null organizationId; `enqueueStorageRemoval` says why.
-        const attachments = await tx.attachment.findMany({
-          where: { organizationId: input.id },
-          select: { id: true, storageKey: true, provider: true, providerId: true },
+        /**
+         * Rows cascade — `onDelete: Cascade` in organizations.prisma — but bytes
+         * do not, and afterwards nothing knows the keys. Filed first, and with a
+         * null organizationId; `enqueueStorageRemoval` says why.
+         *
+         * **Read a page at a time**, because the alternative is loading every
+         * attachment a tenant ever uploaded into memory to build one list. The
+         * transaction is long either way — it holds the cascade — and this at
+         * least bounds what is held *in the process*.
+         */
+        const PAGE = 1_000;
+        let cursor: number | undefined;
+
+        for (;;) {
+          const page = await tx.attachment.findMany({
+            where: { organizationId: input.id },
+            select: { id: true, storageKey: true, provider: true, providerId: true },
+            orderBy: { id: "asc" },
+            take: PAGE,
+            ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+          });
+          if (page.length === 0) break;
+
+          await enqueueStorageRemoval(tx, page);
+          if (page.length < PAGE) break;
+          cursor = page.at(-1)!.id;
+        }
+
+        /**
+         * Filed before the rows go, and it outlives them.
+         *
+         * `AuditLog.organizationId` has no foreign key precisely for this: the
+         * record of who deleted a tenant is the row most worth keeping, and it
+         * used to be the first casualty of the cascade.
+         */
+        await writeAudit(tx, {
+          organizationId: input.id,
+          actorUserId: ctx.session.user.id,
+          action: AuditAction.DELETE,
+          entityType: "Organization",
+          entityId: String(input.id),
+          summary: "Organization deleted",
+          ipAddress: ctx.ipAddress,
         });
-        await enqueueStorageRemoval(tx, attachments);
 
         return tx.organization.delete({ where: { id: input.id } });
       });
@@ -267,13 +329,28 @@ export const organizationRouter = createTRPCRouter({
       );
     }
 
-    return ctx.db.organizationMember.create({
-      data: {
+    return ctx.db.$transaction(async (tx) => {
+      const created = await tx.organizationMember.create({
+        data: {
+          organizationId: input.organizationId,
+          userId: target.id,
+          role: input.role,
+        },
+        select: MEMBER_SELECT,
+      });
+
+      await writeAudit(tx, {
         organizationId: input.organizationId,
-        userId: target.id,
-        role: input.role,
-      },
-      select: MEMBER_SELECT,
+        actorUserId: ctx.session.user.id,
+        action: AuditAction.CREATE,
+        entityType: "OrganizationMember",
+        entityId: target.id,
+        summary: `${input.email} added as ${input.role}`,
+        ipAddress: ctx.ipAddress,
+        after: { role: input.role },
+      });
+
+      return created;
     });
   }),
 
@@ -308,15 +385,39 @@ export const organizationRouter = createTRPCRouter({
         );
       }
 
-      return ctx.db.organizationMember.update({
-        where: {
-          organizationId_userId: {
-            organizationId: input.organizationId,
-            userId: input.userId,
+      /**
+       * The change and the record of it, together.
+       *
+       * A role change is the act `createdById`/`updatedById` cannot describe:
+       * the row afterwards says who touched it last, never what it used to be
+       * or who it was done to. This is the OWASP category that matters most —
+       * privilege changes — and it is why the audit row carries the *before*.
+       */
+      return ctx.db.$transaction(async (tx) => {
+        const updated = await tx.organizationMember.update({
+          where: {
+            organizationId_userId: {
+              organizationId: input.organizationId,
+              userId: input.userId,
+            },
           },
-        },
-        data: { role: input.role },
-        select: MEMBER_SELECT,
+          data: { role: input.role },
+          select: MEMBER_SELECT,
+        });
+
+        await writeAudit(tx, {
+          organizationId: input.organizationId,
+          actorUserId: ctx.session.user.id,
+          action: AuditAction.UPDATE,
+          entityType: "OrganizationMember",
+          entityId: input.userId,
+          summary: `Role changed from ${target.role} to ${input.role}`,
+          ipAddress: ctx.ipAddress,
+          before: target,
+          after: { role: input.role },
+        });
+
+        return updated;
       });
     }),
 
@@ -350,13 +451,31 @@ export const organizationRouter = createTRPCRouter({
         );
       }
 
-      return ctx.db.organizationMember.delete({
-        where: {
-          organizationId_userId: {
-            organizationId: input.organizationId,
-            userId: input.userId,
+      // The row is about to stop existing, so the trail is the only thing that
+      // will remember it did — and `actorUserId` is a user id with no foreign
+      // key precisely so this survives the actor leaving too.
+      return ctx.db.$transaction(async (tx) => {
+        const removed = await tx.organizationMember.delete({
+          where: {
+            organizationId_userId: {
+              organizationId: input.organizationId,
+              userId: input.userId,
+            },
           },
-        },
+        });
+
+        await writeAudit(tx, {
+          organizationId: input.organizationId,
+          actorUserId: user.id,
+          action: AuditAction.DELETE,
+          entityType: "OrganizationMember",
+          entityId: input.userId,
+          summary: `Removed a ${target.role}`,
+          ipAddress: ctx.ipAddress,
+          before: target,
+        });
+
+        return removed;
       });
     }),
 

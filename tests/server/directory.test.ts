@@ -340,6 +340,7 @@ describe("stay history", () => {
         stays: {
           create: [
             {
+              propertyId: property.id,
               roomTypeId: property.roomTypes[0]!.id,
               status: "CONFIRMED",
               checkIn: new Date(Date.UTC(2027, 4, 1)),
@@ -379,5 +380,89 @@ describe("stay history", () => {
     } finally {
       await other.cleanup();
     }
+  });
+});
+
+describe("search", () => {
+  /**
+   * The bug this pins was invisible and total: Prisma's bare `contains` is
+   * `LIKE` on Postgres, so the directory answered nothing at all unless the
+   * receptionist capitalised a surname exactly as it was stored. Nobody types a
+   * surname capitalised, and the two searches written later — properties,
+   * bookings — had `mode` while these did not.
+   */
+  test("a name is found however it is typed", async () => {
+    const owner = callerFor(fx.owner);
+    await owner.directory.createPerson({
+      organizationId: fx.org.id,
+      firstName: "Мария",
+      // Unique to this test: the fixture's org is shared across the file.
+      lastName: "Иванова-Найдёнова",
+      email: "Maria.Ivanova@Example.COM",
+    });
+
+    const find = async (search: string) =>
+      (
+        await owner.directory.listPeople({
+          organizationId: fx.org.id,
+          filter: { search },
+          pagination: { take: 100 },
+        })
+      ).items;
+
+    // Cyrillic, all three ways somebody might type it.
+    assert.equal((await find("иванова-найдёнова")).length, 1, "lower case");
+    assert.equal((await find("ИВАНОВА-НАЙДЁНОВА")).length, 1, "upper case");
+    assert.equal((await find("Иванова-Найдёнова")).length, 1, "as stored");
+    // And the Latin path, which is what a stored-address search hits.
+    assert.equal((await find("maria.ivanova@example.com")).length, 1, "an email typed flat");
+  });
+
+  test("a company is found however it is typed", async () => {
+    const owner = callerFor(fx.owner);
+    await owner.directory.createCompany({
+      organizationId: fx.org.id,
+      name: "ТОО Жолсерік",
+    });
+
+    const find = async (search: string) =>
+      (
+        await owner.directory.listCompanies({
+          organizationId: fx.org.id,
+          filter: { search },
+          pagination: { take: 100 },
+        })
+      ).items;
+
+    assert.equal((await find("жолсерік")).length, 1, "lower case");
+    assert.equal((await find("ЖОЛСЕРІК")).length, 1, "upper case");
+  });
+
+  /**
+   * `ё` is optional in Russian orthography — passport offices and airlines print
+   * `е` for it routinely, so Фёдоров and Федоров are one person with two
+   * spellings. Case folding does not touch that, and this asserts the limit
+   * rather than the fix: whoever normalises it later has the failing case here
+   * already written, and will delete the second half of this test.
+   */
+  test("ё and е are still two letters, which is a known gap", async () => {
+    const owner = callerFor(fx.owner);
+    await owner.directory.createPerson({
+      organizationId: fx.org.id,
+      firstName: "Пётр",
+      lastName: "Фёдоров-Ёлкин",
+    });
+
+    const find = async (search: string) =>
+      (
+        await owner.directory.listPeople({
+          organizationId: fx.org.id,
+          filter: { search },
+          pagination: { take: 100 },
+        })
+      ).items;
+
+    assert.equal((await find("фёдоров-ёлкин")).length, 1, "spelled with ё, as stored");
+    assert.equal((await find("федоров-елкин")).length, 0, "spelled with е — not found today");
   });
 });

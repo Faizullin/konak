@@ -24,7 +24,6 @@ model Organization {
   tags                   Tag[]
   attachments            Attachment[]
   customFieldDefinitions CustomFieldDefinition[]
-  auditLogs              AuditLog[]
   outboxTasks            OutboxTask[]
   properties             Property[]
   numberSeries           NumberSeries[]

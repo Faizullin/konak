@@ -1,3 +1,4 @@
+export * from "./audit";
 export * from "./attachment";
 export * from "./outbox";
 export * from "./errors";

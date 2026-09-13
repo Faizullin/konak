@@ -24,37 +24,19 @@ Two rules hold across every phase:
 
 ---
 
-## Phase 5 — Guests and housekeeping
+## Phase 7 — Distribution *(machinery done, `Done when` not met)*
 
-Turn the `DIRECTORY` module on, and give the floor its screen.
+Everything but the vendor. The outbox worker drains with retries, backoff and
+dead letters; room types and rate plans map; availability and rates push as a
+diff against `ChannelSyncState`; reservations pull idempotently; the overbooking
+policy is written down and tested. Every change to what is for sale announces
+itself in the transaction that makes it, and a test loops over the ways the
+market moves so the next omission fails rather than oversells.
 
-- Guest and company screens, stay history, tags, notes.
-- The housekeeping board: room state, today's tasks, mark clean, report a fault.
-- Mobile-first for housekeeping; it is used standing up.
-
-**Done when** a full stay cycle happens in the app: booked, arrived, occupied,
-departed, cleaned.
-
-## Phase 6 — Money
-
-- Post charges to a folio, split a folio, close it.
-- Take a payment; refund one.
-- Reservation and invoice numbers from `NumberSeries`, inside the transaction
-  that consumes them.
-
-**Done when** a stay produces a bill that balances, settled and closed, with
-numbers that never repeat.
-
-## Phase 7 — Distribution
-
-The first phase with an outside system, so it is also the first that needs the
-outbox to actually run.
-
-- A worker draining `OutboxTask`: retries, backoff, dead letters.
-- One channel-manager integration; map room types and rate plans.
-- Push availability and rates as a diff against `ChannelSyncState`; pull
-  reservations idempotently.
-- An overbooking policy, written down, because sync is not instant.
+**What is left is one integration.** `ChannelAdapter` is two methods and
+`ADAPTERS` is deliberately empty — choosing the vendor is a commercial decision,
+not an engineering one, and it is the same question as which jurisdiction Phase 9
+serves first. Until then the honest phrase is *ready for*, not *connected to*.
 
 **Done when** a rate change reaches the channel and a booking made there appears
 at the front desk without anyone retyping it.
@@ -82,6 +64,12 @@ The highest-risk code in the product, and the reason a regional PMS can exist.
   needs the same pass with a second predicate.
 - A fiscal adapter for one jurisdiction; a registration adapter for the same one.
 - Access to a passport is audited, and refusable, separately from reading a name.
+  `writeAudit` and the `VIEW` action exist already; what does not is a reader to
+  put them on, since `IdentityDocument` has no writer yet. Audit the document
+  screen specifically — a generic read log is the thing HHS proposed under HIPAA
+  and withdrew as unworkable, and why CloudTrail data events are opt-in.
+  Retention belongs here too: CNIL says six months to a year for access logs,
+  which the same `purgeAfter` pass can serve.
 
 **Done when** a payment produces a registered fiscal receipt and a check-in
 files a guest, both replayable without duplicating.
@@ -190,3 +178,16 @@ These have no natural slot and land when the phase that needs them arrives:
   obligation, read and delete.
 - **Smart locks.** One plan per vendor, once Phase 9's credential lifecycle is
   real.
+- **[Notifications](notifications.md).** An in-app feed and the bell the
+  dashboard header already has a hole for. It has no phase because it is owed to
+  several: Phase 7's dead letters, housekeeping's assignments and billing's
+  payments all want to tell somebody. Whichever of those is next carries it.
+- **[Desk generation](desk-generation.md).** The machinery that makes a second
+  desk a registry entry rather than a copied layout — and, on the way, the
+  sidebar the one desk is missing (no sign-out, no property switcher, no way to
+  reach Setup). Those defects are worth fixing on their own; the generation is
+  what makes them worth fixing *once*. Pairs with
+  [second-surface.md](second-surface.md), which prices the other axis.
+- **[The data table](data-table.md).** URL state is mandatory today, so a table
+  cannot live in a dialog. A port of a fix already shipped upstream, which is
+  why it is a note here rather than a phase.

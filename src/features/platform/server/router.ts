@@ -121,6 +121,10 @@ export const platformRouter = createTRPCRouter({
         revokedAt: null,
       },
       orderBy: { createdAt: "desc" },
+      // A panel shows one kind for one subject, so this is small in practice —
+      // and "in practice" is not a bound. A guest with a decade of scanned
+      // documents is a real guest, and the panel is not a list that pages.
+      take: 200,
     });
   }),
 

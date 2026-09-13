@@ -8,7 +8,7 @@ import { haveIBeenPwned } from "better-auth/plugins";
 import { env } from "../env.mjs";
 import { UserRole } from "../features/identity/model/user";
 import { OrgRole, canManageMembers } from "../features/organizations/model/organization";
-import { ForbiddenError, SharedError, userNotFound } from "./errors";
+import { ForbiddenError, noOrgAccess, SharedError, userNotFound } from "./errors";
 import prisma from "./db";
 
 /**
@@ -104,21 +104,34 @@ export async function requireUser(ctx: AuthedContext) {
 }
 
 /**
- * The current user plus their membership in `organizationId`, or 403.
+ * The caller plus their membership in `organizationId`, or 403.
  *
  * A non-member gets FORBIDDEN rather than NOT_FOUND on purpose: the two are
  * indistinguishable to someone probing ids, and FORBIDDEN is the honest answer
  * for the case that matters — you are signed in, and this is not yours.
+ *
+ * **One query, not two.** It used to call `requireUser` first, which is the
+ * thing `requireUser`'s own docstring tells callers not to do when they need
+ * only an id — and an id is all this needs, and all any caller of it reads.
+ * Every property-scoped procedure paid for that round trip, sequentially,
+ * before doing any work; the grid and the day lists pay it twice every thirty
+ * seconds per open desk.
+ *
+ * The row it was fetching also guarded nothing this does not already guard:
+ * `OrganizationMember` cascades from `User`, so a caller deleted mid-session
+ * has no membership and is refused here anyway. What changes is the code —
+ * FORBIDDEN instead of NOT_FOUND — for somebody whose account was deleted while
+ * they had a screen open, which is the right answer to "is this yours" in any
+ * case.
  */
 export async function requireOrgMember(ctx: AuthedContext, organizationId: number) {
-  const user = await requireUser(ctx);
   const member = await ctx.db.organizationMember.findUnique({
-    where: { organizationId_userId: { organizationId, userId: user.id } },
+    where: { organizationId_userId: { organizationId, userId: ctx.session.user.id } },
   });
   if (!member) {
-    throw new ForbiddenError(SharedError.ORG_NO_ACCESS, "No access to this organization");
+    throw noOrgAccess();
   }
-  return { user, member, role: member.role as OrgRole };
+  return { user: ctx.session.user, member, role: member.role as OrgRole };
 }
 
 /** Like `requireOrgMember`, additionally requiring OWNER or ADMIN. */

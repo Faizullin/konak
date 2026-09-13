@@ -6,7 +6,9 @@ disagrees with the code, the guide is wrong; fix it.
 Four documents sit beside these, each with one job and no overlap:
 [handoff](../handoff.md) is where to pick up, [todo](../todo.md) is what is
 next, [history](../history.md) is what shipped (append-only), and
-[plans](../plans/index.md) describe what is not built yet. **A plan carries no
+[plans](../plans/index.md) describe what is not built yet. A fifth folder,
+[reports](../reports/index.md), holds deliverables — documents generated for
+somebody outside this repository, not guides. **A plan carries no
 status**; when something ships it leaves the plan, what it taught moves into a
 guide, and the fact of it is appended to history.
 
@@ -16,7 +18,6 @@ guide, and the fact of it is appended to history.
 | [ui-patterns.md](ui-patterns.md) | building a form, list, dialog or combobox |
 | [local-development.md](local-development.md) | setting up, running scripts, the seed, the database |
 | [demo.md](demo.md) | showing the product to someone — the data to load and the path through it |
-| [mvp-report.ru.md](mvp-report.ru.md) | **the client's report, in Russian** — their eight MVP items, the screen each lives on, and what is deliberately not there |
 
 ## Tests
 
@@ -107,6 +108,29 @@ throws is a broken screen, and the manifest says so where a picture cannot.
 
 `/reports` is git-ignored. A committed screenshot report makes a PNG diff part
 of code review; send the PDF.
+
+### The client's report
+
+`npm run report:mvp` is the other one, and the rule above is about the sweep
+rather than about pictures in git. It photographs the **desk only**, in Russian,
+in light, fifteen shots, and folds them into a document for the client:
+`tests/e2e/mvp/steps.ts` says what to shoot and how to get there,
+`docs/reports/src/mvp-report.ru.md` holds the prose, and
+`scripts/mvp-report.mts` composes `docs/reports/mvp-report.ru.md`.
+
+That one **is** committed, because a document whose images are not in the
+repository is not a document. What keeps it from becoming the thing the rule
+forbids is its budget — one locale, one colour scheme, at most sixteen shots,
+under 2 MB — and that it is a deliverable somebody sends rather than a run's
+output. `docs/reports/index.md` states both.
+
+The prose and the pictures cannot drift: the composer fails on a placeholder
+naming a shot nobody took, and on a shot no placeholder uses.
+
+**`test:e2e` names its projects** — `journeys` and `report` — rather than
+running everything, so a test run never rewrites a committed deliverable. The
+`mvp` project belongs to `report:mvp` alone. `report` may run with the suite
+because what it writes is git-ignored.
 
 **When a rule is fused to a query, split it rather than mock the query.** The
 last-admin guard needed a row count, so the decision moved to `model/user.ts`

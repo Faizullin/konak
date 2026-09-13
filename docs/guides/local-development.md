@@ -54,6 +54,7 @@ npm test           # unit — seconds, needs nothing
 npm run test:server  # integration — needs Postgres
 npm run test:e2e     # the browser — builds its own database first
 npm run report:ui    # the screenshot report, into reports/latest/
+npm run report:mvp   # the client's report, into docs/reports/
 npm run outbox       # drain the outbox; a dry run without -- --commit
 ```
 
@@ -74,17 +75,36 @@ npm run test:server   # a router or the schema changed
 npm run build         # routing or config moved
 npm run test:e2e      # the browser, and the screenshot report
 npm run report:ui     # the PDF, when it is being shown to anybody
+npm run report:mvp    # the client's report, when its screenshots are stale
 ```
 
 A phase is not finished until that block is green. Nothing between the start and
 the end of a phase is a gate.
 
-`test:e2e` and `report:ui` both run `npm run e2e:db` first, which creates
+`test:e2e`, `report:ui` and `report:mvp` all run `npm run e2e:db` first, which creates
 `konak_e2e` on **port 5433** if it is absent, migrates it, clears the residue a
 failed run leaves behind, seeds it and loads the demo hotel. Uploads from those
 runs go to `.storage-e2e`, and the dev server they drive listens on 3100
 (`E2E_PORT`, `E2E_DATABASE_URL` to override). Nothing there touches the database
 you are looking at. `guides/index.md` § The browser layer describes the shape.
+
+### Every browser run leaves `.next/dev/lock` behind
+
+Including the runs that pass — measured on one where all 103 did. The file
+outlives the `next dev` it names, and Next 16 refuses a second dev server **in
+the same directory**, so the next run dies before it starts with a message
+quoting a PID that no longer exists.
+
+Do not go looking for it with `lsof -nP -iTCP:3100 -sTCP:LISTEN`: a wedged
+server has already released the port. The lock names it, and this clears it only
+if nothing answers:
+
+```sh
+kill -0 "$(node -p 'require("./.next/dev/lock").pid')" 2>/dev/null || rm .next/dev/lock
+```
+
+**Never an unconditional `rm`** — that is how two dev servers end up fighting
+over one directory, which is the failure the lock exists to prevent.
 
 ## Authentication
 

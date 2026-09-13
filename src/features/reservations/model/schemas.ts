@@ -1,15 +1,50 @@
 import { z } from "zod";
+import { nightsBetween } from "./stay";
 import { reservationStatusSchema } from "./status";
 
 /** A date-only value. The client sends a day; the server stores UTC midnight. */
 export const stayDateSchema = z.coerce.date();
 
-export const availabilityInputSchema = z.object({
-  propertyId: z.number(),
-  roomTypeId: z.number().optional(),
-  from: stayDateSchema,
-  to: stayDateSchema,
-});
+/**
+ * The longest run of nights one request may ask about.
+ *
+ * A little over a year, so "this date next year" is reachable in one go and a
+ * season can be read whole. `GRID_MAX_NIGHTS` is much smaller because a grid is
+ * a *screen*; this bounds the underlying question.
+ *
+ * The cap is not politeness. `availability()` builds a row per room type per
+ * night in memory, so `from: 2020, to: 2120` is thirty-six thousand of them per
+ * type — asked for by any signed-in member, for free. `model/grid.ts` states the
+ * principle and applied it to the grid alone; this is the rest.
+ */
+export const MAX_RANGE_NIGHTS = 400;
+
+/**
+ * A date range that covers at least one night and no more than the cap.
+ *
+ * Applied as a refinement rather than checked in each procedure, so a range
+ * nobody meant is refused by the schema the router and the form already share —
+ * and refused **on `to`**, which is the field somebody mistyped.
+ */
+export function boundedRange<T extends z.ZodType>(schema: T) {
+  return schema.superRefine((value, ctx) => {
+    const { from, to } = value as { from: Date; to: Date };
+    const nights = nightsBetween(from, to);
+
+    if (nights < 1 || nights > MAX_RANGE_NIGHTS) {
+      ctx.addIssue({ code: "custom", path: ["to"], message: "range_out_of_bounds" });
+    }
+  });
+}
+
+export const availabilityInputSchema = boundedRange(
+  z.object({
+    propertyId: z.number(),
+    roomTypeId: z.number().optional(),
+    from: stayDateSchema,
+    to: stayDateSchema,
+  })
+);
 
 export type AvailabilityInput = z.infer<typeof availabilityInputSchema>;
 

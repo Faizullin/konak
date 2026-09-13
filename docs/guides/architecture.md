@@ -248,9 +248,19 @@ Every table obeys these. A review rejects one that does not.
    already that. UUIDv7, not v4, so inserts keep index locality.
 4. **Audit columns**: `createdAt`, `updatedAt`, `createdById`, `updatedById`,
    passed explicitly from `ctx.session.user.id` — never Prisma middleware.
-5. **An append-only `AuditLog` beside them**, whose actor is the *user* id, so
-   the trail survives a membership being deleted. "Who read this passport" is a
-   question the columns cannot answer.
+5. **An `AuditLog` beside them**, written by `writeAudit` in
+   `features/platform/server` — never by a trigger and never by Prisma
+   middleware, for the reason in convention 4. It takes the caller's
+   transaction client, so the record and the act commit together or not at all.
+   Its actor is the *user* id, so the trail survives a membership being
+   deleted, and it has **no foreign key to `Organization`**: the record of who
+   deleted a tenant must outlive the tenant. What a diff may contain is an
+   allowlist per entity in `platform/model/audit.ts` — never the row — so a
+   passport number cannot reach an unencrypted column in the table nothing
+   deletes from. It records the management plane (privilege, membership, tenant
+   deletion), not every write; "who read this passport" waits for Phase 9.
+   Append-only in practice, not forever by decree — see
+   `plans/server-hardening.md` § 11 on retention.
 6. **Archive, never delete**: `archivedAt` nullable, filtered out of every list.
 7. **Money is integer minor units** plus a currency code. `Currency.minorUnits`
    turns them back into a number — JPY has 0, and dividing by 100 everywhere is
@@ -464,6 +474,37 @@ own class rather than a transport error it has no business knowing about.
 `errors.ts` must not import from `features/`. `auth.ts` reaches it, and
 `npm run auth:generate` loads `auth.ts` through jiti, which does not read
 tsconfig `paths` — see [local-development.md](local-development.md).
+
+## Searching a text column
+
+**Never write `contains` by hand.** Every text search goes through `like()` in
+`src/server/search.ts`:
+
+```ts
+...(filter.search ? { name: like(filter.search) } : {})
+```
+
+Prisma's bare `contains` compiles to `LIKE` on Postgres, which is
+case-sensitive. Three searches shipped that way and returned **nothing at all**
+unless the term was capitalised exactly as stored — a receptionist typing
+`иванова` got an empty table. The two searches written later happened to include
+`mode: "insensitive"`, so the tree disagreed with itself with nothing failing.
+
+One function, so the decision is inherited rather than re-made. It is not a
+performance helper: measured at 25k people in a tenant, `ILIKE` behind the
+`(organizationId, …)` index these tables already carry answers in 18–27 ms, and
+a trigram index changed the `findMany` by nothing. If a search ever does need an
+index, the note in `plans/server-hardening.md` § 10 says what was measured and
+what was ruled out.
+
+Two limits, neither of which `like()` can fix, both of which are about spelling
+rather than case. `ё` and `е` are distinct, so Фёдоров and Федоров are two rows
+to the database and one person to a hotel; and `listPeople` passes the whole
+term to a single `contains`, so `"Иван Иванов"` matches nothing — `reservations`
+splits on whitespace with `searchTerms`, and the directory does not. Both are
+fixed together by a normalised `searchKey` column written by the application,
+never by `unaccent` in SQL; `tests/server/directory.test.ts` § search already
+asserts the `ё` case as a failing one.
 
 ## File storage
 

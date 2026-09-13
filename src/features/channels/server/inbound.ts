@@ -6,6 +6,7 @@ import { createGuestPerson } from "@/features/directory/server";
 // from here closes a cycle Node refuses to instantiate. The barrel is the
 // convention; a cycle is the exception to it.
 import { nextSeriesNumber } from "@/features/reservations/server/service";
+import { enqueueChannelPush } from "./enqueue";
 import { ChannelError } from "../model";
 import type { InboundReservation } from "./adapter";
 
@@ -77,6 +78,13 @@ export async function applyInboundReservation(
           where: { id: existing.id },
           data: { status: "CANCELLED", cancelledAt: new Date(), cancellationReason: "CHANNEL" },
         });
+
+        // A room came back onto the market, and the other channels are the ones
+        // that could sell it. Booking.com cancelling is news for Expedia.
+        await enqueueChannelPush(tx, {
+          propertyId: connection.propertyId,
+          organizationId: connection.organizationId,
+        });
       });
     }
     return {
@@ -133,6 +141,7 @@ export async function applyInboundReservation(
         stays: {
           create: [
             {
+              propertyId: connection.propertyId,
               roomTypeId: mapping.roomTypeId,
               ratePlanId: mapping.ratePlanId,
               // No room. The channel sold a type; the door is the desk's.
@@ -149,6 +158,24 @@ export async function applyInboundReservation(
         },
       },
       select: { id: true, reference: true },
+    });
+
+    /**
+     * And every channel hears that the night moved.
+     *
+     * A booking from Booking.com reduces what Expedia and Airbnb may sell, and
+     * nothing was telling them — the one direction of this that was missing.
+     * Enqueued for *every* live connection including the one it arrived on:
+     * the push is a diff of availability, not a booking, so telling the sender
+     * what it already knows costs a message and closes no loop.
+     *
+     * In the same transaction as the booking, which is the whole reason the
+     * outbox is in Postgres rather than a queue beside it.
+     */
+    await enqueueChannelPush(tx, {
+      propertyId: connection.propertyId,
+      organizationId: connection.organizationId,
+      from: inbound.checkIn,
     });
 
     return {

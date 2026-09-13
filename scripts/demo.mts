@@ -194,6 +194,7 @@ async function book(spec: {
       stays: {
         create: [
           {
+            propertyId: property.id,
             roomTypeId: typeIds.get(spec.code)!,
             ratePlanId: plan.id,
             roomId: spec.room ? (roomIds.get(spec.room) ?? null) : null,

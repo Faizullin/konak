@@ -1069,7 +1069,12 @@ export function ReservationGrid({
           onValueChange={(value) => update({ windowNights: Number(value) as GridWindowNights })}
         >
           <SelectTrigger size="sm" className="w-28">
-            <SelectValue />
+            {/* Base UI's `Select.Value` renders the *value* unless it is given
+                a function, so a bare one showed `31` and `comfortable` — the
+                stored key, in English, on a Russian screen. */}
+            <SelectValue>
+              {(value: string) => t("grid.nightsOption", { nights: Number(value) })}
+            </SelectValue>
           </SelectTrigger>
           <SelectContent>
             {GRID_WINDOW_NIGHTS.map((length) => (
@@ -1085,7 +1090,11 @@ export function ReservationGrid({
           onValueChange={(value) => update({ density: value as Density })}
         >
           <SelectTrigger size="sm" className="w-36">
-            <SelectValue />
+            <SelectValue>
+              {(value: Density) =>
+                t(value === "compact" ? "grid.densityCompact" : "grid.densityComfortable")
+              }
+            </SelectValue>
           </SelectTrigger>
           <SelectContent>
             {DENSITY_VALUES.map((value) => (

@@ -1,8 +1,14 @@
 import "server-only";
 import type { Prisma } from "@/generated/prisma/client";
-import { InvalidError, PreconditionError } from "@/server/errors";
+import { ConflictError, InvalidError, PreconditionError } from "@/server/errors";
 import prisma from "@/server/db";
+import { like } from "@/server/search";
 import { personDisplayName } from "@/features/directory";
+import { createGuestPerson } from "@/features/directory/server";
+// The file, not the barrel: `channels/server` re-exports its router, which
+// imports the properties barrel, which imports this feature — and a cycle here
+// is an export that "does not exist" at run time.
+import { enqueueChannelPush } from "@/features/channels/server/enqueue";
 import { compareRoomNumbers } from "@/features/properties";
 import {
   assignLanes,
@@ -16,6 +22,7 @@ import {
   nightsBetween,
   nightsOf,
   occupiesInventory,
+  reservationDates,
   ReservationError,
   searchTerms,
   spanInWindow,
@@ -58,6 +65,15 @@ export type AvailabilityScope = {
   roomTypeIds: number[];
   /** Every stay touching the window, whatever its status. */
   stays: readonly { roomTypeId: number; checkIn: Date; checkOut: Date; status: string }[];
+  /**
+   * Every live room of the property, if the caller already has them.
+   *
+   * The grid does: it draws one row per room, so it reads them all before it
+   * asks anything else. Counting them again here was a round trip for an answer
+   * already in memory — and it is the *same* answer, because both read
+   * `propertyId` with `archivedAt: null`.
+   */
+  rooms?: readonly { roomTypeId: number }[];
 };
 
 /**
@@ -170,7 +186,16 @@ export async function availability(
 
   const key = (roomTypeId: number, date: Date) => `${roomTypeId}:${date.toISOString()}`;
 
-  const totals = new Map(rooms.map((row) => [row.roomTypeId, row._count._all]));
+  /**
+   * One shape from two sources: a `groupBy` answers `{ roomTypeId, _count }`,
+   * and a caller's own list answers one row per room. Both become "how many of
+   * this type".
+   */
+  const totals = new Map<number, number>();
+  for (const row of rooms) {
+    const count = "_count" in row ? row._count._all : 1;
+    totals.set(row.roomTypeId, (totals.get(row.roomTypeId) ?? 0) + count);
+  }
   const blocked = new Map(
     blocks.map((row) => [key(row.roomTypeId, toStayDate(row.date)), row.blockedRooms])
   );
@@ -420,7 +445,10 @@ export async function frontDeskGrid(args: {
     // month for a whole hotel, and adding a column should be a decision.
     prisma.roomStay.findMany({
       where: {
-        reservation: { propertyId: args.propertyId },
+        // The stay's own scope, not its reservation's. Filtering through the
+        // relation made the planner walk every booking the property has ever
+        // taken — see the column's comment in `inventory.prisma`.
+        propertyId: args.propertyId,
         checkIn: { lt: to },
         checkOut: { gt: from },
         status: { notIn: [...GRID_HIDDEN_STATUSES] },
@@ -454,6 +482,7 @@ export async function frontDeskGrid(args: {
     {
       roomTypeIds: roomTypes.flatMap((type) => (type.archivedAt ? [] : [type.id])),
       stays,
+      rooms,
     }
   );
 
@@ -561,7 +590,7 @@ export async function frontDeskDay(args: {
 
   const stays = await prisma.roomStay.findMany({
     where: {
-      reservation: { propertyId: args.propertyId },
+      propertyId: args.propertyId,
       checkIn: { lte: day },
       checkOut: { gte: day },
       status: { notIn: [...GRID_HIDDEN_STATUSES] },
@@ -643,14 +672,14 @@ export async function frontDeskDay(args: {
  * which kind it is.
  */
 function matchesTerm(term: string): Prisma.ReservationWhereInput {
-  const like = { contains: term, mode: "insensitive" } as const;
+  const match = like(term);
 
   return {
     OR: [
-      { reference: like },
-      { booker: { OR: [{ firstName: like }, { lastName: like }] } },
-      { guests: { some: { person: { OR: [{ firstName: like }, { lastName: like }] } } } },
-      { stays: { some: { room: { number: like } } } },
+      { reference: match },
+      { booker: { OR: [{ firstName: match }, { lastName: match }] } },
+      { guests: { some: { person: { OR: [{ firstName: match }, { lastName: match }] } } } },
+      { stays: { some: { room: { number: match } } } },
     ],
   };
 }
@@ -724,12 +753,9 @@ export async function listReservations(input: ListReservationsInput) {
 
   return {
     items: rows.map((row) => {
-      // A reservation arrives when its earliest stay does and ends when its
-      // last one does — the same reading `refuseStatusChange` makes.
-      const arrival = row.stays.at(0)?.checkIn ?? null;
-      const departure = row.stays
-        .map((s) => s.checkOut)
-        .reduce<Date | null>((latest, end) => (!latest || end > latest ? end : latest), null);
+      // One reading of what a reservation's dates are, shared with
+      // `refuseStatusChange` and the guest's stay history.
+      const { arrival, departure, nights } = reservationDates(row.stays);
 
       return {
         id: row.id,
@@ -742,7 +768,7 @@ export async function listReservations(input: ListReservationsInput) {
         guestName: row.booker ? personDisplayName(row.booker) : null,
         checkIn: arrival,
         checkOut: departure,
-        nights: arrival && departure ? nightsBetween(arrival, departure) : 0,
+        nights,
         roomCount: row.stays.length,
         rooms: row.stays.map((s) => s.room?.number).filter((n): n is string => Boolean(n)),
         roomTypes: [...new Set(row.stays.map((s) => s.roomType.name))],
@@ -772,4 +798,176 @@ export async function sweepExpiredHolds(now = new Date()): Promise<{ removed: nu
  */
 export async function countExpiredHolds(now = new Date()): Promise<number> {
   return prisma.inventoryHold.count({ where: { releaseAt: { lte: now } } });
+}
+
+/**
+ * A booking, written once.
+ *
+ * `create` and `walkIn` were the same transaction typed twice — take the type's
+ * lock, ask whether there is a room, take a reference, write the guest, write
+ * the reservation and its stay, tell the channels. About eighty lines each, in
+ * a router that had grown past nine hundred, and the duplication was not
+ * theoretical: the room-type lock that closed the overselling race had to be
+ * added to both, and the channel push that closed the silent-availability gap
+ * had to be added to both. The next rule about booking would have been the
+ * third.
+ *
+ * What genuinely differs between them stays an argument: a walk-in is
+ * `CHECKED_IN` in a room that is already chosen, a booking is `CONFIRMED` and
+ * usually has no door yet; a booking may consume a hold and may name a guest
+ * the directory already has.
+ *
+ * **The caller owns everything before the transaction** — the range, the
+ * occupancy rule, the quote — because those refusals are worded for the screen
+ * that asked, and a walk-in's "too many people" is about a room while a
+ * booking's is about a type.
+ */
+export async function bookStay(
+  tx: Prisma.TransactionClient,
+  args: {
+    scope: { id: number; organizationId: number };
+    userId: string;
+    propertyId: number;
+    roomTypeId: number;
+    ratePlanId?: number;
+    roomId?: number | null;
+    status: string;
+    source: string;
+    checkIn: Date;
+    checkOut: Date;
+    adults: number;
+    children: number;
+    currencyCode: string;
+    totalMinor: number;
+    notes?: string;
+    companyId?: number;
+    /** Consumed with the booking it became, or nothing. */
+    holdKey?: string;
+    /** An id the desk already found, or a name to write into the directory. */
+    booker: {
+      personId?: number;
+      firstName?: string;
+      lastName?: string;
+      email?: string;
+      phone?: string;
+    };
+    /**
+     * Which input field a sold-out refusal names.
+     *
+     * They differ honestly: a booking's dates are `checkIn`, a walk-in's are a
+     * count of `nights`, and the field is what a form highlights.
+     */
+    soldOutField: string;
+  }
+) {
+  /**
+   * Is there a room — asked here, holding the type's lock, inside the
+   * transaction that writes.
+   *
+   * The exclusion constraint is not the backstop it looks like: its clause is
+   * `WHERE ("roomId" IS NOT NULL …)`, so an unassigned stay — every advance
+   * booking, every channel booking — has no protection at all. Two clerks
+   * selling the last Double both passed a check made before either wrote.
+   */
+  await lockRoomType(tx, args.roomTypeId);
+
+  const nights = await availability(
+    {
+      propertyId: args.propertyId,
+      roomTypeId: args.roomTypeId,
+      from: args.checkIn,
+      to: args.checkOut,
+      exceptHoldKey: args.holdKey,
+    },
+    undefined,
+    tx
+  );
+  const soldOut = nights.find((night) => night.available < 1);
+  if (soldOut) {
+    const date = soldOut.date.toISOString().slice(0, 10);
+    throw new ConflictError(
+      ReservationError.STAY_SOLD_OUT,
+      `No rooms of that type free on ${date}`,
+      args.soldOutField
+    ).with({ date });
+  }
+
+  const reference = await nextSeriesNumber(tx, {
+    organizationId: args.scope.organizationId,
+    propertyId: args.scope.id,
+    kind: "RESERVATION",
+  });
+
+  // The hold and the booking it became commit together. Releasing it before the
+  // transaction opens a window where the room is free and someone else takes
+  // it; releasing it after means a rollback leaves a claim on a booking that
+  // does not exist.
+  if (args.holdKey) {
+    await tx.inventoryHold.deleteMany({ where: { holdKey: args.holdKey } });
+  }
+
+  // A named guest who is not in the directory is written into it. An id given
+  // outright wins: the desk found them already.
+  const bookerPersonId =
+    args.booker.personId ??
+    (args.booker.firstName && args.booker.lastName
+      ? (
+          await createGuestPerson(
+            tx,
+            {
+              organizationId: args.scope.organizationId,
+              firstName: args.booker.firstName,
+              lastName: args.booker.lastName,
+              email: args.booker.email,
+              phone: args.booker.phone,
+            },
+            args.userId
+          )
+        ).id
+      : undefined);
+
+  const created = await tx.reservation.create({
+    data: {
+      propertyId: args.propertyId,
+      reference,
+      status: args.status,
+      source: args.source,
+      bookerPersonId,
+      companyId: args.companyId,
+      currencyCode: args.currencyCode,
+      totalMinor: args.totalMinor,
+      notes: args.notes,
+      createdById: args.userId,
+      updatedById: args.userId,
+      stays: {
+        create: [
+          {
+            propertyId: args.propertyId,
+            roomTypeId: args.roomTypeId,
+            ratePlanId: args.ratePlanId,
+            roomId: args.roomId,
+            status: args.status,
+            checkIn: args.checkIn,
+            checkOut: args.checkOut,
+            adults: args.adults,
+            children: args.children,
+            currencyCode: args.currencyCode,
+            totalMinor: args.totalMinor,
+          },
+        ],
+      },
+    },
+    include: { stays: true },
+  });
+
+  // The nights just came off the market, so the channels are owed the news —
+  // recorded here rather than sent here, in the same transaction as the booking
+  // it announces.
+  await enqueueChannelPush(tx, {
+    propertyId: args.propertyId,
+    organizationId: args.scope.organizationId,
+    from: args.checkIn,
+  });
+
+  return created;
 }

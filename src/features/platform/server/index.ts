@@ -1,5 +1,6 @@
 import "server-only";
 
+export * from "./audit";
 export { platformRouter } from "./router";
 export {
   claimOutboxBatch,

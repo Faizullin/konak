@@ -169,6 +169,15 @@ names a colour**. Do not promise a date.
 
 ## The screenshots
 
+Two commands, and they are different deliverables.
+
 `npm run report:ui` produces the PDF over these screens in both languages and
-both themes — see [index.md](index.md) § The screenshot report. Run it before the
-meeting, not during.
+both themes — see [index.md](index.md) § The screenshot report.
+
+`npm run report:mvp` produces the client's own document,
+[reports/mvp-report.ru.md](../reports/mvp-report.ru.md): this path's eight items
+in Russian, with the pictures. Its dates come from the demo data, which counts
+from the day it was loaded — so regenerate it the morning of the meeting, not
+the week before.
+
+Run either before the meeting, not during.

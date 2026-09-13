@@ -8,11 +8,25 @@ import prisma from "./db";
 import { DomainError, ForbiddenError, SharedError, UnauthorizedError } from "./errors";
 
 export const createTRPCContext = async () => {
-  const session = await auth.api.getSession({ headers: await headers() });
+  const headerList = await headers();
+  const session = await auth.api.getSession({ headers: headerList });
 
   return {
     db: prisma,
     session,
+    /**
+     * Where the request came from, for the audit trail.
+     *
+     * The first hop of `x-forwarded-for`, which is the client as the nearest
+     * proxy saw it — and **not to be trusted as identity**: anything before our
+     * own proxy is a header the client wrote. It is recorded because a
+     * regulator asks where an act came from, not because it proves who did it;
+     * `actorUserId` is the half that proves anything.
+     */
+    ipAddress:
+      headerList.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+      headerList.get("x-real-ip") ??
+      null,
   };
 };
 

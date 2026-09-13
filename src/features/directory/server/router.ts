@@ -5,8 +5,9 @@ import { requireOrgMember } from "@/server/auth";
 import { requireOrgModule } from "@/features/organizations/server";
 // A night count is the reservations feature's arithmetic, and it is in
 // `model/` — a shared definition read, not a reach into another feature.
-import { nightsBetween } from "@/features/reservations";
+import { reservationDates } from "@/features/reservations";
 import { ConflictError, ForbiddenError, NotFoundError } from "@/server/errors";
+import { like } from "@/server/search";
 import { createTRPCRouter, protectedProcedure } from "@/server/trpc";
 import {
   blankToNull,
@@ -69,9 +70,9 @@ export const directoryRouter = createTRPCRouter({
       ...(filter?.search
         ? {
             OR: [
-              { firstName: { contains: filter.search } },
-              { lastName: { contains: filter.search } },
-              { email: { contains: filter.search } },
+              { firstName: like(filter.search) },
+              { lastName: like(filter.search) },
+              { email: like(filter.search) },
             ],
           }
         : {}),
@@ -168,17 +169,16 @@ export const directoryRouter = createTRPCRouter({
       });
 
       return reservations.map((reservation) => {
-        const arrival = reservation.stays.at(0)?.checkIn ?? null;
-        const departure = reservation.stays.reduce<Date | null>(
-          (latest, stay) => (!latest || stay.checkOut > latest ? stay.checkOut : latest),
-          null
-        );
+        // The reservations feature owns what a booking's dates mean; this reads
+        // that rather than repeating it. It used to take `stays.at(0)`, which
+        // was right only because the query above orders by `checkIn`.
+        const { arrival, departure, nights } = reservationDates(reservation.stays);
 
         return {
           ...reservation,
           checkIn: arrival,
           checkOut: departure,
-          nights: arrival && departure ? nightsBetween(arrival, departure) : 0,
+          nights,
           rooms: reservation.stays.map((stay) => stay.room?.number).filter(Boolean) as string[],
           roomTypes: [...new Set(reservation.stays.map((stay) => stay.roomType.name))],
         };
@@ -306,7 +306,7 @@ export const directoryRouter = createTRPCRouter({
     const where: Prisma.CompanyWhereInput = {
       organizationId: input.organizationId,
       ...archiveFilter(filter?.includeArchived),
-      ...(filter?.search ? { name: { contains: filter.search } } : {}),
+      ...(filter?.search ? { name: like(filter.search) } : {}),
     };
 
     const [items, total] = await Promise.all([

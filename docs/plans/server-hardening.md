@@ -56,119 +56,163 @@ against it. `takePayment` also catches P2002, because its key is unique across
 
 ---
 
-## 3. Three changes the channels are never told about — **worth fixing**
+## 3. ~~Three changes the channels were never told about~~ — shipped
 
-The stated invariant is that an intent is written in the same transaction as the
-change it announces. These change what is for sale and announce nothing:
+`walkIn`, `moveStay` and `applyInboundReservation` all change what is for sale
+and announced nothing. They do now, each in the transaction that makes the
+change — and a cancellation arriving from a channel does too, because a room
+coming back is news for the channels that could sell it.
 
-- **`reservation.walkIn`** — takes a room off *tonight's* market, which is the
-  most overbooking-prone moment there is.
-- **`reservation.moveStay`** — changes which nights are sold.
-- **`applyInboundReservation`** — a booking from Booking.com reduces
-  availability for Expedia and Airbnb, and no push is enqueued for any
-  connection.
+`moveStay` pushes from the **earlier** of the two dates: a stay that shifts
+frees the nights it left as well as taking the ones it arrived on, and
+announcing only the new dates would leave a channel refusing to sell a night
+nobody occupies.
 
-`create` and `setStatus` do it correctly, which is what makes these read as
-omissions rather than a decision.
-
----
-
-## 4. The guard chain costs three round trips before any work — **worth fixing**
-
-`requirePropertyMember` → `requireOrgMember` → `requireUser` is three strictly
-sequential queries on **49** property-scoped procedures and **41** org-scoped
-ones.
-
-**The user lookup is redundant.** `requireOrgMember` uses only `user.id`, which
-*is* `ctx.session.user.id` — and `requireUser`'s own docstring says callers
-needing only that should read the session. The membership row cascades from
-`User`, so a deleted user already yields no member. Dropping it takes the hot
-path from three auth round trips to two.
-
-**The guard also selects too little**, so five call sites immediately re-read
-the same property row for `timezone` or `currencyCode`:
-`reservations/server/router.ts:210` and `:596`,
-`housekeeping/server/router.ts:43` and `:123`,
-`properties/server/router.ts:101`. `roadmap.md` states the end-of-phase gate as
-*"Does any request do the same lookup twice?"* — this is five instances of it.
-The row is tiny; widen the `select`.
-
-This matters because the grid and the day lists **poll every thirty seconds**,
-per open desk.
+The invariant is asserted now rather than assumed —
+`channels.test.ts` § "every change to what is for sale enqueues a push" loops
+over the ways the market moves, so the next one that forgets fails a test
+instead of producing an overbooking.
 
 ---
 
-## 5. Indexes — **worth fixing**
+## 4. ~~The guard chain~~ — shipped
 
-**`RoomStay` has no index the hot queries can use.** The grid
-(`service.ts:338`) and the day list (`:479`) filter
-`reservation: { propertyId }` + `checkIn < to` + `checkOut > from` + a status
-list. The three available indexes lead with `roomTypeId`, `roomId` and
-`reservationId` — and neither query supplies a room or a type. The *window* is
-bounded; the *history* is not, so the work grows with every stay the hotel has
-ever taken.
+`requireOrgMember` no longer calls `requireUser`. It needed an id, and an id is
+what `ctx.session.user` carries — which `requireUser`'s own docstring told
+callers to prefer. Every property-scoped procedure paid for that round trip
+sequentially before doing any work; the grid and the day lists paid it twice
+every thirty seconds per open desk.
 
-Either `@@index([checkIn, checkOut])` on `RoomStay`, or `propertyId`
-denormalised onto the stay — which the table conventions argue against, and
-which is the reason this needs a decision rather than a patch. **Measure first**
-with `EXPLAIN ANALYZE` on a property with real history; the audit found the
-absence, not the plan's choice.
+Safe because nothing read anything else: `user.id` is the **only** field any
+caller of these guards touches, 53 times across the features. `requireUser`
+keeps its six direct callers, where the live row is the point.
 
-Cheaper items in the same pass:
+`requirePropertyMember` also selects the whole small property row, so the five
+procedures that re-read it for a `timezone` or a `currencyCode` stopped —
+`reservation.create`, `reservation.walkIn`, `housekeeping.board`,
+`housekeeping.createTask` and `properties.hasLiveStays`, the last of which takes
+the timezone as an argument now rather than fetching one.
+
+## 5. ~~Indexes~~ — measured, and the answer was not an index
+
+Benchmarked on 300,000 stays across five years, asking for a one-month window —
+the shape a real property reaches:
+
+| | grid query |
+|---|---|
+| as shipped | **195 ms** |
+| `+ (checkIn, checkOut)` on `room_stays` | 193 ms |
+| `+ (checkOut, checkIn)` | 193 ms |
+| `+ (checkOut, checkIn, status)` | 199 ms |
+| **`propertyId` on the stay + `(propertyId, checkOut, checkIn)`** | **0.02 ms** |
+
+**No index on `room_stays` was ever chosen by the planner**, and that is the
+finding. The property filter lives on `reservations`, so Postgres drives from
+there — an index scan over every booking the property has ever taken, then a
+nested-loop probe into `room_stays` 300,000 times. An index on the stay's dates
+cannot help a plan that never reaches the stay first.
+
+So the answer was the option the plan had listed second and the table
+conventions argue against: **the stay carries its own `propertyId`**. Convention
+1's objection is that a copied scope can disagree with its parent — and this one
+cannot, because `room_stays_property_matches_reservation` is a composite foreign
+key onto `reservations (id, propertyId)`. The reason behind the rule is
+satisfied rather than waived, and an integration test asserts the database
+refuses a mismatch.
+
+Cheaper items in the same pass, still open:
 
 - **Redundant:** `organizations_slug_idx` duplicates the `@unique`;
   `organization_members_organizationId_idx` is the leading column of the
   `@@unique([organizationId, userId])`.
-- **Nothing reads them:** `RoomTypeInventory @@index([date])`,
-  `RateCalendar`/`RateRestriction @@index([roomTypeId, date])` (every reader
-  supplies `ratePlanId` too, so the unique serves them), `Folio` and `Payment`
-  `@@index([propertyId, status])`, and
-  `HousekeepingTask @@index([assignedMemberId, status])` — that last one implies
-  a *my tasks* screen that was planned and never built.
+- **Nothing reads them:** `RateCalendar`/`RateRestriction @@index([roomTypeId, date])`
+  (every reader supplies `ratePlanId` too), `Folio` and `Payment`
+  `@@index([propertyId, status])`, and `HousekeepingTask @@index([assignedMemberId, status])`
+  — that last one implies a *my tasks* screen that was planned and never built.
 - **Missing:** `EntityTag` has `[personId]` and `[companyId]` but not
   `[propertyId]`, which `listSubjectTags` filters on.
 
 ---
 
-## 6. Unbounded input — **worth fixing**
+## 6. ~~Unbounded input~~ — shipped
 
-`model/grid.ts` states the principle: *"The cap exists because the window is what
-bounds the query — without it one request asks for a year of every room."* It is
-applied to the grid and to nothing else. Any signed-in member can send
-`from: 2020, to: 2120` to:
+`MAX_RANGE_NIGHTS` (400, a little over a year so "this date next year" is one
+request) and `boundedRange`, applied to `reservation.availability`,
+`rate.calendar`, `rate.setRates` and `rate.setRestrictions`. Refused **on `to`**,
+which is the field somebody mistyped, and by the schema the router and the form
+already share.
 
-- `reservation.availability` — builds 36,500 × N rows in memory and returns them
-- `rate.calendar` — the same shape
-- `rate.setRates` / `setRestrictions` — a ten-year range becomes a `deleteMany`
-  of 3,653 dates plus 3,653 inserts plus a channel push, in one transaction
+The reads were a memory problem — `availability()` builds a row per room type
+per night, so a decade was thirty-six thousand of them for free. The writes were
+sharper: a range becomes a `deleteMany`, one insert per night and a channel
+push **in one transaction**.
 
-The cap already exists as a named constant for the grid. Give these one too.
+Two more that had no `take`:
 
-Two more without a `take` that actually grow: `platform.listAttachments`, and
-`billing.get`'s `lines`.
+- **`platform.listAttachments`** now takes 200. A panel shows one kind for one
+  subject, which is small in practice — and "in practice" is not a bound.
+- **`billing.get`'s lines and payments** deliberately stay unbounded, and the
+  reasoning is worth keeping: `refuseClose` sums the lines and `close` freezes
+  that sum into `closedTotalMinor`, which is never re-derived. A `take` there
+  would not make a screen slow; it would close a bill at a total missing the
+  lines past the limit, silently and for ever. It was added and then removed for
+  that reason.
+
+`error-messages.test.ts` had to learn about `superRefine` on the way: a rule
+about two fields at once cannot be written as `.min()` on one of them, and its
+key was just as real.
 
 ---
 
-## 7. Sequential work that should be one batch — **worth fixing**
+## 7. Sequential work — the two hot ones done, the rest open
 
-- **`organization.moduleAccess`** says *"One query rather than two, because the
-  shell asks on every navigation."* It is **four**, sequential. The comment is
-  wrong about its own code, and this runs on every navigation.
-- **`frontDeskGrid`** runs three queries in parallel, then `availability()`
-  issues two more. Five queries in two waves where one wave would do — scope the
-  inventory and hold queries by `roomType: { propertyId }` rather than by a list
-  of ids.
+**`organization.moduleAccess` is one query now**, which is what its own comment
+had claimed while being three: the organization by slug, then the membership,
+then the toggles, strictly sequential, on a query the shell runs on **every
+navigation**. They are one row and its two relations.
+
+It is also the only place outside `requireOrgMember` that decides whether
+somebody is a member, so the refusal moved to `noOrgAccess()` in
+`server/errors.ts` — one place for the words and the code, beside
+`userNotFound()` and `memberNotFound()`.
+
+**`frontDeskGrid` stopped counting rooms it had already read.** It draws one row
+per room, so it reads them all first; `availability` then ran a `groupBy` for
+the same answer with the same filter. The scope carries them now.
+
+### And the measurement said: do not claim a number
+
+Timed on the demo property, thirty runs, before and after — **10.1 / 9.5 /
+2.5 ms** against **12.1 / 7.4 / 18.1 ms**. They overlap completely. An earlier
+single reading of 26 ms against 12 ms looked like a win and was noise, which is
+§ 5's lesson arriving a second time.
+
+That does not make the change wrong; it makes the *claim* wrong. What it removes
+is a **round trip**, and a round trip to a Postgres on the same machine is worth
+nothing. On a managed database at 10–20 ms it is the whole cost. The honest
+statement is the count — the grid is six queries in two waves rather than seven,
+and `moduleAccess` is one rather than three — not a millisecond figure measured
+where latency is zero.
+
+**`organization.delete` is batched and paged.** It filed one storage removal per
+attachment — two statements each — in a loop, inside the transaction that also
+holds the cascade: twenty thousand sequential statements at ten thousand
+attachments, with `organizations` locked throughout. `enqueueOutboxMany` files a
+page in one `createMany({ skipDuplicates: true })`, which is the same promise the
+single version makes — a key already filed is already said — made by the unique
+index instead. The read is paged too, so a tenant's whole upload history is
+never in memory at once.
+
+Still open, and none of it urgent:
+
 - **`quoteStay`** does two `Promise.all`s where the second depends on nothing
-  from the first. It is on the `create`, `walkIn` and `moveStay` paths.
+  from the first. On the `create`, `walkIn` and `moveStay` paths.
 - **`applyInboundReservation`** re-reads the channel mapping once per arrival,
   inside the pull loop. A 200-booking pull is 200 identical lookups.
-- **`drainOutbox`** runs handlers strictly sequentially, each a network call to a
-  channel manager — while `claimOutboxBatch`'s `SKIP LOCKED` was built to allow
-  concurrency. A bounded `Promise.all` uses the design that is already there.
-- **`organization.delete`** reads every attachment with no `take`, then loops
-  `await enqueueOutbox` per row — two statements each — inside one transaction
-  holding the cascade. Ten thousand attachments is twenty thousand sequential
-  statements and a lock on `organizations` while it runs.
+- **`drainOutbox`** runs handlers strictly sequentially, each a network call,
+  while `claimOutboxBatch`'s `SKIP LOCKED` was built to allow concurrency.
+- **`assignRoom`** and **`updateRoom`** chain reads that do not depend on each
+  other.
 
 ---
 
@@ -181,42 +225,104 @@ have a line"). It is checked now, and refused as **invalid** rather than *not
 found*: the row may well exist, and saying so would confirm another tenant's id
 to somebody guessing.
 
-## 9. Duplication worth collapsing — **worth fixing**
+## 9. Duplication — the booking transaction collapsed
 
-- **`create` and `walkIn` are ~80% the same code, written twice** —
-  the occupancy check, the availability check and its throw, the quote and its
-  refusal, then `nextSeriesNumber` + person + reservation in a transaction.
-  `reservations/server/router.ts` is 920 lines and holds three multi-step
-  transactions inline, while the feature *has* a `service.ts` whose docstring
-  names "owns a multi-step transaction" as the threshold. One `bookStay()` would
-  also mean § 2.1's lock is written once instead of three times.
-- **The arrival/departure/nights reduction is written three times** —
-  `reservations/server/service.ts:646`, `directory/server/router.ts:171`, and a
-  third reading inside `refuseStatusChange`. That is a rule about what a
-  reservation's dates *are*; it belongs in `model/`, once.
-- **`billing.folioForReservation` and `openFolioFor`** are two implementations of
-  one sentence, including the same reasoning in both docstrings. The router
-  should call the service.
-- **`archiveFilter`** is defined identically in two routers; the conventions set
-  the threshold at the third caller, so this is a note, not yet a change.
+**`bookStay` in `service.ts`**, called by `create` and `walkIn`. The two were
+the same transaction typed twice — take the type's lock, ask whether there is a
+room, take a reference, write the guest, write the reservation and its stay,
+tell the channels — about eighty lines each, and the router is 120 lines shorter
+for it.
+
+The duplication was never theoretical. The room-type lock that closed the
+overselling race had to be written into both; the channel push that closed the
+silent-availability gap had to be written into both. The next rule about booking
+would have been the third.
+
+What genuinely differs stayed an argument rather than a branch: a walk-in is
+`CHECKED_IN` in a room already chosen, a booking is `CONFIRMED` and usually has
+no door yet, and only a booking consumes a hold or names a guest the directory
+already has. Even `soldOutField` is a real difference — a booking's dates are
+`checkIn`, a walk-in's are a count of `nights`, and the field is what a form
+highlights.
+
+**The caller keeps everything before the transaction**: the range, the occupancy
+rule, the quote. Those refusals are worded for the screen that asked — a
+walk-in's "too many people" is about a room, a booking's is about a type.
+
+**And `reservationDates` in `model/stay.ts`** — the second collapse, and it
+closed a latent bug rather than only saving lines. Three places asked what a
+reservation's dates are: `refuseStatusChange` took the true minimum, while the
+bookings list and the guest's stay history each took `stays.at(0).checkIn` and
+were correct **only because both queries happened to order by `checkIn`**.
+Nothing in a type said they must, and removing that `orderBy` for any reason
+would have started reporting the wrong arrival on two screens, silently. The
+unit test hands the stays over out of order.
+
+Still open, and cosmetic: `properties/server/router.ts` holds four query helpers
+with near-twins in `rates/server/router.ts`, and `archiveFilter` is defined
+identically in two routers.
 
 ---
 
 ## 10. Smaller, verified
 
-- **Case-sensitive search on Postgres.** `directory.listPeople`,
-  `listCompanies` and `identity.adminList` use `contains` with no
-  `mode: "insensitive"`. The comment in `organizations/server/router.ts:86`
-  explains it as a SQLite carry-over and says *"On Postgres, add it"*. The
-  database changed and three call sites did not.
-- **`AuditLog` is declared, indexed three ways, and written by nothing.** The
-  table conventions require it ("who read this passport"). It is also what a
-  booking's **История** tab would read — the reason that tab was dropped from
-  the desk.
+- ~~**Case-sensitive search on Postgres.**~~ **Shipped**, and it was worse than
+  "smaller": on Postgres a bare `contains` compiles to `LIKE`, so
+  `directory.listPeople`, `listCompanies` and `identity.adminList` returned
+  **nothing at all** unless the term was capitalised exactly as stored. Measured
+  against a 500k-row copy of this schema: `иванов` → 0 rows, `Иванов` → 418.
+  Nobody types a surname capitalised, so those three searches were dead, not
+  slow. The stale comment that said "On Postgres, add it" is deleted, and every
+  search now goes through `server/search.ts` — one place, so the next router
+  inherits the decision instead of re-making it.
+- ~~**`AuditLog` is declared, indexed three ways, and written by nothing.**~~
+  **Shipped**; see § 11.
 - **Over-fetching without a `select`**, in roughly a dozen places; the ones that
   matter are `assertSubjectInOrg` (fetches a whole row to test existence — a
   `count` would do) and `directory`'s `include` pulling whole `Company` rows for
   a table that shows a name.
+
+---
+
+## 11. The audit trail — shipped, with its limits written down
+
+`writeAudit` takes the caller's transaction client, exactly as `enqueueOutbox`
+does, so the record and the act commit together or not at all. `audit.test.ts`
+asserts the rollback directly, because the claim is about the database rather
+than about the function.
+
+Three decisions worth keeping, each of which cost a migration or a bug:
+
+- **No foreign key to `Organization`.** It cascaded, so the record of who
+  deleted a tenant was the deletion's first casualty — the one row somebody
+  would actually come looking for. `organizationId` is also nullable now, since
+  granting install-wide `ADMIN` belongs to no tenant.
+- **An allowlist per entity, never `JSON.stringify(row)`.** A diff built from
+  whatever the row holds writes a passport number in clear into an unencrypted
+  column, in the table nothing is supposed to delete from.
+- **A partial row is not a cleared field.** `identity.updateRole` passed the
+  whole user as `before` and `{ role }` as `after`, and the trail reported that
+  the admin had cleared the user's email. A missing *side* means created or
+  removed; a field missing from a *present* side means the caller passed half a
+  row, and the log stays silent about it. A log that invents acts is worse than
+  no log.
+
+**Not every mutation, and no generic read auditing.** The list is the management
+plane — privilege changes, membership, tenant deletion — which is what OWASP's
+logging guidance names and how CloudTrail splits management from data events.
+Auditing reads generically is the thing large systems have tried and backed out
+of: HHS proposed a per-read access report under HIPAA and withdrew it as
+unworkable, and both CloudTrail data events and GCP data-access logs are opt-in
+and separately priced because the volume is otherwise ruinous. Reading a
+passport stays in **Phase 9**, where it belongs to `IdentityDocument` — which
+currently has no writer, so there is nothing to read yet.
+
+**Retention is deliberately unresolved, and "append-only forever" is the wrong
+default.** CNIL recommends six months to a year for access logs; keeping
+identity data past its purpose is itself the violation the table was meant to
+protect against. Whoever adds retention should add it as a pruning job with a
+configured window, not as a schema change — and should note that the diff
+allowlist is what keeps the pruning question small.
 
 ---
 
@@ -226,12 +332,21 @@ to somebody guessing.
 2. ~~**§ 2.1, § 2.2 and § 2.4**~~ — shipped. `lockRoomType` and
    `lockReservation` are the worked examples now, beside `lockOrganization`.
 3. ~~**§ 2.3**~~ and ~~**§ 8**~~ — shipped.
-4. **§ 4**, the guard chain. Half of it is done: `requirePropertyMember` selects
-   the whole small property row, so five procedures stopped re-reading it. What
-   is left is dropping the redundant `requireUser` — three sequential auth
-   queries become two, on every one of 90 procedures.
-5. **§ 3**, the three changes the channels are never told about.
-6. **§ 5**, the indexes — measure first.
+4. ~~**§ 4**, the guard chain.~~ Shipped.
+5. ~~**§ 3**~~ — shipped.
+6. ~~**§ 5**~~ — measured and shipped. The leftover index tidying in it is
+   cosmetic.
+7. ~~**§ 6**~~ — shipped.
+8. **§ 7**'s two hot paths are done. What is left of it is cold — a pull loop,
+   the outbox worker's concurrency, an unbounded delete — and none of it is
+   reachable by a user waiting for a screen.
+9. ~~**§ 10**'s search bug~~ and ~~**§ 11**, the audit trail~~ — shipped. The
+   search one was not cosmetic: it changed three screens from returning nothing
+   to returning answers.
+10. **§ 9** (duplication) and what is left of **§ 10** by appetite. Neither
+    changes behaviour. `create` and `walkIn` being 80% the same code is the one
+    worth doing, because the next rule about booking will have to be written
+    twice.
 
 Each of § 1, § 2.1 and § 2.2 wants an **integration test that runs two callers
 at once**, the way `reservations.test.ts` now does for the series number. The

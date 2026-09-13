@@ -70,6 +70,27 @@ model Reservation {
 model RoomStay {
   id            Int  @id @default(autoincrement())
   reservationId Int
+  /**
+   * The tenant scope, copied from the reservation — the one deliberate
+   * exception to "child rows inherit it through a required parent".
+   *
+   * Measured, not assumed. The grid and the day lists filter
+   * `reservation: { propertyId }` plus a date range, and at 300k stays the
+   * planner drives from `reservations`, walks every one of the property's
+   * bookings and probes this table per row: **~195 ms, growing with history**,
+   * on a screen that polls every thirty seconds. No index on this table can
+   * change that, because the filter it would serve is on the other one — three
+   * date-leading indexes were benchmarked and none was ever chosen.
+   *
+   * With the column here the join disappears and the same query is **0.02 ms**.
+   *
+   * The convention's objection is that a copied scope can disagree with its
+   * parent. It cannot: `room_stays_property_matches_reservation` is a composite
+   * foreign key onto `reservations (id, propertyId)`, so a stay whose property
+   * differs from its reservation's is refused by the database. Written in SQL
+   * rather than modelled here, like the overlap constraint beside it.
+   */
+  propertyId    Int
   roomTypeId    Int
   // Assigned at or before check-in. Null is normal for a future booking: the
   // guest bought a type, not this room.
@@ -97,12 +118,17 @@ model RoomStay {
   updatedAt DateTime @updatedAt
 
   reservation       Reservation        @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+  property          Property           @relation(fields: [propertyId], references: [id], onDelete: Cascade)
   roomType          RoomType           @relation(fields: [roomTypeId], references: [id], onDelete: Restrict)
   room              Room?              @relation(fields: [roomId], references: [id], onDelete: SetNull)
   ratePlan          RatePlan?          @relation(fields: [ratePlanId], references: [id], onDelete: SetNull)
   folioLines        FolioLine[]
   accessCredentials AccessCredential[]
 
+  // Tenant first, then the bound that prunes: `checkOut > from` is what
+  // separates "still ahead" from five years of history, and `checkIn < to`
+  // matches almost everything once a hotel has a past.
+  @@index([propertyId, checkOut, checkIn])
   @@index([roomTypeId, checkIn, checkOut])
   @@index([roomId, checkIn, checkOut])
   @@index([reservationId])
