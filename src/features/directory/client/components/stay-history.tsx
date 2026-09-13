@@ -9,6 +9,7 @@ import { RESERVATION_STATUS_VALUES, ReservationStatus } from "@/features/reserva
 import { useEnumLabels } from "@/lib/labels";
 import { formatMoney } from "@/lib/money";
 import { trpc } from "@/utils/trpc";
+import { useBookingLink } from "@/store/surface-links";
 
 /**
  * Where this person has stayed.
@@ -30,6 +31,8 @@ export function StayHistory({
   const t = useTranslations("directory");
   const locale = useLocale();
   const statusLabels = useEnumLabels("reservationStatus", RESERVATION_STATUS_VALUES);
+  // A history crosses properties, so each row names the one it is going to.
+  const bookingHref = useBookingLink(orgSlug);
 
   const { data, isLoading } = trpc.directory.stayHistory.useQuery({ organizationId, personId });
 
@@ -53,7 +56,7 @@ export function StayHistory({
           {data.map((stay) => (
             <li key={stay.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2">
               <Link
-                href={`/dashboard/orgs/${orgSlug}/front-desk/${stay.property.slug}/bookings/${stay.publicId}`}
+                href={bookingHref(stay.property.slug, stay.publicId)}
                 className="text-sm font-medium underline-offset-4 hover:underline"
               >
                 {stay.checkIn && stay.checkOut

@@ -36,21 +36,14 @@ genuinely is a problem and `--destructive` already means that everywhere. The
 first should follow the others into `styles/status.css` the next time anyone is
 in that file. `guides/ui-patterns.md` § Surfaces and themes is the rule.
 
-## The desk is photographed but never driven
-Every e2e journey uses `property.deskPath`, which is the *dashboard's* front
-desk. Nothing clicks `/desk`: not the booking tabs, not a chip opening a booking
-inside the shell, not the theme control. Two bugs this session shipped through
-that gap and were caught by a screenshot instead of a test — a 500 on every desk
-route, and a link that threw the user back into the dashboard.
-
-## Three small verified fixes
-- **Four desk pages have `\n` written as an escape sequence inside their JSDoc**
-  (`app/desk/.../{bookings,today,rooms,guests}/page.tsx`), so each renders as one
-  unreadable line. In a codebase where the comments are the documentation.
-- **`reservation-grid.tsx:107` has two consecutive JSDoc blocks** above
-  `STATUS_CLASS`; the first is the pre-token version and contradicts the second.
-- **`src/server/caller.ts` is dead** — nothing imports `trpcCaller`;
-  `tests/server/harness.ts` builds its own.
+## A failed e2e run leaves a dev server behind
+When `test:e2e` cannot finish cleanly, the `next dev` it started survives —
+wedged, serving nothing, and still holding `.next/dev/lock`. Next 16 refuses a
+second dev server **in the same directory**, so every later run fails to start
+with a message naming a PID. `lsof -nP -iTCP:3100 -sTCP:LISTEN` will not always
+find it, because a wedged one has already released the port; `cat .next/dev/lock`
+names it. Worth a `pretest:e2e` that clears a lock whose PID is dead, or at
+least a line in `guides/local-development.md`.
 
 ## Three claims in the docs that are not reachable
 - `uploadAttachment()` has no production caller, while `architecture.md` and

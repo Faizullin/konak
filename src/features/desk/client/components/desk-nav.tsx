@@ -1,7 +1,7 @@
 "use client";
 
 import { useTranslations } from "next-intl";
-import { CalendarRange, ClipboardList, DoorClosed, Users, Sun } from "lucide-react";
+import { CalendarRange, ClipboardList, DoorClosed, Sparkles, Users, Sun } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
@@ -24,6 +24,7 @@ const SECTIONS = [
   { id: "today", segment: "today", icon: Sun },
   { id: "bookings", segment: "bookings", icon: ClipboardList },
   { id: "rooms", segment: "rooms", icon: DoorClosed },
+  { id: "housekeeping", segment: "housekeeping", icon: Sparkles },
   { id: "guests", segment: "guests", icon: Users },
 ] as const;
 

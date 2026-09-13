@@ -11,7 +11,11 @@ import prisma from "@/server/db";
 type Params = { params: Promise<{ orgSlug: string; propertySlug: string }> };
 
 /**
- * What the hotel has to sell.\n *\n * Categories above the rooms beneath them, which is the order they are\n * decided in: a room cannot exist without a category, and availability is\n * counted against the category rather than the door.
+ * What the hotel has to sell.
+ *
+ * Categories above the rooms beneath them, which is the order they are
+ * decided in: a room cannot exist without a category, and availability is
+ * counted against the category rather than the door.
  */
 export default async function Page({ params }: Params) {
   const t = await getTranslations("desk");

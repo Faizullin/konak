@@ -5,6 +5,7 @@
     "today": "Today",
     "bookings": "Bookings",
     "rooms": "Rooms",
+    "housekeeping": "Housekeeping",
     "guests": "Guests"
   },
   "section": {
@@ -12,6 +13,7 @@
     "today": "Today",
     "bookings": "Bookings",
     "rooms": "Rooms",
+    "housekeeping": "Housekeeping",
     "guests": "Guests"
   },
   "booking": {

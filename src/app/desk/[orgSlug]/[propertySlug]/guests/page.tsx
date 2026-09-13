@@ -8,7 +8,11 @@ import prisma from "@/server/db";
 type Params = { params: Promise<{ orgSlug: string; propertySlug: string }> };
 
 /**
- * Who has stayed, and who is coming.\n *\n * The directory is organisation-wide rather than per property — a guest of\n * one hotel in a group is a guest of the group — so this is the same list\n * the dashboard shows, reached from the desk a receptionist already has open.
+ * Who has stayed, and who is coming.
+ *
+ * The directory is organisation-wide rather than per property — a guest of
+ * one hotel in a group is a guest of the group — so this is the same list
+ * the dashboard shows, reached from the desk a receptionist already has open.
  */
 export default async function Page({ params }: Params) {
   const t = await getTranslations("desk");

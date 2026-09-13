@@ -106,13 +106,6 @@ const DENSITY: Record<Density, { label: string; night: string; lane: string }> =
 };
 
 /**
- * Temporary, and Phase 12 replaces the palette. What is **not** temporary is
- * that colour is never the only cue: every pair of states differs by border
- * style or by `STATUS_MARK` as well as by hue, so the grid still reads for
- * someone who cannot tell sky from emerald. Front desks also run dim at night,
- * which is what the dark variants are for.
- */
-/**
  * A state's colours, as tokens — never a literal.
  *
  * These were `bg-sky-100 dark:bg-sky-950` and five more like it, which is a

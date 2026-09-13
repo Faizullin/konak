@@ -85,7 +85,10 @@ export default async function DeskLayout({
       {/* The grid, the day lists and the bookings table are the dashboard's
           components, and they used to build the dashboard's links inline. This
           is what keeps a chip clicked here inside this shell. */}
-      <SurfaceLinksProvider base={`/desk/${orgSlug}/${propertySlug}`}>
+      <SurfaceLinksProvider
+        stem={`/desk/${orgSlug}`}
+        directory={`/desk/${orgSlug}/${propertySlug}/guests`}
+      >
         {/* Inside the translator: a modal renders where its provider sits, and
             every dialog reads `useTranslations`. */}
         <NiceModalProvider>

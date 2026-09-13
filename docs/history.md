@@ -1748,3 +1748,88 @@ rooms, not unlimited"*, with the comment *"absent must fail closed"*. Failing
 closed is right for a hold and wrong for a fact: the fact was in another table
 the whole time. It now asserts that a night nobody declared is every room, and
 two new tests cover blocking and clearing.
+
+## 2026-09-13 — the desk stopped sending people away
+
+Two of the client's eight items could not be finished on the desk, and both had
+the same cause: a screen that existed on the dashboard and a link that went
+there.
+
+**The guest card.** `/desk/<org>/<property>/guests/<personId>` — composition,
+like every other desk screen, from `EntityTags`, `StayHistory` and the three
+attachment panels. Clicking a name used to leave the shell.
+
+**Housekeeping**, the sixth section. The desk could *read* a room's state and
+not change it, which made item 4 half-present: a room is clean or dirty because
+of something somebody did, and the person who does it works from that board.
+`HousekeepingBoard` builds no links of its own, so the page is thirty lines.
+
+### The links contract grew two more hooks, and lost an assumption
+
+`useSurfaceLinks` demanded a property. The directory does not have one — a guest
+of one hotel in a group is a guest of the group — so `PeopleTableView`, rendered
+by a dashboard route with no property at all, could not have used it. And a stay
+history *crosses* properties, so it knows each stay's property and has no
+current one.
+
+Three hooks now, each asking for exactly what its caller has:
+`useSurfaceLinks({ orgSlug, propertySlug })`, `useBookingLink(orgSlug)` and
+`usePersonLink(orgSlug)`. The context carries a **stem** rather than a finished
+base, which is what lets one booking link name a property other than the one
+being looked at — the two surfaces differ only in the segment being swapped.
+
+A hook that demanded a property the caller did not have would have been a hook
+that lied, and the lie would have been an invented slug in a URL.
+
+### And four comments that had been pasted through a JSON string
+
+`\n` written as two characters inside a block comment, so four desk pages each
+rendered their documentation as one unreadable line. In a codebase where the
+comments *are* the documentation. Also gone: a stale JSDoc block above
+`STATUS_CLASS` still promising that Phase 12 would replace a palette that had
+already been replaced, and `src/server/caller.ts`, which nothing imported.
+
+## 2026-09-13 — the desk is driven now, and the first thing it drove was broken
+
+`tests/e2e/desk.e2e.ts`, five journeys about the **shell** rather than the
+domain. Every other spec uses `deskPath` — the dashboard's front desk — and
+asserts the product: a stay checks in, a bill balances. Those are right where
+they are. What none of them can see is the surface the same components are
+mounted in, and that is where both of the week's escaped bugs lived: a server
+layout calling a client export, which 500'd every desk route while the suite
+stayed green, and a component building `/dashboard/orgs/…` inline, which threw a
+receptionist out of the shell.
+
+So the rule the file follows is that almost every check ends in a URL. The
+fixture grew `surfacePath` beside `deskPath`, and `deskGrid` is the **same**
+page object bound to it — a second one would have been a second chance for the
+two to disagree.
+
+### And it immediately found that the theme control had never worked
+
+`DropdownMenuLabel` is Base UI's `Menu.GroupLabel`, which throws unless it is
+inside a `Menu.Group` or `Menu.RadioGroup`. It was written above the radio
+group, so **opening the appearance menu threw**, the error boundary swallowed
+it, and the menu simply never appeared. Shipped that way, and green the whole
+time.
+
+Nothing had a chance of catching it. Unit tests do not open menus. The
+screenshot report renders the trigger — which is fine, because the throw is on
+*open* — and it sets the theme by writing `localStorage`, deliberately, so that
+the dark shots prove the preference rather than an injected class. That decision
+was right and it is exactly why the report could not see this: it never clicks
+the control.
+
+The fix is one line of nesting. The lesson is the older one: **a screen that
+renders is not a screen that works**, and the only thing that finds the
+difference is something that clicks.
+
+### Two of the three failures were the test's fault, which is the normal ratio
+
+`getByRole("navigation", { name: "Sections" })` matched two elements, because
+the booking's own tab strip is a nav labelled *Booking sections* and role-name
+matching is a substring by default. And a stay-history row is labelled by its
+**dates**, not its reference — so that assertion now locates by `href`, which
+was what it was really asserting.
+
+102 browser tests, 246 unit, 175 integration.

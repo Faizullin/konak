@@ -18,8 +18,17 @@ export type SeededProperty = {
   timezone: string;
   roomTypeId: number;
   roomIds: number[];
-  /** The path every front-desk screen hangs off. */
+  /** The path every front-desk screen hangs off, on the **dashboard**. */
   deskPath: string;
+  /**
+   * The same property on the **desk** surface.
+   *
+   * Two paths rather than one because the two are different shells around the
+   * same procedures, and the bugs that live between them are bugs of the shell:
+   * a link that leaves it, a layout that 500s. Specs that assert the *product*
+   * keep using `deskPath`; `desk.e2e.ts` asserts the *surface* and uses this.
+   */
+  surfacePath: string;
   /** A booking to open — the one with a bill behind it, so the report's Оплата
       tab photographs lines and a payment rather than an empty panel. */
   bookingPublicId: string;
@@ -72,6 +81,7 @@ export async function seededProperty(): Promise<SeededProperty> {
     roomTypeId: roomTypes[0]!.id,
     roomIds: rooms.map((room) => room.id),
     deskPath: `/dashboard/orgs/${property.orgSlug}/front-desk/${property.slug}`,
+    surfacePath: `/desk/${property.orgSlug}/${property.slug}`,
     bookingPublicId: booking.publicId,
   };
 }

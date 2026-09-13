@@ -18,6 +18,7 @@ import type { GeneralRouterOutputs } from "@/server/types";
 import { useDialogControl } from "@/hooks/use-dialog-control";
 import { trpc } from "@/utils/trpc";
 import { PersonFormDialog } from "./person-form-dialog";
+import { usePersonLink } from "@/store/surface-links";
 
 type PersonRow = GeneralRouterOutputs["directory"]["listPeople"]["items"][number];
 
@@ -38,6 +39,9 @@ export function PeopleTableView({
   orgSlug: string;
 }) {
   const t = useTranslations("directory");
+  // Where a name goes is the surface's business: the dashboard keeps people in
+  // its directory, the desk keeps them under the property it has open.
+  const personHref = usePersonLink(orgSlug);
   const [{ page, perPage, sort, search }] = usePeopleTableParams();
   // One component opens this dialog and nobody else needs to, so the state
   // lives here rather than in the NiceModal registry.
@@ -66,10 +70,7 @@ export function PeopleTableView({
         cell: ({ row }) => (
           // The way into the person's paperwork. Without this the detail route
           // exists and nothing reaches it.
-          <Link
-            href={`/dashboard/orgs/${orgSlug}/directory/${row.original.id}`}
-            className="font-medium hover:underline"
-          >
+          <Link href={personHref(row.original.id)} className="font-medium hover:underline">
             {personDisplayName(row.original)}
           </Link>
         ),
@@ -137,7 +138,9 @@ export function PeopleTableView({
         enableSorting: true,
       },
     ],
-    [t, orgSlug]
+    // `personHref` is memoised by its hook, so this is stable — and naming it
+    // is what keeps it that way if the hook ever stops being.
+    [t, personHref]
   );
 
   const { table } = useDataTable({

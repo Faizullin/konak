@@ -5,6 +5,7 @@
     "today": "Актуальные",
     "bookings": "Бронирования",
     "rooms": "Номера",
+    "housekeeping": "Уборка",
     "guests": "Гости"
   },
   "section": {
@@ -12,6 +13,7 @@
     "today": "Актуальные",
     "bookings": "Бронирования",
     "rooms": "Номера",
+    "housekeeping": "Уборка",
     "guests": "Гости"
   },
   "booking": {

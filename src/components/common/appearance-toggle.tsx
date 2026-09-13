@@ -77,8 +77,12 @@ export function AppearanceToggle({ surface }: { surface: SurfaceId }) {
         }
       />
       <DropdownMenuContent align="end" className="w-44">
-        <DropdownMenuLabel>{t("appearance.scheme")}</DropdownMenuLabel>
         <DropdownMenuRadioGroup value={chosen} onValueChange={(value) => setTheme(value)}>
+          {/* Inside the group, not above it. `DropdownMenuLabel` is Base UI's
+              `Menu.GroupLabel`, which throws without a `Menu.Group` or
+              `Menu.RadioGroup` around it — and the throw lands in the error
+              boundary, so the menu simply never opens. */}
+          <DropdownMenuLabel>{t("appearance.scheme")}</DropdownMenuLabel>
           {COLOUR_SCHEMES.map((scheme) => {
             const SchemeIcon = ICONS[scheme];
             return (

@@ -121,9 +121,21 @@ binding.
 `useBooking`; the components are presentation. The dashboard's own card is
 untouched and still works.
 
+**All eight of the client's MVP items are now reachable without leaving the
+desk.** The last two to arrive were the guest card
+(`/desk/<org>/<property>/guests/<personId>`) and the housekeeping board, which
+is the desk's sixth section. **The MVP is closed.** `tests/e2e/desk.e2e.ts` drives the surface — a chip
+opening its booking without leaving the shell, the tabs as URLs, a guest and
+their history, the floor's board, and the theme following a person between
+surfaces. It found that the appearance menu had never opened.
+
 **A component never writes the surface it lives on.** `store/surface-links.tsx`
 — see `guides/architecture.md`. Without it every link out of the desk landed
-back in the dashboard.
+back in the dashboard. Three hooks, each asking for what its caller actually
+has: `useSurfaceLinks` (property-scoped), `useBookingLink` (a booking at a named
+property, for a history that crosses them) and `usePersonLink` — because the
+directory is organisation-wide and the dashboard's table has no property at
+all.
 
 **Where to start.** `docs/todo.md`, top entry — which is the overselling
 races.

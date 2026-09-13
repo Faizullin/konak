@@ -111,28 +111,40 @@ New booking, a few nights out.
 - The reference is allocated inside the transaction from a number series, so two
   receptionists booking at once cannot be handed the same one.
 
-### 7 — Rooms and categories (items 2, 4)
+### 7 — Rooms and categories (item 2)
 
 Left nav → **Номера**. Types and rooms, as a table across the full width.
 
-Room state is **derived, never stored** — occupancy from stays, cleanliness from
-housekeeping. Say this one plainly: a stored "status" column is a field that
-goes stale the moment somebody forgets to update it.
+Worth one sentence: **how many rooms there are is counted, never typed.** A
+night nobody has touched is every room, so a hotel that adds a room is selling
+it immediately. What can be typed is the opposite — holding rooms back, a floor
+closed for a refit.
 
-### 8 — The guest (item 6)
+### 8 — The floor's day (item 4)
+
+Left nav → **Уборка**. Every room, with what is owed on it — the same board the
+cleaner works from, cards rather than a table because it is read standing up.
+
+Check somebody out on the grid and come back here: the room is dirty and a
+departure clean is waiting. **Nobody typed that.** Say it plainly — a stored
+"status" column is a field that goes stale the moment somebody forgets, and a
+housekeeping board that has to be told separately is a board nobody trusts.
+
+### 9 — The guest (item 6)
 
 Left nav → **Гости** → **Мария Иванова**. Contacts, tags, documents, and three
-stays behind her.
+stays behind her — and each of those stays opens the booking, **without leaving
+the desk**.
 
-That last part is the whole argument for a directory: a returning guest is a
-person, not three unrelated bookings.
+That is the whole argument for a directory: a returning guest is a person, not
+three unrelated bookings.
 
-### 9 — The bookings list
+### 10 — The bookings list
 
 **Бронирования** → **Архив**. The cancellation and the no-show live here — neither
 occupies a room, which is exactly why neither is on the grid.
 
-### 10 — Both languages, both themes
+### 11 — Both languages, both themes
 
 Switch the language in the top bar. The client's staff work in Russian, and
 every screen here is translated — including the refusal reasons.

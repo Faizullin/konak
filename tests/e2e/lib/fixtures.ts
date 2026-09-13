@@ -17,6 +17,8 @@ export type Fixtures = {
   property: SeededProperty;
   bookings: ReturnType<typeof createBookingsFixture>;
   grid: GridPage;
+  /** The same шахматка, in the desk's shell rather than the dashboard's. */
+  deskGrid: GridPage;
 };
 
 export const test = base.extend<Fixtures>({
@@ -40,6 +42,13 @@ export const test = base.extend<Fixtures>({
 
   grid: async ({ page, property }, use) => {
     await use(new GridPage(page, property.deskPath));
+  },
+
+  // The same page object: the grid is one component and the point of the desk
+  // is that it is the *shell* that differs. A second page object here would be
+  // a second chance for the two to disagree.
+  deskGrid: async ({ page, property }, use) => {
+    await use(new GridPage(page, property.surfacePath));
   },
 });
 

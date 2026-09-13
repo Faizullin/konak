@@ -8,7 +8,11 @@ import prisma from "@/server/db";
 type Params = { params: Promise<{ orgSlug: string; propertySlug: string }> };
 
 /**
- * Today's work, on its own.\n *\n * It is also the column beside the grid — the same component, because two\n * views of one day that could disagree is exactly the thing the desk cannot\n * afford. A receptionist who wants only today gets the width for it.
+ * Today's work, on its own.
+ *
+ * It is also the column beside the grid — the same component, because two
+ * views of one day that could disagree is exactly the thing the desk cannot
+ * afford. A receptionist who wants only today gets the width for it.
  */
 export default async function Page({ params }: Params) {
   const t = await getTranslations("desk");
