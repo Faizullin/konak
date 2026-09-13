@@ -78,6 +78,7 @@ export default async function DeskLayout({
         platform: messages.platform,
         properties: messages.properties,
         reservations: messages.reservations,
+        shell: messages.shell,
         validation: messages.validation,
       }}
     >

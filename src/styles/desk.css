@@ -61,6 +61,30 @@
   --sidebar-accent-foreground: oklch(0.31 0.06 275);
   --sidebar-border: oklch(0.898 0.007 264);
   --sidebar-ring: oklch(0.58 0.12 275);
+
+  /* Decision 4, finally written down in CSS: one arc rather than six picks.
+   * Lightness falls and chroma rises as a booking becomes more real —
+   * asked for → sold → here → gone — so two states next to each other in a
+   * stay's life look next to each other on the grid. `STATUS_MARK` still
+   * carries the meaning for anyone who cannot use hue. */
+  --stay-enquiry: oklch(0.965 0.006 264);
+  --stay-enquiry-foreground: oklch(0.5 0.02 264);
+  --stay-enquiry-border: oklch(0.72 0.02 264 / 0.6);
+
+  --stay-confirmed: oklch(0.93 0.045 255);
+  --stay-confirmed-foreground: oklch(0.34 0.09 262);
+  --stay-confirmed-border: oklch(0.62 0.1 258 / 0.45);
+
+  --stay-checked-in: oklch(0.9 0.075 168);
+  --stay-checked-in-foreground: oklch(0.32 0.07 170);
+  --stay-checked-in-border: oklch(0.6 0.11 168 / 0.5);
+
+  --stay-checked-out: oklch(0.945 0.005 264);
+  --stay-checked-out-foreground: oklch(0.56 0.015 264);
+  --stay-checked-out-border: oklch(0.74 0.012 264 / 0.6);
+
+  /* Sold out is the answer a hotel wants, so it is read as emphasis. */
+  --grid-full: oklch(0.35 0.06 275);
 }
 
 /* Front desks run dim, so every value above has a pair. */
@@ -94,4 +118,22 @@
   --sidebar-accent-foreground: oklch(0.93 0.02 275);
   --sidebar-border: oklch(0.3 0.012 264);
   --sidebar-ring: oklch(0.6 0.11 275);
+
+  --stay-enquiry: oklch(0.26 0.012 264);
+  --stay-enquiry-foreground: oklch(0.72 0.018 264);
+  --stay-enquiry-border: oklch(0.45 0.016 264 / 0.7);
+
+  --stay-confirmed: oklch(0.32 0.06 258);
+  --stay-confirmed-foreground: oklch(0.9 0.05 255);
+  --stay-confirmed-border: oklch(0.6 0.1 258 / 0.55);
+
+  --stay-checked-in: oklch(0.34 0.07 168);
+  --stay-checked-in-foreground: oklch(0.9 0.08 168);
+  --stay-checked-in-border: oklch(0.6 0.1 168 / 0.6);
+
+  --stay-checked-out: oklch(0.27 0.008 264);
+  --stay-checked-out-foreground: oklch(0.7 0.012 264);
+  --stay-checked-out-border: oklch(0.45 0.01 264 / 0.7);
+
+  --grid-full: oklch(0.88 0.05 275);
 }

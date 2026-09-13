@@ -49,10 +49,13 @@ type BoardRoom = Board["rooms"][number];
 
 /** What a room's own state says, before any task is read. */
 const ROOM_TONE: Record<string, string> = {
-  [RoomStatus.CLEAN]: "border-emerald-600/40 bg-emerald-50 dark:bg-emerald-950/40",
-  [RoomStatus.INSPECTED]: "border-sky-600/40 bg-sky-50 dark:bg-sky-950/40",
-  [RoomStatus.DIRTY]: "border-amber-600/40 bg-amber-50 dark:bg-amber-950/40",
-  [RoomStatus.IN_PROGRESS]: "border-violet-600/40 bg-violet-50 dark:bg-violet-950/40",
+  [RoomStatus.CLEAN]: "border-room-clean-border bg-room-clean",
+  [RoomStatus.INSPECTED]: "border-room-inspected-border bg-room-inspected",
+  [RoomStatus.DIRTY]: "border-room-dirty-border bg-room-dirty",
+  [RoomStatus.IN_PROGRESS]: "border-room-in-progress-border bg-room-in-progress",
+  // The one that stays `destructive`: a room out of order is the one room state
+  // that genuinely is a problem, and `--destructive` is already the token for
+  // "something is wrong" on every surface.
   [RoomStatus.OUT_OF_ORDER]: "border-destructive/50 bg-destructive/10",
 };
 

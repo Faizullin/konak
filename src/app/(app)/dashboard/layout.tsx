@@ -9,6 +9,8 @@ import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/s
 import { NiceModalProvider } from "@/store/nice-modal-context";
 import { UserRole } from "@/features/identity";
 import { auth } from "@/server/auth";
+import { AppearanceToggle } from "@/components/common/appearance-toggle";
+import { SURFACES } from "@/config/surfaces";
 
 /**
  * The gate for everything under `/dashboard`, and the shell it renders in.
@@ -61,18 +63,32 @@ export default async function DashboardLayout({ children }: Readonly<{ children:
         properties: messages.properties,
         rates: messages.rates,
         reservations: messages.reservations,
+        shell: messages.shell,
         validation: messages.validation,
       }}
     >
       {/* Inside the translator, not above it: a dialog is rendered where its
           provider sits, and every one of ours reads `useTranslations`. */}
       <NiceModalProvider>
-        <SidebarProvider defaultOpen={defaultOpen}>
+        {/* The dashboard names itself, like the desk does.
+            It inherited `:root` before, which made stock shadcn implicit and
+            the desk the special case; now both surfaces are the same kind of
+            thing and a second palette for either is a CSS block rather than a
+            CSS block plus a layout edit. No `basic.css` is written until there
+            is something to put in it. */}
+        <SidebarProvider defaultOpen={defaultOpen} data-surface={SURFACES.basic.id}>
           <AppSidebar user={user} />
           <SidebarInset>
             <header className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
               <SidebarTrigger className="-ml-1" />
               <Separator orientation="vertical" className="mr-2 h-4" />
+              {/* The header's other controls — a breadcrumb, the language
+                  switch, an inbox — are `plans/dashboard-header.md`, which also
+                  makes this a component rather than markup in a layout. This is
+                  the one the MVP needs. */}
+              <div className="ml-auto">
+                <AppearanceToggle surface="basic" />
+              </div>
             </header>
             {/* Wide enough for the screen this product is about: a 31-night grid at
               comfortable density is 88rem, and the old 5xl cap (976px) showed

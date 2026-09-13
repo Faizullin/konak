@@ -2,6 +2,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test } from "../lib/fixtures";
 import { storageStateFor } from "../fixtures/auth";
+import { THEME_STORAGE_KEY } from "@/config/surfaces";
 import { LOCALES, SCREENS, THEMES, type Screen } from "./screens";
 
 /**
@@ -64,6 +65,24 @@ for (const locale of LOCALES) {
             { name: "konak.locale", value: locale, domain: "localhost", path: "/" },
           ]);
 
+          /**
+           * The theme is the product's own preference now, not a class this
+           * pass injects.
+           *
+           * It used to do `classList.add("dark")` after load, with a comment
+           * saying nothing in the product set it — true until P6. Writing what
+           * `next-themes` reads instead means these shots prove the feature
+           * rather than illustrate the tokens: if the provider stopped working,
+           * the dark shots would come back light and the report would say so.
+           *
+           * An init script rather than a `localStorage` write, because the
+           * library reads it in a blocking script before first paint.
+           */
+          await context.addInitScript(([key, value]) => window.localStorage.setItem(key, value), [
+            THEME_STORAGE_KEY,
+            theme,
+          ] as const);
+
           const path = screen.path
             .replace(":org", property.organizationSlug)
             .replace(":property", property.propertySlug)
@@ -77,13 +96,7 @@ for (const locale of LOCALES) {
           await page.waitForLoadState("domcontentloaded");
           const ms = Date.now() - started;
 
-          // Dark mode is a class variant and nothing in the product sets it
-          // yet. Setting it here is not a shortcut — it is the only way to
-          // photograph the dark tokens, and `ui-patterns.md` requires them to
-          // exist because front desks run dim.
-          if (theme === "dark") {
-            await page.evaluate(() => document.documentElement.classList.add("dark"));
-          }
+          // Set before the first navigation, and `page.goto` is below.
 
           /**
            * And wait for the data, which is the whole subject.

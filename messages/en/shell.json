@@ -1,0 +1,9 @@
+{
+  "appearance": {
+    "label": "Appearance",
+    "scheme": "Colour scheme",
+    "system": "System",
+    "light": "Light",
+    "dark": "Dark"
+  }
+}

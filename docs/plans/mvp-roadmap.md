@@ -144,30 +144,46 @@ in both languages and both themes.
 **Done when** someone who has never seen the product can be walked through all
 eight items in ten minutes without meeting an empty screen.
 
-## P6 — The theme, last
+## P6 — The theme, and each surface choosing its own
 
-Colour, and the switch that chooses it. Last on purpose, and everything it has
-to fix is already known:
+Shipped. `next-themes` is mounted at the root, both surfaces stamp
+`data-surface`, both carry an `AppearanceToggle`, and no component in the grid
+or the housekeeping board names a colour any more — the booking and room states
+are tokens in `styles/status.css`, overridden per surface.
 
-- **Nothing sets the `.dark` class.** Both surfaces define a full dark palette —
-  `globals.css` and `styles/desk.css` — and no provider mounts anywhere.
-  `next-themes` is a dependency already, imported by `components/ui/sonner.tsx`,
-  which therefore reads `system` and is told nothing. The screenshot report is
-  the only thing in the repo that reaches those tokens, and it does it by
-  setting the class by hand.
-- **A sold-out night is painted `text-destructive`** — the best outcome a hotel
-  has, coloured as an error.
-- **`STATUS_CLASS` is literal Tailwind**, not tokens, so chip colours will not
-  move with a theme however good the theme is.
-- **The choice itself**: system · light · dark, remembered per user, in the
-  desk's top bar beside the language switch.
+What the MVP did **not** take from [dashboard-header.md](dashboard-header.md):
+the dashboard header becoming a component, the language switch moving into it,
+and the notification bell. Those are that plan's Phases 2, 3 and 6, are
+dashboard polish, and can follow at any time. Its Phase 7 — a *second* palette
+for one surface — is now an afternoon's work and should not be built
+speculatively. Its Phase 8 — a surface on a different CSS base — is designed
+there with its price visible.
 
-This is also the seam a hotel's own palette hangs off later — `desk.css`
-already holds every desk token in one block, so a second palette is that block
-again under a different selector, not a hunt through components.
+## Gates — once, at the end
 
-**Done when** a receptionist can choose the theme, both surfaces honour it, and
-the report photographs what the product does rather than a class it set itself.
+The long checks run **at the end of a phase, in one pass**, not after every
+step. `lint`, `test:server`, `build` and `test:e2e` are minutes each on this
+machine, and running them after every edit is most of the day.
+
+**While working:** `npx tsc --noEmit`. It is the one that catches the mistakes
+that matter mid-edit, and it is seconds.
+
+**At the end of the phase**, in this order — each is cheaper than the next, so a
+failure is found by the cheapest thing that can find it:
+
+```bash
+npx tsc --noEmit
+npm run lint
+npm run format:check
+npm test
+npm run test:server        # a router or the schema changed
+npm run build              # routing or config moved
+npm run test:e2e           # the browser, and the screenshot report
+npm run report:ui          # the PDF, when it is being shown to anybody
+```
+
+A phase is not finished until that block is green. Nothing between the start and
+the end of a phase is a gate.
 
 ---
 

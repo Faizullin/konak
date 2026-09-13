@@ -112,15 +112,28 @@ const DENSITY: Record<Density, { label: string; night: string; lane: string }> =
  * someone who cannot tell sky from emerald. Front desks also run dim at night,
  * which is what the dark variants are for.
  */
+/**
+ * A state's colours, as tokens — never a literal.
+ *
+ * These were `bg-sky-100 dark:bg-sky-950` and five more like it, which is a
+ * colour no theme can move: the шахматка is the screen this product *is*, and
+ * it was the one screen a palette could not reach. The values live in
+ * `styles/status.css`, and a surface that wants its own arc redefines them in
+ * its own block rather than editing this file — `styles/desk.css` does.
+ *
+ * The line shape stays here, because dashed-versus-dotted is meaning rather
+ * than decoration: `ui-patterns.md` requires that colour is never the only cue,
+ * and `STATUS_MARK` below carries the rest of it.
+ */
 const STATUS_CLASS: Record<string, string> = {
   [ReservationStatus.ENQUIRY]:
-    "border-dashed border-muted-foreground/60 bg-muted text-muted-foreground",
+    "border-dashed border-stay-enquiry-border bg-stay-enquiry text-stay-enquiry-foreground",
   [ReservationStatus.CONFIRMED]:
-    "border-sky-600/40 bg-sky-100 text-sky-950 dark:border-sky-400/50 dark:bg-sky-950 dark:text-sky-50",
+    "border-stay-confirmed-border bg-stay-confirmed text-stay-confirmed-foreground",
   [ReservationStatus.CHECKED_IN]:
-    "border-emerald-600/40 bg-emerald-100 text-emerald-950 dark:border-emerald-400/50 dark:bg-emerald-950 dark:text-emerald-50",
+    "border-stay-checked-in-border bg-stay-checked-in text-stay-checked-in-foreground",
   [ReservationStatus.CHECKED_OUT]:
-    "border-dotted border-slate-400/60 bg-slate-100 text-slate-700 dark:border-slate-400/50 dark:bg-slate-800 dark:text-slate-200",
+    "border-dotted border-stay-checked-out-border bg-stay-checked-out text-stay-checked-out-foreground",
 };
 
 /** The states the grid draws, in the order a booking passes through them. */
@@ -1261,8 +1274,11 @@ export function ReservationGrid({
                               style={{ gridColumn: index + 1, gridRow: 2 }}
                               className={cn(
                                 "z-10 flex items-center justify-center text-[0.65rem]",
+                                // Nothing left to sell is the answer a hotel
+                                // wants. It was painted `text-destructive` —
+                                // the best outcome there is, drawn as an error.
                                 counts && counts.available === 0
-                                  ? "text-destructive font-medium"
+                                  ? "text-grid-full font-medium"
                                   : "text-muted-foreground"
                               )}
                             >
@@ -1277,8 +1293,8 @@ export function ReservationGrid({
                   {!collapsed && band && (
                     // Named for the same reason `stay-actions` is: the label a
                     // test would reach for is translated.
-                    <div data-testid="unassigned-band" className="flex border-b bg-amber-50/60">
-                      <RowLabel className="text-muted-foreground bg-amber-50/60 text-xs">
+                    <div data-testid="unassigned-band" className="bg-grid-unassigned flex border-b">
+                      <RowLabel className="text-muted-foreground bg-grid-unassigned text-xs">
                         {t("grid.unassigned")}
                       </RowLabel>
                       <NightArea

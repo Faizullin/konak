@@ -452,12 +452,75 @@ words, so this is for the eye that cannot use the hue, not for the screen
 reader — a second announcement of the same fact is noise.
 
 **Both themes, always.** A palette written as fixed light values disappears at
-night, and front desks run dim. Pair every `bg-*`/`text-*` with its `dark:`
-variant; the project's dark mode is class-based (`@custom-variant dark` in
-`styles/globals.css`), so it is a variant, not a media query.
+night, and front desks run dim. The project's dark mode is class-based
+(`@custom-variant dark` in `styles/globals.css`), so it is a variant, not a
+media query.
 
 **A legend where the marks are used.** A second cue nobody can decode is not a
 second cue.
+
+---
+
+## Surfaces and themes
+
+Three axes, and the whole design is keeping them apart.
+
+| Axis | Carried by | Scope of the choice |
+|---|---|---|
+| **Surface** | `data-surface` on the shell's root | not a choice — you are where you navigated |
+| **Colour scheme** | `.dark` on `<html>`, by `next-themes` | one per person, whole install |
+| **Theme** | `data-theme` beside `data-surface` | one per surface, per person |
+
+`config/surfaces.ts` is the registry. `basic` is the dashboard, `desk` is the
+front desk; each stamps its own id and each declares the palettes it can wear.
+Every surface has exactly one today, so `AppearanceToggle` draws the scheme and
+nothing else — the theme row appears when a registry entry gains a second entry,
+from the same code.
+
+**Colour scheme is install-wide and theme is per surface**, deliberately: light
+or dark is about the room a person is sitting in and should follow them from the
+dashboard to the desk, while which palette a surface wears is about that
+surface.
+
+### No component names a colour
+
+Not `bg-sky-100`, not `bg-[#e0f2fe]`, not an oklch literal. A colour written
+into a component is a colour no theme can move, and the шахматка — the screen
+this product is — spent its whole life unthemeable for exactly that reason.
+
+Semantic tokens (`bg-card`, `text-muted-foreground`) come from shadcn. Domain
+tokens — what a *booking state* or a *room state* looks like — live in
+`styles/status.css`, registered there as Tailwind colours so a component writes
+`bg-stay-confirmed`, and overridden per surface in that surface's block:
+
+```css
+:root                     { --stay-confirmed: var(--color-sky-100); }
+.dark                     { --stay-confirmed: var(--color-sky-950); }
+[data-surface="desk"]     { --stay-confirmed: oklch(0.93 0.045 255); }
+```
+
+Adding a palette is then **a CSS block and a registry line**. If a change would
+need a component edited, the colour is in the wrong place.
+
+`styles/globals.css` is shadcn's and the CLI rewrites it; ours goes beside it,
+imported in `styles/index.scss` in an order that matters — `globals`,
+`overrides`, `status`, then each surface, so a surface block wins on equal
+specificity.
+
+### A surface with its own CSS base owns its own components
+
+The expensive axis, and the rule is stated before anyone reaches for it.
+`components/ui/*` is shadcn and Tailwind and stays that way. A surface written
+against a different base — Bootstrap, Ant — does **not** re-skin those; it has
+its own `features/<surface>/client/components/` written against its base. **No
+component is written to serve two bases**: a shared widget with an invisible
+"which system is this for?" question is where this kind of architecture rots.
+
+That is why `Surface.base` exists with one legal value today. It is what makes
+the rule checkable rather than a paragraph nobody reads.
+`plans/dashboard-header.md` § Phase 8 carries the full cost, including the part
+that is actually hard — two global resets, Tailwind's preflight and the vendor's,
+both rewriting `html` and `body`.
 
 ---
 

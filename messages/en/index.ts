@@ -13,6 +13,7 @@ import platform from "./platform.json";
 import properties from "./properties.json";
 import rates from "./rates.json";
 import reservations from "./reservations.json";
+import shell from "./shell.json";
 import validation from "./validation.json";
 
 /**
@@ -38,6 +39,7 @@ const en = {
   properties,
   rates,
   reservations,
+  shell,
   validation,
 };
 

@@ -90,10 +90,17 @@ Uploading is a MEMBER right and deleting is a manager's, because deleting takes
 the bytes with it. Try it on the demo: sign in as `admin@konak.dev`, open
 Directory, click **Ada Lovelace**.
 
-**What is next on the desk.** `plans/mvp-roadmap.md` § P6 — the theme, and the
-switch that chooses it. It is the last phase on purpose: nothing in the product
-sets the `.dark` class today, so both surfaces define a dark palette only the
-screenshot report can reach, and it reaches it by setting the class by hand.
+**The MVP roadmap has shipped, all six phases.** `plans/mvp-roadmap.md` is kept
+only until someone confirms the guides carry what it taught; what is left of the
+interface work is `plans/dashboard-header.md` — the dashboard header as a
+component, the language switch moving into it, the notification bell.
+
+**Dark mode works, and a person chooses it.** `next-themes` at the root,
+`AppearanceToggle` in the dashboard header and in the desk's bar. Both surfaces
+stamp `data-surface`, and `config/surfaces.ts` is the registry. **No component
+names a colour** — booking and room states are tokens in `styles/status.css`,
+overridden per surface. `guides/ui-patterns.md` § Surfaces and themes is
+binding.
 
 **A booking opens as tabs on the desk**, and the tabs are routes:
 `/desk/<org>/<property>/bookings/<publicId>` and `/bill`. The decisions live in
@@ -106,9 +113,11 @@ back in the dashboard.
 
 **Where to start.** `docs/todo.md`, top entry.
 
-**Before you finish.** `npm run lint && npm test && npx tsc --noEmit && npm run format:check`,
-and `npm run test:server` when a router or the schema changed,
-plus `npm run build` if routing or config moved.
+**Before you finish — once, not per edit.** `lint`, `format:check`,
+`test:server`, `build` and the browser suite are minutes each on this machine,
+so they run at the *end* of a phase in one pass. While working, `npx tsc
+--noEmit` and nothing else. `plans/mvp-roadmap.md` § Gates has the block and its
+order.
 
 **What is binding.** `docs/guides/` describes how things are. `CLAUDE.md` lists
 the traps that fail silently.

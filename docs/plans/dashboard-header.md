@@ -13,6 +13,14 @@ existing surface being edited. This plan fixes the shape that makes that a
 registry entry, and implements **exactly one base (shadcn) and one theme per
 surface**, because that is all there is evidence for today.
 
+**Where this sits.** [mvp-roadmap.md](mvp-roadmap.md) § P6 is the last phase of
+the MVP and runs a *subset* of this document, in its own order: Phase 1 here,
+then Phase 4, then Phase 5 — with the control placed on both surfaces — and then
+the grid's colours, which §8 below defers and the MVP does not. Phases 2, 3 and
+6 here (the header as a component, the language switch moving into it, the bell)
+are dashboard polish and are not MVP items. Read that ordering there; read the
+*how* here.
+
 **Scope.** No file under `src/app/desk/` or `src/features/desk/` is edited. The
 desk's rule is that nothing existing changes; the reverse holds here. The desk
 still gains dark mode in Phase 1, because the palette it already carries starts
@@ -438,8 +446,11 @@ demand.
 
 - Touch `app/desk/` or `features/desk/`. The desk's palette starts rendering in
   Phase 1 because a stylesheet wakes up, not because a file changed.
-- Repaint `STATUS_CLASS` or any grid colour — `roadmap.md` Phase 12, and
-  `../ui-refactor-notes/ui-analysis.md` §4 for why it is currently unthemeable.
+- Repaint `STATUS_CLASS` or any grid colour — `../ui-refactor-notes/ui-analysis.md`
+  §4 for why it is currently unthemeable. **This holds for *this* plan, which is
+  about the dashboard's header.** [mvp-roadmap.md](mvp-roadmap.md) § P6.4 claims
+  it instead, and is right to: the шахматка is the screen the product is, and a
+  theme that does not reach it is a theme nobody will believe.
 - Add a second density, or move the desk's.
 - Add a `Notification` model, a router, or read state that outlives a tab.
 - Add a breadcrumb, a global search, or a property switcher to the header.

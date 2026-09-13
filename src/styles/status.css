@@ -1,0 +1,116 @@
+/* A booking's state, as tokens.
+ *
+ * These were literal Tailwind classes inside `reservation-grid.tsx` —
+ * `bg-sky-100 dark:bg-sky-950` and five more like it. A colour written into a
+ * component is a colour no theme can move, so the шахматка, which is the screen
+ * this product *is*, was the one screen a palette could not reach.
+ *
+ * The defaults below are exactly what those classes rendered: they are written
+ * as `var(--color-sky-100)` rather than as hand-copied oklch, so the dashboard
+ * is unchanged to the byte and nobody has to trust a conversion. A surface that
+ * wants its own arc redefines these in its own block — `desk.css` does.
+ *
+ * Loaded after `globals.css` (shadcn's, which the CLI rewrites) and before
+ * `desk.css`, so a surface block wins on equal specificity.
+ */
+
+:root {
+  /* Not sold yet, so it is drawn as an absence rather than a colour. */
+  --stay-enquiry: var(--muted);
+  --stay-enquiry-foreground: var(--muted-foreground);
+  --stay-enquiry-border: color-mix(in oklab, var(--muted-foreground) 60%, transparent);
+
+  --stay-confirmed: var(--color-sky-100);
+  --stay-confirmed-foreground: var(--color-sky-950);
+  --stay-confirmed-border: color-mix(in oklab, var(--color-sky-600) 40%, transparent);
+
+  --stay-checked-in: var(--color-emerald-100);
+  --stay-checked-in-foreground: var(--color-emerald-950);
+  --stay-checked-in-border: color-mix(in oklab, var(--color-emerald-600) 40%, transparent);
+
+  --stay-checked-out: var(--color-slate-100);
+  --stay-checked-out-foreground: var(--color-slate-700);
+  --stay-checked-out-border: color-mix(in oklab, var(--color-slate-400) 60%, transparent);
+
+  /* A booking with no room yet. Its own band, so it needs its own ground —
+   * and the amber literal it used had no dark pair at all, which would have
+   * been a bright strip across a dim grid the moment dark mode worked. */
+  --grid-unassigned: color-mix(in oklab, var(--color-amber-50) 60%, transparent);
+
+  /* A room's own state, before any task is read. Same rule as the stays: a
+   * hotel's palette moves these, not a component. */
+  --room-clean: var(--color-emerald-50);
+  --room-clean-border: color-mix(in oklab, var(--color-emerald-600) 40%, transparent);
+  --room-inspected: var(--color-sky-50);
+  --room-inspected-border: color-mix(in oklab, var(--color-sky-600) 40%, transparent);
+  --room-dirty: var(--color-amber-50);
+  --room-dirty-border: color-mix(in oklab, var(--color-amber-600) 40%, transparent);
+  --room-in-progress: var(--color-violet-50);
+  --room-in-progress-border: color-mix(in oklab, var(--color-violet-600) 40%, transparent);
+
+  /*
+   * A night with nothing left to sell.
+   *
+   * It was `text-destructive` — the best outcome a hotel has, painted as an
+   * error. It is emphasis, not alarm: the number a manager looks for, in the
+   * colour text is already in.
+   */
+  --grid-full: var(--foreground);
+}
+
+.dark {
+  --stay-confirmed: var(--color-sky-950);
+  --stay-confirmed-foreground: var(--color-sky-50);
+  --stay-confirmed-border: color-mix(in oklab, var(--color-sky-400) 50%, transparent);
+
+  --stay-checked-in: var(--color-emerald-950);
+  --stay-checked-in-foreground: var(--color-emerald-50);
+  --stay-checked-in-border: color-mix(in oklab, var(--color-emerald-400) 50%, transparent);
+
+  --stay-checked-out: var(--color-slate-800);
+  --stay-checked-out-foreground: var(--color-slate-200);
+  --stay-checked-out-border: color-mix(in oklab, var(--color-slate-400) 50%, transparent);
+
+  /* A wash, not a stripe. Mixing a *dark* amber into a near-black ground gives
+   * rust, which reads as a warning — and a booking without a room yet is
+   * normal. A little of a bright amber at low alpha stays a hint. */
+  --grid-unassigned: color-mix(in oklab, var(--color-amber-400) 9%, transparent);
+
+  --room-clean: color-mix(in oklab, var(--color-emerald-950) 40%, transparent);
+  --room-inspected: color-mix(in oklab, var(--color-sky-950) 40%, transparent);
+  --room-dirty: color-mix(in oklab, var(--color-amber-950) 40%, transparent);
+  --room-in-progress: color-mix(in oklab, var(--color-violet-950) 40%, transparent);
+}
+
+/* Registered so a component writes `bg-stay-confirmed`, not
+ * `bg-[var(--stay-confirmed)]`. `inline` resolves the variable where it is
+ * used, which is what lets a surface override it. */
+@theme inline {
+  --color-stay-enquiry: var(--stay-enquiry);
+  --color-stay-enquiry-foreground: var(--stay-enquiry-foreground);
+  --color-stay-enquiry-border: var(--stay-enquiry-border);
+
+  --color-stay-confirmed: var(--stay-confirmed);
+  --color-stay-confirmed-foreground: var(--stay-confirmed-foreground);
+  --color-stay-confirmed-border: var(--stay-confirmed-border);
+
+  --color-stay-checked-in: var(--stay-checked-in);
+  --color-stay-checked-in-foreground: var(--stay-checked-in-foreground);
+  --color-stay-checked-in-border: var(--stay-checked-in-border);
+
+  --color-stay-checked-out: var(--stay-checked-out);
+  --color-stay-checked-out-foreground: var(--stay-checked-out-foreground);
+  --color-stay-checked-out-border: var(--stay-checked-out-border);
+
+  --color-grid-full: var(--grid-full);
+  --color-grid-unassigned: var(--grid-unassigned);
+
+  --color-room-clean: var(--room-clean);
+  --color-room-clean-border: var(--room-clean-border);
+  --color-room-inspected: var(--room-inspected);
+  --color-room-inspected-border: var(--room-inspected-border);
+  --color-room-dirty: var(--room-dirty);
+  --color-room-dirty-border: var(--room-dirty-border);
+  --color-room-in-progress: var(--room-in-progress);
+  --color-room-in-progress-border: var(--room-in-progress-border);
+}

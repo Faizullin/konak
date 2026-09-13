@@ -3,6 +3,7 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { LayoutDashboard } from "lucide-react";
+import { AppearanceToggle } from "@/components/common/appearance-toggle";
 import { Button } from "@/components/ui/button";
 import { DeskLocale } from "./desk-locale";
 
@@ -40,6 +41,7 @@ export function DeskBar({
       <div className="ml-auto flex items-center gap-1">
         {actions}
         <DeskLocale />
+        <AppearanceToggle surface="desk" />
         {dashboardHref && (
           <Button
             nativeButton={false}

@@ -1572,3 +1572,65 @@ The test that was supposed to cover this — *references come from the series an
 never repeat* — books twice **in a row**, and passed against the broken code the
 whole time. The new one books twice **at once**, and was checked the only way
 worth checking: reverted to the old implementation, watched it fail, restored.
+
+## 2026-09-13 — the theme, and a surface that can wear one
+
+The last phase of `plans/mvp-roadmap.md`, and the one that made a claim the repo
+had been making for months actually true.
+
+### Dark mode had never run
+
+`next-themes` had been a dependency since the template, `globals.css` declared
+`@custom-variant dark`, and hundreds of `dark:` utilities were written across
+the product — with **no provider mounted anywhere**, so `.dark` had never been
+on `<html>`. Two things in the tree said so and nobody had read them together:
+`components/ui/sonner.tsx` called `useTheme()` outside any provider and fell
+back to `"system"`, and the screenshot report added the class by hand with a
+comment saying the product did not.
+
+So `styles/desk.css`'s dark half — a full palette, forty-odd values — was dead
+code that had never painted a pixel. Mounting one provider at the root made it
+render. The desk was not edited to gain dark mode; a stylesheet woke up.
+
+`<html>` also stopped claiming `lang="en"` while serving Russian.
+
+### Three axes, kept apart
+
+`config/surfaces.ts`. A **surface** is where you navigated (`data-surface`), a
+**colour scheme** is light or dark (one per person, whole install), a **theme**
+is which palette a surface wears (one per surface). Light or dark follows a
+person from the dashboard to the desk because it is about the room they are
+sitting in; which palette a surface wears is about that surface.
+
+Every surface declares exactly one palette today, so `AppearanceToggle` draws
+the scheme and nothing else — the theme row appears when a registry entry gains
+a second entry, from the same code, which is the only reason the registry is
+worth having before there is a second palette to put in it.
+
+### The грид stopped naming its own colours
+
+`STATUS_CLASS` was `bg-sky-100 dark:bg-sky-950` and five more like it, and the
+sold-out count was `text-destructive` — the best outcome a hotel has, painted as
+an error. Room tones on the housekeeping board were the same shape.
+
+They are tokens now, in `styles/status.css`, registered as Tailwind colours so a
+component writes `bg-stay-confirmed`. The defaults are written as
+`var(--color-sky-100)` rather than hand-copied oklch, so the dashboard is
+unchanged to the byte and nobody had to trust a conversion. The desk finally
+implements the arc its own stylesheet had been describing since it was written:
+lightness falling and chroma rising as a booking becomes more real.
+
+The unassigned band was the one that would have shipped broken — `bg-amber-50/60`
+with no dark pair at all, which in dark mode came out a rust stripe across the
+grid. Caught by looking at the screenshot, not by a test.
+
+**Adding a palette is now a CSS block and a registry line.** That is the claim
+`desk.css` made on the day it was written, and it was not true until now:
+a component naming a colour is a colour no theme can move.
+
+### And the report proves it rather than illustrating it
+
+The capture pass used to inject `document.documentElement.classList.add("dark")`
+after load. It writes the product's own stored preference before load now, so if
+the provider ever stops working the dark shots come back light and the report
+says so.
