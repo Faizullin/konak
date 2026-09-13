@@ -75,3 +75,29 @@ export function nightsToClose(
     (row) => !known.has(key(row.roomTypeId, row.date)) && (row.availability ?? 0) > 0
   );
 }
+
+/**
+ * How far ahead a push reconciles.
+ *
+ * A change anywhere in the next three months is worth telling a channel about;
+ * beyond that a hotel is not usually selling, and the window is what bounds the
+ * work a single task does.
+ */
+export const PUSH_HORIZON_NIGHTS = 90;
+
+/**
+ * The key that makes ten bookings in a minute one push rather than ten.
+ *
+ * Two changes to the same connection and the same window are the same message
+ * — the push is a *diff*, so it already carries whatever both of them did. The
+ * key is minute-grained rather than per-change: fine enough that an afternoon's
+ * work reaches the channel promptly, coarse enough that a busy minute is one
+ * task instead of fifty.
+ *
+ * Without this the outbox rebuilds the rate-limit problem the diff exists to
+ * solve, one row at a time.
+ */
+export function pushKey(connectionId: number, from: Date, at: Date = new Date()): string {
+  const minute = Math.floor(at.getTime() / 60_000);
+  return `channel.push:${connectionId}:${from.toISOString().slice(0, 10)}:${minute}`;
+}

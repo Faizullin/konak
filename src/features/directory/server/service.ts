@@ -33,7 +33,14 @@ export type GuestPersonInput = {
 export async function createGuestPerson(
   tx: Pick<Prisma.TransactionClient, "person">,
   input: GuestPersonInput,
-  userId: string
+  /**
+   * Who wrote it, when somebody did.
+   *
+   * `undefined` for a booking that arrived from a channel: nobody clicked, and
+   * the audit columns are nullable for exactly that case. Inventing an author
+   * would be worse than admitting there is none.
+   */
+  userId: string | undefined
 ) {
   const email = normalizeEmail(input.email);
 

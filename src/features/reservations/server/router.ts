@@ -7,6 +7,7 @@ import { createGuestPerson } from "@/features/directory/server";
 import { isRoomSellable, RoomStatus, statusAfterCheckOut } from "@/features/properties";
 import { TaskType } from "@/features/housekeeping";
 import { openFolioFor, postRoomCharges } from "@/features/billing/server";
+import { enqueueChannelPush } from "@/features/channels/server";
 import { requirePropertyMember } from "@/features/properties/server";
 import {
   assignRoomSchema,
@@ -269,7 +270,7 @@ export const reservationRouter = createTRPCRouter({
             ).id
           : undefined);
 
-      return tx.reservation.create({
+      const created = await tx.reservation.create({
         data: {
           propertyId: input.propertyId,
           reference,
@@ -301,6 +302,17 @@ export const reservationRouter = createTRPCRouter({
         },
         include: { stays: true },
       });
+
+      // The nights just came off the market, so the channels are owed the news
+      // — recorded here rather than sent here, in the same transaction as the
+      // booking it announces.
+      await enqueueChannelPush(tx, {
+        propertyId: input.propertyId,
+        organizationId: scope.organizationId,
+        from: range.checkIn,
+      });
+
+      return created;
     });
   }),
 
@@ -496,7 +508,7 @@ export const reservationRouter = createTRPCRouter({
           });
         }
 
-        return tx.reservation.update({
+        const updated = await tx.reservation.update({
           where: { id: input.id },
           data: {
             status: input.status,
@@ -506,6 +518,17 @@ export const reservationRouter = createTRPCRouter({
               : {}),
           },
         });
+
+        // A cancellation and a no-show put the nights back on the market. The
+        // enqueue is unconditional because the *diff* decides whether anything
+        // is actually worth sending — a status that changed nothing costs one
+        // task that finds nothing to say.
+        await enqueueChannelPush(tx, {
+          propertyId: input.propertyId,
+          organizationId: scope.organizationId,
+        });
+
+        return updated;
       });
     }),
 
