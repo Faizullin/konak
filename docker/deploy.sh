@@ -89,8 +89,16 @@ done
 # ── migrations ───────────────────────────────────────────────────────────
 # Once, to completion, before the new code serves traffic. `migrate deploy`
 # applies committed migrations only; it never generates, resets or prompts.
+# `migrate` is a SEPARATE image from `app` (target: builder, konak-migrate:latest),
+# and `run` reuses whatever image already exists rather than rebuilding it. A
+# deploy that built only `app` therefore applied the migrations baked into an
+# image from an earlier commit, and said "No pending migrations to apply" while
+# the schema silently fell behind the code that was about to serve. `--build` is
+# what keeps the two images at the same commit.
 log "applying migrations"
-"${COMPOSE[@]}" run --rm --no-deps migrate || fail "migrations failed — the old app is still running and was not replaced"
+MIGRATE_RUN=(run --rm --no-deps)
+[ "$DO_BUILD" -eq 1 ] && MIGRATE_RUN+=(--build)
+"${COMPOSE[@]}" "${MIGRATE_RUN[@]}" migrate || fail "migrations failed — the old app is still running and was not replaced"
 
 # ── start ────────────────────────────────────────────────────────────────
 log "starting app and caddy"
