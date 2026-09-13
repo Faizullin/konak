@@ -5,14 +5,6 @@ boxes. A finished item leaves here; the fact of it goes to `history.md`.
 
 Where this sits in the whole build: `plans/roadmap.md`.
 
-## Nothing can write room inventory
-A property created in the app can never sell a room: `RoomTypeInventory` is read
-by `availability()` and written only by the seed and `scripts/demo.mts`. A
-missing row is nought rooms by design, so a self-service property is sold out on
-every night for ever, and the demo itself stops selling on night ninety-one.
-`plans/server-hardening.md` § 1. **This is the top of the list** — nothing else
-matters if a hotel cannot sell a room.
-
 ## The overselling races
 Availability is read before the transaction that writes the stay, and the
 exclusion constraint only protects an *assigned* room — while unassigned is the

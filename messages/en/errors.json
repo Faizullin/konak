@@ -16,6 +16,11 @@
     "admin_required": "This action requires an administrator",
     "not_signed_in": "You must be signed in"
   },
+  "block": {
+    "over_total": "There are not that many rooms of that type",
+    "range_invalid": "A block covers between one night and two years",
+    "forbidden": "You cannot block rooms"
+  },
   "channel": {
     "connection_exists": "That channel is already connected to this property",
     "connection_not_found": "That channel connection no longer exists",

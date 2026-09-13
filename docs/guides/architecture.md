@@ -267,6 +267,34 @@ Every table obeys these. A review rejects one that does not.
 13. **One Prisma file per domain.** Prisma concatenates `prisma/schema/`, so the
     split is for readers.
 
+### What is counted, never stored
+
+A number that is a fact about rows in another table is **derived on read**, not
+kept in a column beside them. Three of these, and the third was a bug:
+
+- **Sold** — from the stays that occupy the night, never a `soldRooms` column. A
+  cached count drifts the first time a channel cancels, and a wrong count here
+  is an overbooking.
+- **A folio balance** — arithmetic on lines and payments, never a third column
+  that can disagree with the two it came from.
+- **How many rooms a type has** — counted from the `Room` rows.
+  `RoomTypeInventory.totalRooms` used to store it, and the consequence was
+  worse than drift: a property set up through the app writes no rows, a missing
+  row read as *nought* rooms, and the property was sold out on every night for
+  ever.
+
+What `RoomTypeInventory` holds now is only what somebody **deliberately did** —
+`blockedRooms`, and why. A night with no row is every room, nothing withheld,
+which needs no horizon declared in advance and cannot expire. `property.setBlock`
+is the write path, and `refuseBlock` in `model/` is the rule: a block may hold
+back every room of a type, and never more than exist.
+
+The general shape: **store the decision, derive the consequence.** If a column
+would have to be updated because a row somewhere else changed, it is the
+consequence and it does not belong in a column. Room status is the deliberate
+exception, and it is not the same thing — a room being dirty is a fact about the
+room, not a count of anything.
+
 ### What the database cannot hold
 
 Postgres holds one of these — overlapping stays, as an exclusion constraint.

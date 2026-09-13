@@ -68,10 +68,8 @@ before(async () => {
     rooms[number] = room.id;
   }
 
-  // Two nights of declared inventory, which is all the availability row needs.
-  await prisma.roomTypeInventory.createMany({
-    data: [day(3), day(4)].map((date) => ({ roomTypeId: doubleId, date, totalRooms: 2 })),
-  });
+  // Nothing to declare: the availability row counts the rooms above. The
+  // archived Suite is not one of them, which is the point of it being here.
 
   const booker = await prisma.person.create({
     data: { organizationId: fx.org.id, firstName: "Ada", lastName: "Lovelace" },

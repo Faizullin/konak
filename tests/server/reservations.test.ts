@@ -74,22 +74,9 @@ before(async () => {
   ]);
   roomIds = rooms.map((r) => r.id);
 
-  // Two rooms for five nights, plus separate islands for the tests that need
-  // nights no earlier test has spent. The holds tests take one island each, so
-  // a hold left behind by one cannot be what another one measures.
-  await prisma.roomTypeInventory.createMany({
-    data: [0, 1, 2, 3, 4, 10, 11, 30, 40, 41, 42, 50, 51, 60, 70].map((i) => ({
-      roomTypeId,
-      date: day(i),
-      totalRooms: 2,
-    })),
-  });
-
-  // Checking in is refused before the arrival day, so the tests that do it need
-  // real nights: today and tomorrow, whenever the suite happens to run.
-  await prisma.roomTypeInventory.createMany({
-    data: [0, 1].map((i) => ({ roomTypeId, date: today(i), totalRooms: 2 })),
-  });
+  // No inventory rows: two rooms exist, so every night has two. The tests that
+  // need nights no earlier test has spent pick far-apart days below — a hold
+  // left behind by one must not be what another one measures.
 });
 
 after(async () => {
@@ -104,16 +91,76 @@ after(async () => {
 });
 
 describe("availability", () => {
-  test("a night with no inventory row is zero rooms, not unlimited", async () => {
-    // Absent must fail closed: an undeclared night is not on sale.
-    const nights = await callerFor(fx.owner).reservation.availability({
+  /**
+   * The bug this replaced: a night with no row used to read as **nought
+   * rooms**, so a property set up through the app — which writes no rows at all
+   * — was sold out on every night for ever, and the demo stopped selling the
+   * day its seeded horizon ran out.
+   *
+   * How many rooms exist is a fact about the `Room` table. It is counted now,
+   * and a night nobody has touched is every room.
+   */
+  test("a night nobody declared is every room, because the rooms are what is counted", async () => {
+    const far = await callerFor(fx.owner).reservation.availability({
       propertyId,
       roomTypeId,
       from: day(20),
       to: day(21),
     });
-    assert.equal(nights[0]?.total, 0);
-    assert.equal(nights[0]?.available, 0);
+    assert.equal(far[0]?.total, 2);
+    assert.equal(far[0]?.available, 2);
+  });
+
+  test("a block holds rooms back, and clearing it gives them back", async () => {
+    const caller = callerFor(fx.owner);
+    const range = { propertyId, roomTypeId, from: day(80), to: day(82) };
+
+    const blocked = await caller.property.setBlock({ ...range, blockedRooms: 1, reason: "Refit" });
+    assert.equal(blocked.nights, 2);
+
+    const during = await caller.reservation.availability(range);
+    assert.deepEqual(
+      during.map((n) => [n.total, n.blocked, n.available]),
+      [
+        [2, 1, 1],
+        [2, 1, 1],
+      ]
+    );
+
+    // The night after the range is untouched — a block covers what it says.
+    const after = await caller.reservation.availability({
+      propertyId,
+      roomTypeId,
+      from: day(82),
+      to: day(83),
+    });
+    assert.equal(after[0]?.available, 2);
+
+    // Zero reopens the floor, and the rows go rather than sitting at zero: the
+    // table means "somebody held rooms back here".
+    const cleared = await caller.property.setBlock({ ...range, blockedRooms: 0 });
+    assert.equal(cleared.cleared, 2);
+
+    const reopened = await caller.reservation.availability(range);
+    assert.deepEqual(
+      reopened.map((n) => n.available),
+      [2, 2]
+    );
+  });
+
+  test("a block cannot hold back more rooms than the type has", async () => {
+    const error = await callerFor(fx.owner)
+      .property.setBlock({
+        propertyId,
+        roomTypeId,
+        from: day(85),
+        to: day(86),
+        blockedRooms: 3,
+      })
+      .then(() => null)
+      .catch((e) => e);
+
+    assert.equal(domainCodeOf(error), "block.over_total");
   });
 
   test("a confirmed stay takes a room from the nights it occupies, and no others", async () => {

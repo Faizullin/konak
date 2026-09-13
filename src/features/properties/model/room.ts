@@ -215,3 +215,58 @@ export const archiveInventorySchema = z.object({
 });
 
 export type ArchiveInventoryInput = z.infer<typeof archiveInventorySchema>;
+
+/**
+ * The longest run of nights one act may block.
+ *
+ * Two years, which is further ahead than a hotel plans a refit and far short of
+ * the range a typo produces. The cap is not politeness: without one a single
+ * request becomes seven hundred upserts and a channel push, and `from: 2020,
+ * to: 2120` becomes thirty-six thousand — the same argument `GRID_MAX_NIGHTS`
+ * makes about the window.
+ */
+export const MAX_BLOCK_NIGHTS = 730;
+
+export const setRoomBlockSchema = z.object({
+  propertyId: z.number(),
+  roomTypeId: z.number(),
+  from: z.coerce.date(),
+  to: z.coerce.date(),
+  /** Zero clears the block, which is how a floor reopens. */
+  blockedRooms: z.number().int().min(0).max(9999),
+  reason: z.string().max(200).optional(),
+});
+
+export type SetRoomBlockInput = z.infer<typeof setRoomBlockSchema>;
+
+/**
+ * Why a block cannot be taken, or `null`.
+ *
+ * Pure, so the screen can grey the button out with the same sentence the server
+ * would refuse with — and so the arithmetic is testable without a database.
+ *
+ * **Blocking every room is legal**; blocking more than exist is not. A type
+ * closed entirely is a real thing — a floor out for a refit — and refusing it
+ * would make the honest way of saying so impossible.
+ */
+export function refuseBlock(args: {
+  blockedRooms: number;
+  totalRooms: number;
+  nights: number;
+}): { code: string; message: string } | null {
+  if (args.nights < 1 || args.nights > MAX_BLOCK_NIGHTS) {
+    return {
+      code: PropertyError.BLOCK_RANGE_INVALID,
+      message: `A block covers between one and ${MAX_BLOCK_NIGHTS} nights`,
+    };
+  }
+
+  if (args.blockedRooms > args.totalRooms) {
+    return {
+      code: PropertyError.BLOCK_OVER_TOTAL,
+      message: `Only ${args.totalRooms} room(s) of that type exist`,
+    };
+  }
+
+  return null;
+}

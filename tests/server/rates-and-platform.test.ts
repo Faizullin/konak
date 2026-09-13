@@ -63,8 +63,20 @@ before(async () => {
   roomTypeId = property.roomTypes[0]!.id;
   ratePlanId = property.ratePlans[0]!.id;
 
-  await prisma.roomTypeInventory.createMany({
-    data: [0, 1, 2, 3].map((i) => ({ roomTypeId, date: day(i), totalRooms: 3 })),
+  /**
+   * Three real rooms.
+   *
+   * This fixture used to declare `totalRooms: 3` and create **no rooms at all**
+   * — and every booking in the file passed, because inventory was a number
+   * somebody typed rather than a fact about the hotel. It is counted from these
+   * rows now, so the declaration is gone and the rooms are real.
+   */
+  await prisma.room.createMany({
+    data: ["1", "2", "3"].map((number) => ({
+      propertyId,
+      roomTypeId,
+      number: `${number}-${fx.tag}`,
+    })),
   });
 
   const person = await callerFor(fx.owner).directory.createPerson({

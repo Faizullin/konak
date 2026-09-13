@@ -1694,3 +1694,57 @@ end-to-end suite did not exist, and `plans/e2e-and-reports.md` opened with
 report ran in CI. Both are now in `guides/index.md` § The browser layer, and
 the plan is deleted — which is what the convention said to do the day it
 shipped.
+
+## 2026-09-13 — inventory stopped being a number somebody typed
+
+The audit's first finding, fixed. `RoomTypeInventory.totalRooms` — *how many
+rooms of this type exist that night* — was written by `prisma/seed.ts` and
+`scripts/demo.mts` and **by nothing in the application**. A missing row reads as
+nought rooms, deliberately, so:
+
+> `property.create` → setup → room types → rooms → **every booking refused
+> `STAY_SOLD_OUT`**, and the grid a wall of sold-out nights.
+
+Every path anyone had walked started from the seed, which is why nobody had met
+it. The demo had the same fault with a fuse on it: ninety nights declared, and
+on the ninety-first the hotel stopped selling.
+
+### The column was the bug, not the missing writer
+
+The obvious fix was a procedure to declare inventory. The better one was to
+notice that the table's own comment already argued against itself: *"`soldRooms`
+is **not** stored… a cached count drifts the first time a channel cancels and
+nobody notices — and a wrong count here is an overbooking."* `totalRooms` is a
+cached count of rows in `rooms`. It drifts the moment somebody adds a room, for
+exactly the same reason.
+
+So the column is gone. The total is counted from the `Room` rows, and
+`RoomTypeInventory` now holds **only what staff deliberately withheld** —
+`blockedRooms`, and a `reason` for whoever finds the row in March. A night with
+no row is every room. There is no horizon to declare and none to run out.
+
+`property.setBlock` is the write path: manager-only, capped at two years by
+`MAX_BLOCK_NIGHTS`, refusing more rooms than exist and permitting *all* of them
+— a floor closed for a refit is a real thing, and refusing it would leave no
+honest way to say so. Zero clears the block and **deletes the rows** rather than
+zeroing them, because a table meaning "somebody held rooms back here" should not
+fill with rows saying nobody did.
+
+`OUT_OF_ORDER` no longer pretends to reduce availability, and the schema comment
+that said it did is gone. It is a state of *now*: a room broken this morning may
+be fixed by March, and letting a current flag shrink a future night loses
+bookings in the quiet direction. A room genuinely out of service for a period is
+a block.
+
+### The tests had been agreeing with the fiction
+
+`rates-and-platform.test.ts` declared `totalRooms: 3` and created **no rooms at
+all**, and every booking in the file passed. It has three real rooms now. Two
+other fixtures declared totals beside rooms that already existed; the
+declarations are gone.
+
+And one test asserted the bug directly — *"a night with no inventory row is zero
+rooms, not unlimited"*, with the comment *"absent must fail closed"*. Failing
+closed is right for a hold and wrong for a fact: the fact was in another table
+the whole time. It now asserts that a night nobody declared is every room, and
+two new tests cover blocking and clearing.

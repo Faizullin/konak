@@ -110,16 +110,6 @@ for (const spec of TYPES) {
       },
     });
   }
-
-  // A night with no inventory row is nought rooms, deliberately — so the
-  // horizon has to be declared or the grid is a wall of sold-out nights.
-  for (let i = -1; i < HORIZON; i += 1) {
-    await prisma.roomTypeInventory.upsert({
-      where: { roomTypeId_date: { roomTypeId: roomType.id, date: day(i) } },
-      update: { totalRooms: spec.rooms.length },
-      create: { roomTypeId: roomType.id, date: day(i), totalRooms: spec.rooms.length },
-    });
-  }
 }
 
 const plan = await prisma.ratePlan.findFirstOrThrow({

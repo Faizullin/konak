@@ -34,6 +34,12 @@ export const PropertyError = {
   ROOM_CREATE_FORBIDDEN: "room.create_forbidden",
   ROOM_UPDATE_FORBIDDEN: "room.update_forbidden",
   ROOM_ARCHIVE_FORBIDDEN: "room.archive_forbidden",
+
+  /** More rooms held back than the type has. */
+  BLOCK_OVER_TOTAL: "block.over_total",
+  /** A block has to cover at least one night, and not a century of them. */
+  BLOCK_RANGE_INVALID: "block.range_invalid",
+  BLOCK_FORBIDDEN: "block.forbidden",
 } as const;
 
 export type PropertyError = (typeof PropertyError)[keyof typeof PropertyError];

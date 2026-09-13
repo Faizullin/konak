@@ -72,17 +72,9 @@ before(async () => {
     rooms[number] = room.id;
   }
 
-  // Enough declared inventory that a walk-in is never refused for the wrong
-  // reason; the tests that refuse one say why themselves.
-  await prisma.roomTypeInventory.createMany({
-    data: [doubleId, suiteId].flatMap((roomTypeId) =>
-      Array.from({ length: 15 }, (_, n) => ({
-        roomTypeId,
-        date: fromToday(n),
-        totalRooms: 3,
-      }))
-    ),
-  });
+  // No inventory to declare. How many rooms of a type there are is counted from
+  // the rooms above, so a walk-in is never refused for the wrong reason and the
+  // tests that refuse one say why themselves.
 
   const booker = await prisma.person.create({
     data: { organizationId: fx.org.id, firstName: "Grace", lastName: "Hopper" },

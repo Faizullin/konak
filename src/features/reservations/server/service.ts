@@ -109,9 +109,31 @@ export async function availability(
 
   const nights = nightsOf({ checkIn: from, checkOut: to });
 
-  const [inventory, stays, holds] = await Promise.all([
+  const [rooms, blocks, stays, holds] = await Promise.all([
+    /**
+     * How many rooms of each type there are — counted, never stored.
+     *
+     * It used to be `RoomTypeInventory.totalRooms`, and a property set up
+     * through the app had no rows at all: a missing row reads as nought, so it
+     * was sold out on every night for ever. A stored copy of a count in another
+     * table also drifts the moment somebody adds a room, which is the argument
+     * this table already made about not storing a sold count.
+     *
+     * Archived rooms are gone from the count; `OUT_OF_ORDER` ones are not. That
+     * status is a state of *now* — a room broken this morning may be fixed by
+     * March, and letting it shrink a future night loses bookings that could
+     * have been taken. A room genuinely out of service for a period is a block.
+     */
+    prisma.room.groupBy({
+      by: ["roomTypeId"],
+      where: { roomTypeId: { in: roomTypeIds }, archivedAt: null },
+      _count: { _all: true },
+    }),
+    // Only the nights somebody deliberately held rooms back on. Most have no
+    // row, and that means nothing withheld rather than nothing for sale.
     prisma.roomTypeInventory.findMany({
       where: { roomTypeId: { in: roomTypeIds }, date: { gte: from, lt: to } },
+      select: { roomTypeId: true, date: true, blockedRooms: true },
     }),
     // Every stay that touches the window; each contributes to the nights it
     // actually occupies, not to the whole range.
@@ -138,7 +160,10 @@ export async function availability(
 
   const key = (roomTypeId: number, date: Date) => `${roomTypeId}:${date.toISOString()}`;
 
-  const totals = new Map(inventory.map((row) => [key(row.roomTypeId, toStayDate(row.date)), row]));
+  const totals = new Map(rooms.map((row) => [row.roomTypeId, row._count._all]));
+  const blocked = new Map(
+    blocks.map((row) => [key(row.roomTypeId, toStayDate(row.date)), row.blockedRooms])
+  );
 
   const sold = new Map<string, number>();
   for (const stay of stays) {
@@ -160,11 +185,10 @@ export async function availability(
   return roomTypeIds.flatMap((roomTypeId) =>
     nights.map((date) => {
       const k = key(roomTypeId, date);
-      const row = totals.get(k);
-      // No inventory row means none declared for that night, which is zero
-      // rooms rather than unlimited.
-      const total = row?.totalRooms ?? 0;
-      const blocked = row?.blockedRooms ?? 0;
+      const total = totals.get(roomTypeId) ?? 0;
+      // No row is nothing withheld, which is the common case: a block is
+      // something somebody did, not something that has to be declared nightly.
+      const blockedCount = blocked.get(k) ?? 0;
       const soldCount = sold.get(k) ?? 0;
       const heldCount = held.get(k) ?? 0;
 
@@ -172,10 +196,10 @@ export async function availability(
         date,
         roomTypeId,
         total,
-        blocked,
+        blocked: blockedCount,
         sold: soldCount,
         held: heldCount,
-        available: availableRooms(total, blocked, soldCount, heldCount),
+        available: availableRooms(total, blockedCount, soldCount, heldCount),
       };
     })
   );

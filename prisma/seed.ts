@@ -241,6 +241,12 @@ async function main() {
    * A quarter ahead, which is longer than the grid's own 62-night cap and about
    * as far out as a hotel takes bookings at the desk. Yesterday too, so the
    * arithmetic either side of today is visible.
+   *
+   * **Prices only.** There is no inventory to seed: how many rooms exist is
+   * counted from the `Room` rows, so a night nobody declared is every room
+   * rather than none. The horizon below is how far the *rates* reach, and a
+   * night past it is a room that can be sold at no price — which is a real case
+   * at a front desk, and not the same thing as a room that cannot be sold.
    */
   const SEED_NIGHTS = 90;
 
@@ -260,12 +266,6 @@ async function main() {
         date: day(i),
         priceMinor: 12000,
       },
-    });
-
-    await prisma.roomTypeInventory.upsert({
-      where: { roomTypeId_date: { roomTypeId: roomType.id, date: day(i) } },
-      update: {},
-      create: { roomTypeId: roomType.id, date: day(i), totalRooms: 2 },
     });
   }
 

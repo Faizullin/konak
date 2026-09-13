@@ -7,7 +7,13 @@ import { createTRPCRouter, protectedProcedure } from "@/server/trpc";
 // A room cannot be archived out from under a booking, and only reservations
 // knows which statuses still hold one. The constants are model-side, so this is
 // a read of a shared definition rather than a reach into another feature.
-import { GRID_HIDDEN_STATUSES, todayAt } from "@/features/reservations";
+import { GRID_HIDDEN_STATUSES, nightsOf, todayAt } from "@/features/reservations";
+// The file, not the barrel. `channels/server`'s barrel re-exports its router,
+// which imports *this* feature's `server` barrel for `requirePropertyMember` —
+// so going through it is a cycle, and a cycle here is an export that "does not
+// exist" at run time. Same reason `channels/server/push.ts` reaches for a
+// service module rather than a feature's `server/`.
+import { enqueueChannelPush } from "@/features/channels/server/enqueue";
 import {
   archiveInventorySchema,
   PropertyError,
@@ -20,7 +26,9 @@ import {
   createPropertySchema,
   createRoomSchema,
   createRoomTypeSchema,
+  refuseBlock,
   refuseOccupancy,
+  setRoomBlockSchema,
   updateRoomSchema,
   updateRoomTypeSchema,
   listPropertiesSchema,
@@ -393,6 +401,83 @@ export const propertyRouter = createTRPCRouter({
     }
 
     return ctx.db.room.update({ where: { id }, data: { ...data, updatedById: user.id } });
+  }),
+
+  /**
+   * Hold rooms back, or stop holding them back.
+   *
+   * The only thing `RoomTypeInventory` stores. How many rooms *exist* is
+   * counted from the `Room` rows and never written here — a stored copy drifts
+   * the moment somebody adds a room, and a property that had no rows at all was
+   * sold out on every night for ever. A night with no row is every room.
+   *
+   * So this is not "declare your inventory"; it is "close the second floor in
+   * March". `blockedRooms: 0` clears it, which is how the floor reopens, and
+   * the row is deleted rather than zeroed: a table whose meaning is *somebody
+   * held rooms back here* should not be full of rows saying nobody did.
+   *
+   * Manager-only, with rate-setting as the precedent rather than check-in:
+   * withdrawing rooms from sale is a commercial act, and a shift that can do it
+   * by accident is a shift that can lose a week of bookings.
+   */
+  setBlock: protectedProcedure.input(setRoomBlockSchema).mutation(async ({ ctx, input }) => {
+    const scope = await requirePropertyMember(ctx, input.propertyId);
+    const role = scope.role;
+    if (!canManageRooms(role)) {
+      throw new ForbiddenError(PropertyError.BLOCK_FORBIDDEN, "You cannot block rooms");
+    }
+    await assertOwned(ctx.db, "roomType", input.roomTypeId, input.propertyId);
+
+    const nights = nightsOf({ checkIn: input.from, checkOut: input.to });
+    const totalRooms = await ctx.db.room.count({
+      where: { roomTypeId: input.roomTypeId, archivedAt: null },
+    });
+
+    // The rule is a pure function in `model/`; this is the arithmetic it reads
+    // and the sentence it refuses with, which is the one the screen shows.
+    const refusal = refuseBlock({
+      blockedRooms: input.blockedRooms,
+      totalRooms,
+      nights: nights.length,
+    });
+    if (refusal) {
+      throw refused(refusal);
+    }
+
+    // One transaction: a half-applied block is a range where some nights are
+    // closed and some are not, which nobody can see and everybody has to
+    // discover by failing to sell.
+    return ctx.db.$transaction(async (tx) => {
+      if (input.blockedRooms === 0) {
+        const { count } = await tx.roomTypeInventory.deleteMany({
+          where: { roomTypeId: input.roomTypeId, date: { in: nights } },
+        });
+        return { nights: nights.length, cleared: count };
+      }
+
+      for (const date of nights) {
+        await tx.roomTypeInventory.upsert({
+          where: { roomTypeId_date: { roomTypeId: input.roomTypeId, date } },
+          update: { blockedRooms: input.blockedRooms, reason: input.reason ?? null },
+          create: {
+            roomTypeId: input.roomTypeId,
+            date,
+            blockedRooms: input.blockedRooms,
+            reason: input.reason ?? null,
+          },
+        });
+      }
+
+      // What is for sale changed, so the channels are owed the diff — in the
+      // transaction that changed it, not after.
+      await enqueueChannelPush(tx, {
+        propertyId: input.propertyId,
+        organizationId: scope.member.organizationId,
+        from: nights[0],
+      });
+
+      return { nights: nights.length, cleared: 0 };
+    });
   }),
 
   archiveRoom: protectedProcedure.input(archiveInventorySchema).mutation(async ({ ctx, input }) => {

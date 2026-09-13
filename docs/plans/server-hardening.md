@@ -17,44 +17,15 @@ it authorises must be one act, or two requests will both pass the check.*
 
 ---
 
-## 1. A property set up in the app can never sell a room — **blocking**
+## 1. ~~Inventory had no write path~~ — shipped
 
-`RoomTypeInventory` is read by `availability()`
-(`reservations/server/service.ts:113`) and written by exactly two things:
-`prisma/seed.ts:265` and `scripts/demo.mts:117`. **No procedure in any router
-creates or updates a row.**
+`RoomTypeInventory` no longer stores `totalRooms`. How many rooms of a type
+exist is **counted from the `Room` rows**, so a night nobody declared is every
+room, and a property set up through the app sells on the day it is created.
 
-A missing row is nought rooms, deliberately — `service.ts:164`: *"No inventory
-row means none declared for that night, which is zero rooms rather than
-unlimited."* So the whole self-service path is dead:
-
-> `property.create` → `/front-desk/<slug>/setup` → room types → rooms → **every
-> `reservation.create` fails `STAY_SOLD_OUT`**, and the grid is a wall of
-> sold-out nights.
-
-The demo only works because the seed writes ninety nights. On the ninety-first,
-the demo property stops selling too.
-
-`scripts/demo.mts:115` states the rule out loud — *"the horizon has to be
-declared or the grid is a wall of sold-out nights"* — and there is no way to
-declare it.
-
-Two more things hang off the same gap: `inventory.prisma:56` says
-`OUT_OF_ORDER` *"is what removes the room from the count in
-`RoomTypeInventory`"*, and nothing implements it — `housekeeping.reportIssue`
-sets `Room.status` and `totalRooms` never moves. And `blockedRooms` has no
-writer either.
-
-**What to build.** A `property.setInventory` procedure taking a room type and a
-date range, plus the rule that creating or archiving a `Room` moves
-`totalRooms` for every future night. The decision of *what the total should be*
-belongs in `model/` where it can be tested: it is a function of the rooms that
-exist and the ones out of order.
-
-`roadmap.md` defers a *computed, denormalised* sold count. It does not defer
-this. This is a missing procedure, not a deferral.
-
----
+The table now holds only what staff deliberately withheld, written by
+`property.setBlock`. See `guides/architecture.md` § What is counted, never
+stored.
 
 ## 2. Read-then-write, five times — **blocking**
 
@@ -293,10 +264,9 @@ also poisons `postRoomCharges`'s idempotency check.
 
 ## Order
 
-1. **§ 1**, the inventory write path. Nothing else matters if a hotel cannot
-   sell a room.
+1. ~~**§ 1**, the inventory write path.~~ Shipped.
 2. **§ 2.1 and § 2.2**, the two overselling races, using `lockOrganization` as
-   the worked example.
+   the worked example. **This is the top of the list now.**
 3. **§ 2.4**, because it turns an ordinary cancellation into a 500.
 4. **§ 4**, the guard chain — one change, every procedure faster.
 5. **§ 8**, then the rest by appetite.

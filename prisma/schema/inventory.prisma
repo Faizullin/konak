@@ -52,8 +52,12 @@ model Room {
   roomTypeId Int
   number     String
   floor      String?
-  // Housekeeping state. Set to DIRTY automatically at check-out; OUT_OF_ORDER
-  // is what removes the room from the count in `RoomTypeInventory`.
+  // Housekeeping state, and a state of *now* — not of a date. Set to DIRTY
+  // automatically at check-out. `OUT_OF_ORDER` does **not** reduce what is for
+  // sale: a room broken this morning may be fixed by March, and letting a
+  // current flag shrink a future night would be wrong in the direction that
+  // loses bookings. A room genuinely out of service for a period is a block on
+  // those nights — `RoomTypeInventory`.
   status     String  @default("CLEAN") // CLEAN, DIRTY, IN_PROGRESS, INSPECTED, OUT_OF_ORDER
   notes      String?
 
@@ -76,25 +80,39 @@ model Room {
   @@map("rooms")
 }
 
-// One row per room type per day: how many rooms exist that night, and how many
-// staff have deliberately withheld.
+// What staff have deliberately withheld, one row per room type per night.
 //
-// `soldRooms` is **not** stored. Sold is derived from confirmed stays, because
-// a cached count drifts the first time a channel cancels and nobody notices —
-// and a wrong count here is an overbooking. What a channel manager pushes is
-// `total - blocked - sold`, computed at push time.
+// **Nothing about this table is a count of reality.** Neither how many rooms
+// exist nor how many are sold is stored here, for one reason: a cached count
+// drifts the first time somebody adds a room or a channel cancels, and a wrong
+// count here is an overbooking.
+//
+// - *Sold* is derived from the stays that occupy the night.
+// - *Total* is derived from the `Room` rows of that type — it is a fact about
+//   rows in another table, and storing a second copy of it was a bug: a
+//   property set up through the app had no rows at all and was therefore sold
+//   out on every night for ever.
+//
+// So **a night with no row is every room, nothing withheld** — the sane
+// default, and the one that needs no horizon to be declared in advance. A row
+// exists only where somebody held rooms back: allotment kept off the channels,
+// a floor closed for a refit, a block a manager typed.
+//
+// What a channel manager is pushed is `total - blocked - sold`, computed at
+// push time from all three.
 model RoomTypeInventory {
   id           Int      @id @default(autoincrement())
   roomTypeId   Int
   date         DateTime
-  totalRooms   Int
   blockedRooms Int      @default(0)
+  // Why they were held back, for the person who finds the row in March and
+  // cannot remember. Free text: the reasons do not enumerate.
+  reason       String?
   updatedAt    DateTime @updatedAt
 
   roomType RoomType @relation(fields: [roomTypeId], references: [id], onDelete: Cascade)
 
   @@unique([roomTypeId, date])
-  @@index([date])
   @@map("room_type_inventory")
 }
 

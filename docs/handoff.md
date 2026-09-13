@@ -97,11 +97,17 @@ taught is in `guides/ui-patterns.md` § Surfaces and themes,
 `guides/local-development.md`. `plans/e2e-and-reports.md` and
 `plans/file-uploads-ui.md` went the same way.
 
-**An audit on 2026-09-13 read every router.** Start with
-`plans/server-hardening.md` § 1: **nothing in the app can write
-`RoomTypeInventory`**, so a property created through the UI can never sell a
-room, and the demo stops selling on night ninety-one. Then § 2, five
-read-then-write races of the shape `nextSeriesNumber` already taught.
+**An audit on 2026-09-13 read every router**, and its first finding is fixed:
+inventory is not a number anybody types. How many rooms a type has is counted
+from the `Room` rows, `RoomTypeInventory` holds only what staff deliberately
+withheld, and `property.setBlock` is the write path. A property set up through
+the app sells on the day it is created. `guides/architecture.md` § What is
+counted, never stored.
+
+**What is left is `plans/server-hardening.md` § 2** — five read-then-write races
+of the shape `nextSeriesNumber` already taught, two of which oversell rooms.
+`lockOrganization` in `platform/server/attachments.ts` is the worked example of
+the fix.
 
 **Dark mode works, and a person chooses it.** `next-themes` at the root,
 `AppearanceToggle` in the dashboard header and in the desk's bar. Both surfaces
@@ -119,8 +125,8 @@ untouched and still works.
 — see `guides/architecture.md`. Without it every link out of the desk landed
 back in the dashboard.
 
-**Where to start.** `docs/todo.md`, top entry — which is the inventory write
-path.
+**Where to start.** `docs/todo.md`, top entry — which is the overselling
+races.
 
 **Before you finish — once, not per edit.** `lint`, `format:check`,
 `test:server`, `build` and the browser suite are minutes each on this machine,

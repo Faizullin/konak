@@ -3,6 +3,9 @@ import { test } from "node:test";
 
 import { OrgRole } from "@/features/organizations";
 import {
+  MAX_BLOCK_NIGHTS,
+  PropertyError,
+  refuseBlock,
   canArchiveRoomTypes,
   canManageRoomTypes,
   canManageRooms,
@@ -138,4 +141,40 @@ test("check-out is what makes a room dirty, and out of order survives it", () =>
   // The one state with a commercial consequence, set by someone who found a
   // fault. A departure is not news about the fault.
   assert.equal(statusAfterCheckOut(RoomStatus.OUT_OF_ORDER), null);
+});
+
+test("a block cannot hold back more rooms than exist, and may hold back all of them", () => {
+  // The normal case: a floor of four closed out of ten.
+  assert.equal(refuseBlock({ blockedRooms: 4, totalRooms: 10, nights: 30 }), null);
+
+  // Closing a type entirely is a real thing — a refit — and refusing it would
+  // leave no honest way to say so.
+  assert.equal(refuseBlock({ blockedRooms: 10, totalRooms: 10, nights: 30 }), null);
+
+  // One more than exists is arithmetic nobody meant.
+  assert.equal(
+    refuseBlock({ blockedRooms: 11, totalRooms: 10, nights: 1 })?.code,
+    PropertyError.BLOCK_OVER_TOTAL
+  );
+
+  // Zero is how a floor reopens, and is legal against any total.
+  assert.equal(refuseBlock({ blockedRooms: 0, totalRooms: 0, nights: 1 }), null);
+});
+
+test("a block covers between one night and two years", () => {
+  assert.equal(refuseBlock({ blockedRooms: 1, totalRooms: 2, nights: 1 }), null);
+  assert.equal(refuseBlock({ blockedRooms: 1, totalRooms: 2, nights: MAX_BLOCK_NIGHTS }), null);
+
+  // Nought nights is a range somebody got backwards.
+  assert.equal(
+    refuseBlock({ blockedRooms: 1, totalRooms: 2, nights: 0 })?.code,
+    PropertyError.BLOCK_RANGE_INVALID
+  );
+
+  // The cap is not politeness: one request past it is tens of thousands of
+  // upserts and a channel push, from a typo in a year.
+  assert.equal(
+    refuseBlock({ blockedRooms: 1, totalRooms: 2, nights: MAX_BLOCK_NIGHTS + 1 })?.code,
+    PropertyError.BLOCK_RANGE_INVALID
+  );
 });
