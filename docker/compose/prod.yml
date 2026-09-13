@@ -1,0 +1,220 @@
+# konak — production stack for konaq.kz (single host, 1 vCPU / 1.9 GB).
+#
+# Run it from the REPO ROOT, always via docker/deploy.sh, which supplies:
+#   docker compose --project-directory . -f docker/compose/prod.yml --env-file .env ...
+# `--project-directory .` is what makes every relative path below (build
+# context, env_file, the Caddyfile bind) resolve from the repo root rather than
+# from this file's directory, and `--env-file .env` is what fills the ${...}
+# interpolations. Run plain `docker compose -f docker/compose/prod.yml up` and
+# both break — hence the script.
+#
+# Nothing here is the dev database in docker/compose/db.yml. That file publishes
+# 5432 with the password in the repo, on purpose; this one publishes no database
+# port at all.
+
+name: konak
+
+# ─────────────────────────── networks ───────────────────────────
+# The split is the security boundary, and it replaces the "bind everything to
+# 127.0.0.1" approach used elsewhere. Publishing a container port is what makes
+# a service reachable from outside; ufw does NOT filter published ports, because
+# Docker's DOCKER-USER chain bypasses it. So the rule here is simply that only
+# Caddy publishes anything.
+networks:
+  # Caddy <-> app. A normal bridge, so containers on it also have outbound
+  # internet — Caddy needs it to reach Let's Encrypt for ACME.
+  edge:
+    name: konak-edge
+
+  # app <-> postgres/redis. `internal: true` removes the gateway entirely: no
+  # NAT, no route off the host. Postgres here cannot be dialled from the
+  # internet even if a port were published by mistake, and cannot call out.
+  internal:
+    name: konak-internal
+    internal: true
+
+# ─────────────────────────── volumes ────────────────────────────
+volumes:
+  # Database. Named, so `docker compose down` never touches it — only an
+  # explicit `down -v` does.
+  db-data:
+  redis-data:
+
+  # Attachment storage (STORAGE_PROVIDER=filesystem). This MUST be a volume and
+  # must sit outside the image: the runner's filesystem is replaced wholesale on
+  # every deploy, so uploads written into the container are uploads deleted by
+  # the next release. Mounted at /data/storage; STORAGE_FS_ROOT must match.
+  storage:
+
+  # Issued certificates and ACME account keys. Losing this means re-issuing on
+  # every restart, and Let's Encrypt rate-limits that to 5 per domain per week —
+  # a restart loop with an ephemeral cert volume locks konaq.kz out of TLS for
+  # days. Named volume, never deleted casually.
+  caddy-data:
+  caddy-config:
+
+services:
+  # ───────────────────────── caddy ──────────────────────────
+  # The only service that publishes ports, and the TLS terminator. Automatic
+  # HTTPS: it provisions and renews konaq.kz + www.konaq.kz from Let's Encrypt
+  # with no cron and no certbot.
+  caddy:
+    image: caddy:2-alpine
+    container_name: konak-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      # HTTP/3. Harmless if unused, and Caddy advertises it by default.
+      - "443:443/udp"
+    volumes:
+      - ./docker/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks:
+      - edge
+    depends_on:
+      - app
+    mem_limit: 96m
+    logging: &logging
+      driver: json-file
+      options:
+        # Unbounded container logs are the classic way a small box fills its
+        # disk months after a deploy nobody remembers.
+        max-size: "10m"
+        max-file: "3"
+
+  # ────────────────────────── app ───────────────────────────
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runner
+    image: konak-app:latest
+    # No `container_name`, unlike every other service here. A fixed name makes
+    # the service unscalable — Compose refuses `--scale app=N` with "Docker
+    # requires each container to have a unique name", because a container name
+    # is unique per host and N replicas would all want the same one. The
+    # Caddyfile proxies to `app:3000`, a Docker DNS name that resolves to one
+    # A-record per replica, so scaling needs no other change. Compose names the
+    # containers `konak-app-1`, `konak-app-2`, … — address them by service
+    # instead of by name:
+    #   docker compose --project-directory . -f docker/compose/prod.yml \
+    #     --env-file .env logs -f app
+    restart: unless-stopped
+    # No `ports:` — deliberately. Caddy reaches it over `edge` as http://app:3000.
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      # Must match the volume mount below. Left unset, env.mjs defaults it to
+      # `.storage` inside the container, i.e. inside the ephemeral layer.
+      STORAGE_FS_ROOT: /data/storage
+    volumes:
+      - storage:/data/storage
+    networks:
+      - edge
+      - internal
+    depends_on:
+      db:
+        condition: service_healthy
+    # The largest single consumer. Leaves ~1 GB for postgres, caddy and the OS.
+    mem_limit: 800m
+    logging: *logging
+
+  # ─────────────────────────── db ───────────────────────────
+  db:
+    image: postgres:17-alpine
+    container_name: konak-db
+    restart: unless-stopped
+    # No published port. The app reaches it as `db:5432` across `internal`.
+    # To take a manual psql session: docker compose ... exec db psql -U konak konak
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB is required}
+      # Postgres only reads these on a FRESH volume. Changing the password here
+      # after first start does nothing — use ALTER ROLE.
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    # Tuned for 1.9 GB shared with everything else, not for a database server.
+    # Defaults assume the box is a database; shared_buffers at 25% of RAM would
+    # be reserved memory the app cannot have.
+    command: >
+      postgres
+      -c shared_buffers=128MB
+      -c effective_cache_size=384MB
+      -c maintenance_work_mem=64MB
+      -c work_mem=4MB
+      -c max_connections=50
+    healthcheck:
+      # `depends_on: service_healthy` above uses this: the app's Prisma client
+      # would otherwise race postgres's first-boot initdb and crash-loop.
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 20s
+    networks:
+      - internal
+    mem_limit: 400m
+    logging: *logging
+
+  # ───────────────────────── redis ──────────────────────────
+  # Defined but NOT started: `profiles` keeps it out of `up` until asked for.
+  # Nothing in konak imports a redis client today — package.json has no
+  # dependency and src/ has no reference — so running it would be ~20 MB of a
+  # 1.9 GB box held by a service with no caller.
+  #
+  # To turn it on when there IS a caller:
+  #   1. add REDIS_URL=redis://redis:6379 to .env (and to src/env.mjs)
+  #   2. docker/deploy.sh --with-redis     (adds --profile redis)
+  # No change to this file is needed.
+  redis:
+    image: redis:7-alpine
+    container_name: konak-redis
+    restart: unless-stopped
+    profiles: [redis]
+    # No published port, and no password — it is unreachable from off-host by
+    # construction (internal network, nothing published). Add `requirepass` the
+    # day anything else joins `internal`.
+    command: >
+      redis-server
+      --maxmemory 96mb
+      --maxmemory-policy allkeys-lru
+      --save ""
+      --appendonly no
+    volumes:
+      - redis-data:/data
+    networks:
+      - internal
+    mem_limit: 128m
+    logging: *logging
+
+  # ──────────────────────── migrate ─────────────────────────
+  # One-shot, profile-gated, and built from the `builder` stage because the
+  # prisma CLI is a devDependency that does not exist in the runner image.
+  #
+  # Deliberately NOT part of the app's startup: an entrypoint that migrates
+  # means every replica races the same schema change on every restart. deploy.sh
+  # runs this once, to completion, before the app is reloaded.
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: builder
+    image: konak-migrate:latest
+    profiles: [tools]
+    env_file:
+      - .env
+    # `migrate deploy` applies committed migrations and never generates or
+    # resets — the only prisma migrate verb that is safe against live data.
+    command: ["npx", "prisma", "migrate", "deploy"]
+    networks:
+      - internal
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+    mem_limit: 512m
+    logging: *logging
