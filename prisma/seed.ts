@@ -5,6 +5,7 @@ import { newStorageKey } from "../src/features/platform/model";
 import { env } from "../src/env.mjs";
 import { auth } from "../src/server/auth";
 import prisma from "../src/server/db";
+import { nextSeriesNumber } from "../src/features/reservations/server/service";
 import { storage } from "../src/lib/storage";
 
 /** The smallest thing that is genuinely a PDF, so the sniffer agrees with the row. */
@@ -348,52 +349,73 @@ async function main() {
   });
   const stay = reservation.stays[0];
 
-  const folio = await prisma.folio.upsert({
-    where: { propertyId_number: { propertyId: property.id, number: "SEA-F-00001" } },
-    update: {},
-    create: {
-      propertyId: property.id,
-      reservationId: reservation.id,
-      number: "SEA-F-00001",
-      currencyCode: "EUR",
-      createdById: owner.id,
-      updatedById: owner.id,
-      lines: {
-        create: [
-          {
-            type: "ROOM",
-            description: "Double Room — 14 Sep",
-            roomStayId: stay?.id,
-            serviceDate: day(0),
-            unitPriceMinor: 12000,
-            taxRateBp: 700,
-            taxAmountMinor: 785,
-            amountMinor: 12000,
-            postedById: owner.id,
-          },
-          {
-            type: "ROOM",
-            description: "Double Room — 15 Sep",
-            roomStayId: stay?.id,
-            serviceDate: day(1),
-            unitPriceMinor: 12000,
-            taxRateBp: 700,
-            taxAmountMinor: 785,
-            amountMinor: 12000,
-            postedById: owner.id,
-          },
-          {
-            type: "CITY_TAX",
-            description: "City tax — 2 nights × 2 guests",
-            quantity: 4,
-            unitPriceMinor: 200,
-            amountMinor: 800,
-            postedById: owner.id,
-          },
-        ],
-      },
-    },
+  /**
+   * The number comes from the series, not from a literal.
+   *
+   * Writing `SEA-F-00001` by hand while leaving the counter at zero made the
+   * **first real check-out fail** on `folios_propertyId_number_key`: the
+   * product asks the series for a number, is handed the one the seed already
+   * used, and the whole departure transaction rolls back. Every folio number
+   * in the database has to have come from the series, including this one.
+   *
+   * Found by `stay-cycle.e2e.ts` — a check-out that silently did nothing.
+   */
+  const existingFolio = await prisma.folio.findFirst({
+    where: { reservationId: reservation.id },
+    select: { id: true },
   });
+
+  const folio =
+    existingFolio ??
+    (await prisma.folio.create({
+      data: {
+        propertyId: property.id,
+        reservationId: reservation.id,
+        number: await nextSeriesNumber(prisma, {
+          organizationId: organization.id,
+          propertyId: property.id,
+          kind: "FOLIO",
+        }),
+        currencyCode: "EUR",
+        createdById: owner.id,
+        updatedById: owner.id,
+        lines: {
+          create: [
+            {
+              type: "ROOM",
+              description: "Double Room — 14 Sep",
+              roomStayId: stay?.id,
+              serviceDate: day(0),
+              unitPriceMinor: 12000,
+              taxRateBp: 700,
+              taxAmountMinor: 785,
+              amountMinor: 12000,
+              postedById: owner.id,
+            },
+            {
+              type: "ROOM",
+              description: "Double Room — 15 Sep",
+              roomStayId: stay?.id,
+              serviceDate: day(1),
+              unitPriceMinor: 12000,
+              taxRateBp: 700,
+              taxAmountMinor: 785,
+              amountMinor: 12000,
+              postedById: owner.id,
+            },
+            {
+              type: "CITY_TAX",
+              description: "City tax — 2 nights × 2 guests",
+              quantity: 4,
+              unitPriceMinor: 200,
+              amountMinor: 800,
+              postedById: owner.id,
+            },
+          ],
+        },
+      },
+      select: { id: true },
+    }));
 
   await prisma.payment.upsert({
     where: { idempotencyKey: "seed-payment-1" },

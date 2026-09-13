@@ -96,6 +96,7 @@ npm run db:migrate   # prisma migrate dev — create and apply a migration
 npm run db:push      # push the schema with no migration (prototyping only)
 npm run db:generate  # regenerate the client after a schema change
 npm run db:seed      # demo users + one organization
+npm run demo         # a hotel worth showing, on top of the seed
 npm run db:studio    # browse the data
 npx prisma migrate status
 npx prisma migrate reset   # drop, re-migrate, and reseed
@@ -126,6 +127,30 @@ sign-up.
 Re-running is a no-op: existing users are skipped and the organization is
 upserted. The script refuses to run when `NODE_ENV=production` — the shared
 password is a development convenience only.
+
+### The demo data
+
+`npm run demo`, after the seed. Two scripts rather than one because they answer
+different questions: the seed is the **minimal chain that proves the model
+holds** — one room type, two rooms, one booking, the money behind it — and it
+is what the integration tests and a fresh clone want. The demo is the **dressed
+set**: ten rooms across three types, ninety nights of inventory and rates,
+thirteen bookings in every state, and a guest with three stays behind her.
+Folding it into the seed would make every test fixture step around furniture it
+did not ask for.
+
+It is re-runnable in a stronger sense than the seed. Everything it creates is
+referenced `DEMO-…` and it **deletes its own previous run** before building a
+new one, so a rehearsal costs nothing and the picture is identical every time.
+Reservations go before people: `ReservationGuest.person` is `onDelete: Restrict`.
+
+It builds its own `PrismaClient` rather than importing `src/server/db`. That
+module's **default** export arrives in a `.mts` file as a module record, because
+`.mts` is real ESM and `src/` is loaded as CommonJS — `prisma.property` reads
+`undefined` and the error names the model, not the cause. The other scripts
+import named bindings and never meet it.
+
+[demo.md](demo.md) is the path through what it builds.
 
 ### The database
 

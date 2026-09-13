@@ -159,3 +159,67 @@ export const GRID_HIDDEN_STATUSES: readonly string[] = [
 export function appearsOnGrid(status: string): boolean {
   return !GRID_HIDDEN_STATUSES.includes(status);
 }
+
+/**
+ * Which column a day sits in, or `null` when it is outside the window.
+ *
+ * What the grid needs to draw a line down today: the window is an anchor and a
+ * length, so this is a subtraction, and it is here rather than in the component
+ * because being one column out is a line pointing at the wrong day.
+ */
+export function columnOf(day: Date, window: GridWindow): number | null {
+  const offset = nightsBetween(window.from, day);
+  return offset >= 0 && offset < window.nights ? offset : null;
+}
+
+/**
+ * How a single night in one room is occupied.
+ *
+ * The case that matters is `turnover`: one guest leaves on the morning a
+ * another arrives in the afternoon. Half-open dates already say this correctly
+ * — the departing stay's `checkOut` equals the arriving stay's `checkIn`, so
+ * neither holds the night and the exclusion constraint permits both — but the
+ * *drawing* has always shown two chips side by side, where every Russian PMS
+ * splits the cell on the diagonal.
+ *
+ * `out` is the stay that leaves that morning, `in` the one that arrives. Either
+ * may be absent; both absent is a free night and answers `null`.
+ */
+export type NightOccupancy = {
+  kind: "single" | "turnover";
+  /** The stay departing on this day, if one does. */
+  out: number | null;
+  /** The stay arriving on this day, if one does. */
+  in: number | null;
+};
+
+export function occupancyOf(
+  day: Date,
+  stays: readonly (StayRange & { id: number })[]
+): NightOccupancy | null {
+  const at = toStayDate(day).getTime();
+
+  let leaving: number | null = null;
+  let arriving: number | null = null;
+  let staying: number | null = null;
+
+  for (const stay of stays) {
+    const from = toStayDate(stay.checkIn).getTime();
+    const to = toStayDate(stay.checkOut).getTime();
+
+    // The departure day is not a night, so a stay ending here is *leaving* it
+    // rather than occupying it — which is exactly what makes the turnover legal.
+    if (to === at) leaving = stay.id;
+    else if (from === at) arriving = stay.id;
+    else if (from < at && to > at) staying = stay.id;
+  }
+
+  if (leaving !== null && arriving !== null) {
+    return { kind: "turnover", out: leaving, in: arriving };
+  }
+  if (arriving !== null) return { kind: "single", out: null, in: arriving };
+  if (staying !== null) return { kind: "single", out: null, in: staying };
+  // A departure with nobody arriving leaves the night free: the room is
+  // available from that morning, which is the whole point of half-open.
+  return null;
+}

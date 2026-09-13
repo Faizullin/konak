@@ -15,6 +15,7 @@ guide, and the fact of it is appended to history.
 | [architecture.md](architecture.md) | you are new, or unsure where a file goes |
 | [ui-patterns.md](ui-patterns.md) | building a form, list, dialog or combobox |
 | [local-development.md](local-development.md) | setting up, running scripts, the seed, the database |
+| [demo.md](demo.md) | showing the product to someone — the data to load and the path through it |
 
 ## Tests
 

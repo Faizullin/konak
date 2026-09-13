@@ -3,6 +3,7 @@ import { after, before, describe, test } from "node:test";
 import { TRPCError } from "@trpc/server";
 import { callerFor, createFixture, domainCodeOf, prisma, type Fixture } from "./harness";
 import { ReservationError } from "@/features/reservations";
+import { nextSeriesNumber } from "@/features/reservations/server/service";
 
 /**
  * Availability and the booking transaction, against a real database — the half
@@ -417,6 +418,26 @@ describe("the booking transaction", () => {
     assert.ok(a.reference.startsWith("R-"));
     assert.notEqual(a.reference, b.reference);
     assert.match(a.reference, /^R-\d{5}$/);
+  });
+
+  /**
+   * The test above books twice in a row, which the *broken* implementation
+   * passed: reading a counter and writing back what you computed is correct
+   * right up until somebody else is doing it too.
+   *
+   * Two transactions at once is the case that matters — two receptionists
+   * checking guests out on a Saturday morning — and what it produced was a
+   * duplicate folio number and a rolled-back departure.
+   */
+  test("two transactions taking a number at once take different ones", async () => {
+    const args = { organizationId: fx.org.id, propertyId, kind: "RESERVATION" };
+
+    const [a, b] = await Promise.all([
+      prisma.$transaction((tx) => nextSeriesNumber(tx, args)),
+      prisma.$transaction((tx) => nextSeriesNumber(tx, args)),
+    ]);
+
+    assert.notEqual(a, b);
   });
 
   test("more people than the type sleeps is refused, on the field", async () => {

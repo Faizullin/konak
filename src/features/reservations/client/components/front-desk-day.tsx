@@ -26,6 +26,7 @@ import { useBookingActions } from "../hooks/use-booking-actions";
 import type { GeneralRouterOutputs } from "@/server/types";
 import { trpc } from "@/utils/trpc";
 import { WalkInFormNiceDialog } from "./walk-in-form-nice-dialog";
+import { useSurfaceLinks } from "@/store/surface-links";
 
 /**
  * The day a receptionist works down: who arrives, who leaves, who is staying.
@@ -206,6 +207,7 @@ export function FrontDeskDay({
   orgSlug: string;
   propertySlug: string;
 }) {
+  const links = useSurfaceLinks({ orgSlug, propertySlug });
   const { label, confirmed } = useBookingActions(DAY_ACTION_KEYS);
   const formats = useDayFormats();
   const t = useTranslations("reservations");
@@ -312,7 +314,7 @@ export function FrontDeskDay({
               role={role}
               stays={lists[role]}
               today={today}
-              bookingsHref={`/dashboard/orgs/${orgSlug}/front-desk/${propertySlug}/bookings`}
+              bookingsHref={links.bookings()}
               pending={setStatus.isPending}
               onAct={act}
             />

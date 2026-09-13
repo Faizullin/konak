@@ -12,7 +12,7 @@ export type Screen = {
   shot: string;
   title: string;
   description: string;
-  /** `:org` and `:property` are replaced with the seeded slugs. */
+  /** `:org`, `:property` and `:booking` are replaced from the seeded property. */
   path: string;
   /** Signed out, for the screens that only exist that way. */
   anonymous?: boolean;
@@ -67,6 +67,55 @@ export const SCREENS: Screen[] = [
     description:
       "What the hotel has to sell: room categories, the rooms behind them, and the rate plans a stay is quoted on. Manager-only.",
     path: "/dashboard/orgs/:org/front-desk/:property/setup",
+  },
+  {
+    shot: "desk-grid",
+    title: "Desk — the шахматка",
+    description:
+      "The same grid in the new shell: full width, sections down the left, and the day a receptionist works down beside it rather than above it. A stay that ends where another begins is drawn as one cell split on the diagonal — the room is neither free that day nor doubly sold.",
+    path: "/desk/:org/:property",
+  },
+  {
+    shot: "desk-today",
+    title: "Desk — today",
+    description:
+      "Arrivals, departures and who is in house: the three questions a receptionist is asked all morning, as three lists.",
+    path: "/desk/:org/:property/today",
+  },
+  {
+    shot: "desk-bookings",
+    title: "Desk — bookings",
+    description:
+      "Every booking, found without knowing its dates. The archive holds the two endings that occupy no room — a cancellation and a no-show — which is why neither appears on the grid.",
+    path: "/desk/:org/:property/bookings",
+  },
+  {
+    shot: "desk-booking",
+    title: "Desk — a booking, as tabs",
+    description:
+      "The booking's own screen: status and what may be done to it, then the stays, the guests and what is owed. The tabs are URLs, so one receptionist can send another the exact half they mean.",
+    path: "/desk/:org/:property/bookings/:booking",
+  },
+  {
+    shot: "desk-booking-bill",
+    title: "Desk — the bill",
+    description:
+      "The folio: what was charged, what was paid, what is left. Opened by the departure rather than by a button — the number is taken when there is something to number — and it closes only when it balances exactly.",
+    path: "/desk/:org/:property/bookings/:booking/bill",
+  },
+  {
+    shot: "desk-rooms",
+    title: "Desk — rooms",
+    description:
+      "What there is to sell: categories and the rooms behind them. A room's state is derived — occupancy from stays, cleanliness from housekeeping — never stored, because a stored status is stale the moment somebody forgets it.",
+    path: "/desk/:org/:property/rooms",
+  },
+  {
+    shot: "desk-guests",
+    title: "Desk — guests",
+    description:
+      "The directory from the desk's side. A returning guest is one person with a history, not three unrelated bookings.",
+    path: "/desk/:org/:property/guests",
   },
   {
     shot: "directory",

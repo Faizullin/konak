@@ -1,8 +1,9 @@
 # Handoff
 
-**Where it is.** Phases 1, 2 and 4 are done — the database, the domain, and the
-front desk. 46 models on Postgres; seven features, all with routers. Phase 4's
-**Done when** is met: a receptionist can run a day without SQL — arrivals, departures and who is
+**Where it is.** Phases 1, 2 and 4 through 7 are done — the database, the
+domain, the front desk, housekeeping, the money, and the channels. 46 models on
+Postgres; eleven features, ten of them with routers. Phase 4's **Done when** is
+met: a receptionist can run a day without SQL — arrivals, departures and who is
 in house (`reservation.day`), a walk-in that books, assigns and checks in in one
 transaction (`reservation.walkIn`), drag to assign, and check-in / check-out /
 cancel / no-show from either surface. A drag that would overlap is refused with
@@ -26,13 +27,27 @@ from the browser's.
 room types, rooms and rate plans, behind the same module toggle as the desk. It
 is the first screen that is manager-only: OWNER and ADMIN write, MEMBER reads.
 
-**The outbox has a worker now, and no handlers.** `npm run outbox` is a dry run;
-`-- --commit` drains. Nothing registers a handler until the first external
-system in Phase 7, so a commit run today dead-letters whatever it finds — which
-is the intended answer, not a bug.
+**The outbox has a worker and handlers now.** `npm run outbox` is a dry run;
+`-- --commit` drains. Phase 7 registered both channel directions — a push that
+is a diff, and a pull, because a booking made on Booking.com happens where we
+cannot see it. **No vendor is connected**: `ChannelAdapter` is two methods and
+the registry is deliberately empty, so say "ready for", not "connected to".
+
+**There is a second surface.** `/desk/<orgSlug>/<propertySlug>` — five sections
+down the left, its own layout, its own token block under
+`[data-surface="desk"]`. It imports the routers and edits nothing that already
+existed; deleting it would leave the dashboard byte-identical. Built for the
+MVP demonstration under `plans/mvp-roadmap.md`.
+
+**Load the demo data before showing anyone.** `npm run demo`, after the seed:
+ten rooms across three types, ninety nights priced, thirteen bookings in every
+state, a guest with three stays. It clears its own previous run, so rehearse
+freely. `guides/demo.md` is the path through it — ten stops, the client's eight
+items, and what not to promise.
 
 **Start the database first.** `docker compose -f docker/compose/db.yml up -d`,
-then `npm run db:migrate` and `npm run db:seed` on a fresh volume.
+then `npm run db:migrate` and `npm run db:seed` on a fresh volume — and
+`npm run demo` if you are about to show it to anybody.
 
 **The front desk is an off-by-default module.** `FRONT_DESK` in
 `ORG_MODULE_REGISTRY`, like `DIRECTORY`: an organization that runs no hotel
@@ -74,6 +89,20 @@ and uploads **one kind**, so mounting several on a page does not repeat itself.
 Uploading is a MEMBER right and deleting is a manager's, because deleting takes
 the bytes with it. Try it on the demo: sign in as `admin@konak.dev`, open
 Directory, click **Ada Lovelace**.
+
+**What is next on the desk.** `plans/mvp-roadmap.md` § P6 — the theme, and the
+switch that chooses it. It is the last phase on purpose: nothing in the product
+sets the `.dark` class today, so both surfaces define a dark palette only the
+screenshot report can reach, and it reaches it by setting the class by hand.
+
+**A booking opens as tabs on the desk**, and the tabs are routes:
+`/desk/<org>/<property>/bookings/<publicId>` and `/bill`. The decisions live in
+`useBooking`; the components are presentation. The dashboard's own card is
+untouched and still works.
+
+**A component never writes the surface it lives on.** `store/surface-links.tsx`
+— see `guides/architecture.md`. Without it every link out of the desk landed
+back in the dashboard.
 
 **Where to start.** `docs/todo.md`, top entry.
 

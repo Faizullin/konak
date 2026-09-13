@@ -14,6 +14,7 @@
     "db:push": "prisma db push",
     "db:migrate": "prisma migrate dev",
     "db:seed": "tsx --conditions=react-server prisma/seed.ts",
+    "demo": "tsx --conditions=react-server scripts/demo.mts",
     "db:studio": "prisma studio",
     "outbox": "tsx --conditions=react-server scripts/outbox-worker.mts",
     "auth:generate": "npm run db:generate && SKIP_ENV_VALIDATION=1 npx auth@latest generate --config src/server/auth.ts --output prisma/schema/identity.prisma",

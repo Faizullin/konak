@@ -1,0 +1,97 @@
+/* The desk's own look.
+ *
+ * Scoped to `[data-surface="desk"]`, which the desk layout stamps on its root.
+ * The dashboard keeps shadcn's stock zinc exactly as it is — this is a second
+ * surface, and the rule for it is that nothing existing changes.
+ *
+ * Everything here is a **token**. No component names a colour, so a second
+ * treatment later is another block like this one rather than a second set of
+ * components. That is the whole architecture, and it is why the grid's
+ * `--grid-night` pattern was worth copying.
+ *
+ * Four decisions, each against stock:
+ *
+ * 1. **A hue.** Stock `--primary` is near-black zinc, which is why it reads as
+ *    a template. Indigo is far enough from the status hues — sky for confirmed,
+ *    emerald for in-house, amber for dirty — that a primary button is never
+ *    mistaken for a state.
+ * 2. **A separated neutral ramp.** Stock greys sit close together, so a dense
+ *    grid needs a box around everything to be legible. Widening the gap between
+ *    background, card and border lets a row read without one.
+ * 3. **A tighter radius.** `0.625rem` is a marketing radius; an operational
+ *    tool holding hundreds of small rectangles wants about half of it.
+ * 4. **Status as a scale, not six picks.** Enquiry → confirmed → in-house →
+ *    departed walks one arc of lightness and chroma, so states near each other
+ *    in a booking's life look near each other. The shapes in `STATUS_MARK`
+ *    still carry the meaning for anyone who cannot use hue.
+ */
+
+[data-surface="desk"] {
+  --radius: 0.375rem;
+
+  /* Neutrals — cooler and further apart than stock. */
+  --background: oklch(0.985 0.002 264);
+  --foreground: oklch(0.21 0.012 264);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.21 0.012 264);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.21 0.012 264);
+  --muted: oklch(0.962 0.004 264);
+  --muted-foreground: oklch(0.53 0.018 264);
+  --accent: oklch(0.945 0.012 275);
+  --accent-foreground: oklch(0.31 0.06 275);
+  --secondary: oklch(0.955 0.006 264);
+  --secondary-foreground: oklch(0.28 0.02 264);
+  --border: oklch(0.898 0.007 264);
+  --input: oklch(0.898 0.007 264);
+
+  /* The hue. */
+  --primary: oklch(0.48 0.14 275);
+  --primary-foreground: oklch(0.99 0.003 275);
+  --ring: oklch(0.58 0.12 275);
+
+  /* Kept for a genuine problem only: an overbooked night, money overdue. */
+  --destructive: oklch(0.55 0.2 25);
+
+  --sidebar: oklch(0.975 0.004 264);
+  --sidebar-foreground: oklch(0.21 0.012 264);
+  --sidebar-primary: oklch(0.48 0.14 275);
+  --sidebar-primary-foreground: oklch(0.99 0.003 275);
+  --sidebar-accent: oklch(0.94 0.014 275);
+  --sidebar-accent-foreground: oklch(0.31 0.06 275);
+  --sidebar-border: oklch(0.898 0.007 264);
+  --sidebar-ring: oklch(0.58 0.12 275);
+}
+
+/* Front desks run dim, so every value above has a pair. */
+[data-surface="desk"]:is(.dark, .dark *) {
+  --background: oklch(0.17 0.012 264);
+  --foreground: oklch(0.96 0.004 264);
+  --card: oklch(0.215 0.014 264);
+  --card-foreground: oklch(0.96 0.004 264);
+  --popover: oklch(0.215 0.014 264);
+  --popover-foreground: oklch(0.96 0.004 264);
+  --muted: oklch(0.26 0.014 264);
+  --muted-foreground: oklch(0.7 0.018 264);
+  --accent: oklch(0.3 0.04 275);
+  --accent-foreground: oklch(0.93 0.02 275);
+  --secondary: oklch(0.26 0.014 264);
+  --secondary-foreground: oklch(0.93 0.006 264);
+  --border: oklch(0.3 0.012 264);
+  --input: oklch(0.32 0.012 264);
+
+  --primary: oklch(0.68 0.13 275);
+  --primary-foreground: oklch(0.17 0.03 275);
+  --ring: oklch(0.6 0.11 275);
+
+  --destructive: oklch(0.62 0.19 25);
+
+  --sidebar: oklch(0.195 0.013 264);
+  --sidebar-foreground: oklch(0.96 0.004 264);
+  --sidebar-primary: oklch(0.68 0.13 275);
+  --sidebar-primary-foreground: oklch(0.17 0.03 275);
+  --sidebar-accent: oklch(0.3 0.04 275);
+  --sidebar-accent-foreground: oklch(0.93 0.02 275);
+  --sidebar-border: oklch(0.3 0.012 264);
+  --sidebar-ring: oklch(0.6 0.11 275);
+}

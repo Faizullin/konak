@@ -1417,3 +1417,158 @@ half-way sells out a two-room demo for the *next* run. The e2e bootstrap clears
 hold(s)` — the diagnosis confirming itself.
 
 220 unit tests, 145 integration, 27 journeys.
+
+## 2026-09-13 — money, channels, and a desk of its own
+
+Phases 6 and 7 landed as five commits and are described there; the two facts
+worth keeping out of the log are that **a bill refuses to close unless the
+balance is exactly zero** — not "near enough", because a folio that closes over
+a rounding error is a discrepancy nobody can find later — and that **an intent
+to tell a channel something is written in the same transaction as the thing it
+announces**. That second one is why there is no Redis here and will not be: a
+queue outside the database can hold a message for a booking that rolled back,
+or lose one for a booking that did not.
+
+### A second surface, beside the first
+
+`/desk/<org>/<property>` — five sections, its own layout, its own token block
+under `[data-surface="desk"]`. It imports the routers and the models and edits
+nothing that already existed, which is the whole point: if it is abandoned,
+deleting the route and its components leaves the product byte-identical.
+
+The rule it is built under (`plans/mvp-roadmap.md`) turned out to be cheap
+rather than expensive. The screens that took the longest were the ones with
+nothing new in them — composing `FrontDeskDay`, `BookingsTableView` and
+`PeopleTableView` into a different shell took an afternoon, because every
+procedure behind them was already tested.
+
+### The demo is a second script, not a bigger seed
+
+`npm run demo`. Ten rooms across three types, ninety nights of inventory and
+rates with Friday and Saturday at ×1.25, thirteen bookings covering every state
+including a cancellation and a no-show, and Мария Иванова with three stays
+behind her.
+
+Kept out of `prisma/seed.ts` on purpose. The seed is the minimal chain that
+proves the model holds, and every integration fixture is built on the
+assumption that nothing else is there. The demo deletes its own previous run —
+everything it makes is referenced `DEMO-…` — so a rehearsal is free and the
+picture never drifts.
+
+Two things it proved by running. The same-day turnover in room 202 — one stay
+out and another in on the same morning — was **accepted by the exclusion
+constraint**, which is the half-open interval `[checkIn, checkOut)` doing
+exactly what it was chosen for, checked against the database rather than
+against the note that says so. And the `.mts` trap: `import prisma from
+"../src/server/db"` in a real-ESM script yields the module record, not the
+client, so `prisma.property` is `undefined` and the error names the model.
+The other scripts import named bindings and never see it.
+
+`guides/demo.md` is the path through it: ten stops, each discharging one of the
+client's eight MVP items, and a short list of what not to promise.
+
+### And what running it in a browser found
+
+Four failures in the e2e suite, and only one of them was the test's fault.
+
+**Every first check-out failed, in every fresh database.** The seed wrote its
+folio as the literal `SEA-F-00001` while leaving the FOLIO series counter at
+zero, so the first real departure asked the series for a number, was handed the
+one the seed had used, and the whole transaction rolled back on
+`folios_propertyId_number_key`. The desk showed nothing at all — the button
+simply re-enabled. The seed takes its number from the series now, which is the
+invariant that was being asserted in prose and broken in code.
+
+**A bill opened by a departure was invisible.** `folio-panel.tsx` learnt the
+folio id only from the mutation that creates one, so a reservation whose bill
+check-out had already opened still showed *Open the bill* — offering to do a
+thing that was done. `billing.currentFolio` is the read it was missing.
+
+**A two-room hotel cannot serve a parallel suite.** Four specs named
+`roomIds[1]` and all booked tonight; `room_stays_no_overlap` refused three of
+them, correctly. The fixture asks for `roomId: "free"` now — a room nothing
+holds on those nights, retried against the constraint rather than locked
+against it — and takes that room's *category* with it, because a Double booking
+in a Single room is legal in SQL and wrong on the grid. The e2e database
+carries the demo hotel for the same reason.
+
+**And the residue rule, learnt a second time.** A test that fails half-way
+never reaches its cleanup, and a leftover departure clean made the next run
+find two of them and fail on strict mode. `e2e-db.mts` cleared holds for
+exactly this reason already; it clears housekeeping tasks and issues now too,
+before the seed rather than after.
+
+**The report was photographing loading states.** `load` fires while every query
+is in flight, so the шахматка — the one screen the report exists for — came out
+an empty grey box. It waits for no `[data-slot="skeleton"]` to remain, which
+`networkidle` could never do here because the desk polls forever. Sixty shots,
+none flagged, both languages, both themes.
+
+## 2026-09-13 — the booking as tabs, and a number two clerks could both take
+
+`/desk/<org>/<property>/bookings/<publicId>`, with `/bill` beside it. Kontur's
+shape, and **the tabs are routes** — the booking was given a `publicId` URL so
+one receptionist could send a booking to another, and the half they usually
+mean is the bill. A tab held in component state cannot be sent.
+
+`Услуги` folded into the bill: a service is a folio line of type `SERVICE` and
+the panel already posts one, so a tab that is the same panel with a filter
+teaches nobody anything. **`История` was dropped**, and that was not a choice —
+the plan said `AuditLog` served it, and `AuditLog` has no writer and no reader.
+Claiming a table is a feature is the kind of thing only building it finds.
+
+### The logic left the markup
+
+`useBooking` answers what the booking is, which transitions are offered, which
+are refused and why. The desk's components are presentation and hold no
+decision the hook could hold. That is the part that makes a third style cheap:
+a second presentation that re-derived "which buttons, and why the rest are
+refused" would be a second chance to get it wrong, and the two would drift the
+first time a rule changed.
+
+### A component never writes the surface it lives on
+
+Mounting the desk exposed a habit rather than a bug: the grid, the day lists
+and the bookings table each built `/dashboard/orgs/…/bookings/<publicId>`
+inline, so every link out of the desk landed back in the dashboard.
+`store/surface-links.tsx` is the contract, and it is additive — with no
+provider it returns exactly the paths that were written by hand.
+
+The first version of it took the whole desk surface down. It exported a
+`deskLinks()` builder from a `"use client"` module and the server layout called
+it; React refuses to let a server component *invoke* a client export, and every
+desk route became a 500. What crosses the boundary is a base path now, and the
+shapes below it are built inside the client.
+
+**The report caught it and the suite did not.** Sixty-eight shots, twenty-eight
+flagged, every desk screen a 500 — and `npm run test:e2e` still printed green,
+because the capture pass asserts almost nothing by design. It asserts one thing
+now: a 5xx fails. A picture of an error page is worth nothing.
+
+### And a folio number two clerks could both take
+
+Then the real one. `folio.e2e.ts` began failing only under parallel load, on
+`folios_propertyId_number_key`, and the cause was `nextSeriesNumber`:
+
+```ts
+const counter = series.counter + 1;
+await tx.numberSeries.update({ where: { id: series.id }, data: { counter } });
+```
+
+Read the counter, add one, write it back — with a comment claiming *the update
+is what makes two clerks saving at once take different numbers*. It is not.
+Under `READ COMMITTED` both transactions read the same counter, both wrote the
+same number, and the loser's entire check-out rolled back. Two receptionists
+checking guests out at the same moment is a Saturday morning, not an exotic
+case.
+
+The increment happens in the database now — `{ counter: { increment: 1 } }`,
+which compiles to `counter = counter + 1`, takes the row lock and re-reads the
+committed value. The yearly reset is conditional on the period it restarts
+*from*, so two transactions on New Year's Day cannot both decide they are
+taking number 1.
+
+The test that was supposed to cover this — *references come from the series and
+never repeat* — books twice **in a row**, and passed against the broken code the
+whole time. The new one books twice **at once**, and was checked the only way
+worth checking: reverted to the old implementation, watched it fail, restored.

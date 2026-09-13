@@ -1,5 +1,6 @@
 import auth from "./auth.json";
 import billing from "./billing.json";
+import desk from "./desk.json";
 import directory from "./directory.json";
 import enums from "./enums.json";
 import errors from "./errors.json";
@@ -25,6 +26,7 @@ import validation from "./validation.json";
 const ru = {
   auth,
   billing,
+  desk,
   directory,
   enums,
   errors,

@@ -57,11 +57,22 @@ export function FolioPanel({
   const methodLabels = useEnumLabels("paymentMethod", PAYMENT_METHOD_VALUES);
   const { handleError } = useErrorHandlers();
 
-  const [folioId, setFolioId] = useState<number | null>(null);
+  const [opened, setOpened] = useState<number | null>(null);
   const utils = trpc.useUtils();
 
+  // A departure opens the bill in the same transaction that records it, so the
+  // folio usually exists before anybody looks at this screen. Asking is the
+  // only way to know: the mutation below creates one, and pressing it to find
+  // out would be the wrong question.
+  const { data: existing, isLoading: finding } = trpc.billing.currentFolio.useQuery({
+    propertyId,
+    reservationId,
+  });
+
+  const folioId = opened ?? existing?.id ?? null;
+
   const open = trpc.billing.folioForReservation.useMutation({
-    onSuccess: (folio) => setFolioId(folio.id),
+    onSuccess: (folio) => setOpened(folio.id),
     onError: (error) => handleError(error),
   });
 
@@ -89,6 +100,8 @@ export function FolioPanel({
 
   const pending =
     postLine.isPending || voidLine.isPending || takePayment.isPending || close.isPending;
+
+  if (finding) return <Skeleton className="h-48 w-full" />;
 
   if (folioId === null) {
     return (

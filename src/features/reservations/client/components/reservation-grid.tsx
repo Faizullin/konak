@@ -13,6 +13,7 @@ import {
   ChevronsRight,
   CircleQuestionMark,
   Plus,
+  Link as LinkIcon,
   Search,
   X,
 } from "lucide-react";
@@ -37,12 +38,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useErrorHandlers, useRefusalText } from "@/lib/errors";
 import { cn } from "@/lib/utils";
 import { ROOM_STATUS_VALUES, RoomStatus } from "@/features/properties";
 import {
   assignLanes,
+  columnOf,
   GRID_WINDOW_NIGHTS,
   laneCount,
   nextStatuses,
@@ -62,6 +65,7 @@ import { useBookingActions } from "../hooks/use-booking-actions";
 import { DENSITY_VALUES, useDeskPreferences, type Density } from "../hooks/use-desk-preferences";
 import type { GeneralRouterOutputs } from "@/server/types";
 import { trpc } from "@/utils/trpc";
+import { useSurfaceLinks } from "@/store/surface-links";
 
 type Grid = GeneralRouterOutputs["reservation"]["grid"];
 type GridStay = Grid["rooms"][number]["stays"][number];
@@ -189,6 +193,35 @@ function useGridFormats() {
 }
 
 const isWeekend = (date: Date) => date.getUTCDay() === 0 || date.getUTCDay() === 6;
+
+/**
+ * The diagonal seam where one guest leaves and another arrives.
+ *
+ * A same-day turnover is the most ordinary event in the business, and
+ * half-open dates already say it correctly: the departing stay's `checkOut`
+ * equals the arriving stay's `checkIn`, so neither holds that night and the
+ * two chips sit in adjacent columns. Drawn as two square blocks that reads as
+ * two separate things; every Russian PMS slants the join so it reads as one
+ * handover.
+ *
+ * **This changes no geometry.** The spans, the lanes and the drag arithmetic
+ * are untouched — only the chip's silhouette is cut, so a real trailing edge
+ * leans one way and a real leading edge leans the other, and the two together
+ * make the diagonal. A *clipped* edge is not a real one and stays square:
+ * slanting it would claim the stay ends here when it only leaves the window.
+ *
+ * `min()` so a one-night chip at compact density keeps a straight middle.
+ */
+const SLANT = "min(0.5rem, 22%)";
+
+function chipShape(stay: { continuesBefore: boolean; continuesAfter: boolean }): string {
+  const left = stay.continuesBefore ? "0" : SLANT;
+  const right = stay.continuesAfter ? "100%" : `calc(100% - ${SLANT})`;
+  // Top-left, top-right, bottom-right, bottom-left. The lean lives in the two
+  // bottom corners, so the departing chip's underside pulls back and the
+  // arriving chip's underside reaches forward.
+  return `polygon(${left} 0, 100% 0, ${right} 100%, 0 100%)`;
+}
 
 /**
  * `<input type="date">` speaks `YYYY-MM-DD` and a stay date is UTC midnight, so
@@ -351,7 +384,11 @@ function StayChip({
       // opens on every drag, and the actions want more room than one anyway.
       onClick={() => onSelect(stay.id)}
       aria-pressed={selected}
-      style={{ gridColumn: `${shownOffset + 1} / span ${shownNights}`, gridRow: stay.lane + 1 }}
+      style={{
+        gridColumn: `${shownOffset + 1} / span ${shownNights}`,
+        gridRow: stay.lane + 1,
+        clipPath: chipShape(stay),
+      }}
       // The chip's words, and the only place the status is said rather than
       // marked — `STATUS_MARK` is `aria-hidden` precisely because this is here.
       title={`${stay.reference} · ${statusLabels[stay.status as ReservationStatus] ?? stay.status} · ${formats.range.format(stay.checkIn)} → ${formats.range.format(stay.checkOut)} · ${t("list.nightCount", { nights })}`}
@@ -430,12 +467,15 @@ function rescheduleStay(
 function NightArea({
   nights,
   lanes,
+  todayColumn,
   children,
   onDropStay,
   className,
 }: {
   nights: Date[];
   lanes: number;
+  /** Which column is the property's today, or `-1` when it is out of view. */
+  todayColumn?: number;
   children?: ReactNode;
   onDropStay?: (column: number) => void;
   className?: string;
@@ -464,7 +504,14 @@ function NightArea({
         <div
           key={night.toISOString()}
           style={{ gridColumn: index + 1, gridRow: `1 / -1` }}
-          className={cn("border-border/60 border-l", isWeekend(night) && "bg-muted/40")}
+          className={cn(
+            "border-border/60 border-l",
+            isWeekend(night) && "bg-muted/40",
+            // Today, down every row. A receptionist finds their place on this
+            // screen dozens of times a shift, and counting columns from the
+            // header is the thing it saves.
+            index === todayColumn && "bg-primary/5 border-l-primary/50"
+          )}
         />
       ))}
       {children}
@@ -536,6 +583,24 @@ function StayActions({
         <Button nativeButton={false} size="sm" variant="outline" render={<Link href={href} />}>
           {t("grid.open")}
         </Button>
+        {/* Kontur's context menu carries «скопировать ссылку» and it is how one
+            receptionist sends a booking to another. The card is already at a
+            stable `publicId` URL, so this is the clipboard and nothing else. */}
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={() => {
+            const url = new URL(href, window.location.origin).toString();
+            // A clipboard write can be refused — an insecure origin, a denied
+            // permission — and a toast that lies is worse than no toast.
+            navigator.clipboard
+              .writeText(url)
+              .then(() => toast.success(t("grid.linkCopied")))
+              .catch(() => toast.error(t("grid.linkNotCopied")));
+          }}
+        >
+          <LinkIcon />
+        </Button>
         {actions.map(({ status, refusal }) => (
           <Button
             key={status}
@@ -591,6 +656,9 @@ export function ReservationGrid({
 }) {
   const statusLabels = useEnumLabels("reservationStatus", RESERVATION_STATUS_VALUES);
   const labels = useEnumLabels("roomStatus", ROOM_STATUS_VALUES);
+  // Where a chip and the search button go: the dashboard's paths by default,
+  // the desk's when the desk is what is mounted around this.
+  const links = useSurfaceLinks({ orgSlug, propertySlug });
   const { label, confirmed } = useBookingActions(GRID_ACTION_KEYS);
   const formats = useGridFormats();
   const t = useTranslations("reservations");
@@ -919,6 +987,9 @@ export function ReservationGrid({
   const nights = shown?.window.nights ?? [];
   const width = `calc(var(--grid-label) + ${nights.length} * var(--grid-night))`;
   const lastNight = shiftStayDays(view.to, -1);
+  // `-1` when today is outside the window, which every comparison below reads
+  // as "no column" without a second flag.
+  const todayColumn = columnOf(today, { from: view.from, nights: preferences.windowNights }) ?? -1;
   /**
    * Collapsed inside one month, spelled out when the window crosses one — the
    * behaviour `formatRange` gave, assembled from calls that hydrate.
@@ -931,7 +1002,10 @@ export function ReservationGrid({
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-2">
+      {/* Four groups, not one run of eight: where you are · how much you see ·
+          how it looks · what you can do. A toolbar that is a pile is one a
+          person re-reads every time instead of reaching. */}
+      <div className="flex flex-wrap items-center gap-1">
         <Button
           variant="outline"
           size="icon"
@@ -982,6 +1056,8 @@ export function ReservationGrid({
         />
         <span className="text-sm font-medium">{windowLabel}</span>
 
+        <Separator orientation="vertical" className="mx-1 h-6" />
+
         <Select
           value={String(preferences.windowNights)}
           onValueChange={(value) => update({ windowNights: Number(value) as GridWindowNights })}
@@ -1014,6 +1090,8 @@ export function ReservationGrid({
           </SelectContent>
         </Select>
 
+        <Separator orientation="vertical" className="mx-1 h-6" />
+
         {/* The walk-in beside this books tonight. This is every other
             booking — the only path to a date that is not today. */}
         <Button
@@ -1031,11 +1109,13 @@ export function ReservationGrid({
           nativeButton={false}
           variant="outline"
           size="sm"
-          render={<Link href={`/dashboard/orgs/${orgSlug}/front-desk/${propertySlug}/bookings`} />}
+          render={<Link href={links.bookings()} />}
         >
           <Search />
           {t("grid.findBooking")}
         </Button>
+
+        <Separator orientation="vertical" className="mx-1 h-6" />
 
         {/* Two paragraphs of instructions permanently under a screen read for
             eight hours is clutter after the first day; the same words one click
@@ -1077,7 +1157,7 @@ export function ReservationGrid({
           stay={selected.stay}
           today={today}
           roomNumber={selected.room}
-          href={`/dashboard/orgs/${orgSlug}/front-desk/${propertySlug}/bookings/${selected.stay.publicId}`}
+          href={links.booking(selected.stay.publicId)}
           pending={setStatus.isPending}
           onAct={(status) => act(selected.stay, status)}
           onClose={() => setSelectedId(null)}
@@ -1109,7 +1189,7 @@ export function ReservationGrid({
           <div style={{ minWidth: width }}>
             <div className="bg-muted/60 flex border-b">
               <RowLabel className="bg-muted/60 font-medium">{t("grid.room")}</RowLabel>
-              <NightArea nights={nights} lanes={1}>
+              <NightArea nights={nights} lanes={1} todayColumn={todayColumn}>
                 {nights.map((night, index) => (
                   <div
                     key={night.toISOString()}
@@ -1164,7 +1244,7 @@ export function ReservationGrid({
                         <span>{t("grid.free")}</span>
                       </span>
                     </RowLabel>
-                    <NightArea nights={nights} lanes={2}>
+                    <NightArea nights={nights} lanes={2} todayColumn={todayColumn}>
                       {nights.map((night, index) => {
                         const counts = byType.nightly.get(`${type.id}:${night.getTime()}`);
                         return (
@@ -1195,11 +1275,18 @@ export function ReservationGrid({
                   </div>
 
                   {!collapsed && band && (
-                    <div className="flex border-b bg-amber-50/60">
+                    // Named for the same reason `stay-actions` is: the label a
+                    // test would reach for is translated.
+                    <div data-testid="unassigned-band" className="flex border-b bg-amber-50/60">
                       <RowLabel className="text-muted-foreground bg-amber-50/60 text-xs">
                         {t("grid.unassigned")}
                       </RowLabel>
-                      <NightArea nights={nights} lanes={band.lanes} onDropStay={drop(null)}>
+                      <NightArea
+                        nights={nights}
+                        lanes={band.lanes}
+                        todayColumn={todayColumn}
+                        onDropStay={drop(null)}
+                      >
                         {band.stays.map((stay) => (
                           <StayChip
                             key={stay.id}
@@ -1238,6 +1325,7 @@ export function ReservationGrid({
                         <NightArea
                           nights={nights}
                           lanes={room.lanes}
+                          todayColumn={todayColumn}
                           onDropStay={drop(room.roomId)}
                           className={cn(
                             room.status === RoomStatus.OUT_OF_ORDER && "bg-destructive/5"

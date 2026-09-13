@@ -85,6 +85,8 @@
     "close": "Закрыть",
     "selectedBooking": "Выбранная бронь",
     "open": "Открыть",
+    "linkCopied": "Ссылка скопирована",
+    "linkNotCopied": "Не удалось скопировать ссылку",
     "moveRefused": "Перенос отклонён",
     "previousWeek": "Предыдущая неделя",
     "previousDay": "Предыдущий день",

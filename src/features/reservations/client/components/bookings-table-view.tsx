@@ -24,6 +24,7 @@ import { useEnumLabels } from "@/lib/labels";
 import { formatMoney } from "@/lib/money";
 import type { GeneralRouterOutputs } from "@/server/types";
 import { trpc } from "@/utils/trpc";
+import { useSurfaceLinks } from "@/store/surface-links";
 
 type BookingRow = GeneralRouterOutputs["reservation"]["list"]["items"][number];
 
@@ -54,7 +55,8 @@ export function BookingsTableView({
   const searchParams = useSearchParams();
   const [{ page, perPage, sort, search, status, view }] = useBookingTableParams();
 
-  const bookingsHref = `/dashboard/orgs/${orgSlug}/front-desk/${propertySlug}/bookings`;
+  // Where a row goes is the surface's business, not this table's.
+  const links = useSurfaceLinks({ orgSlug, propertySlug });
 
   const dates = useMemo(
     () => new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", timeZone: "UTC" }),
@@ -85,7 +87,7 @@ export function BookingsTableView({
     params.set("view", next);
     // The old page number means nothing in a different set of rows.
     params.delete("page");
-    router.replace(`${bookingsHref}?${params.toString()}`);
+    router.replace(`${links.bookings()}?${params.toString()}`);
   };
 
   const columns = useMemo<ColumnDef<BookingRow>[]>(
@@ -95,10 +97,7 @@ export function BookingsTableView({
         accessorKey: "guestName",
         header: ({ column }) => <DataTableColumnHeader column={column} title={t("list.guest")} />,
         cell: ({ row }) => (
-          <Link
-            href={`${bookingsHref}/${row.original.publicId}`}
-            className="font-medium hover:underline"
-          >
+          <Link href={links.booking(row.original.publicId)} className="font-medium hover:underline">
             {row.original.guestName ?? row.original.reference}
           </Link>
         ),
@@ -199,7 +198,7 @@ export function BookingsTableView({
         enableSorting: true,
       },
     ],
-    [t, statusLabels, dates, locale, bookingsHref]
+    [t, statusLabels, dates, locale, links]
   );
 
   const { table } = useDataTable({

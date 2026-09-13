@@ -87,6 +87,29 @@ export const billingRouter = createTRPCRouter({
       });
     }),
 
+  /**
+   * The folio this reservation already has, or `null`.
+   *
+   * A read, because a screen has to tell "no bill yet" from "a bill the
+   * departure opened". Without it the only way to learn a folio id is the
+   * mutation above — and a bill created by check-out then stays invisible
+   * behind a button offering to open one, which is both wrong and alarming.
+   */
+  currentFolio: protectedProcedure
+    .input(folioForReservationSchema)
+    .query(async ({ ctx, input }) => {
+      await requirePropertyMember(ctx, input.propertyId);
+
+      return ctx.db.folio.findFirst({
+        where: {
+          reservationId: input.reservationId,
+          propertyId: input.propertyId,
+          status: { not: FolioStatus.VOID },
+        },
+        select: { id: true },
+      });
+    }),
+
   get: protectedProcedure.input(closeFolioSchema).query(async ({ ctx, input }) => {
     await requirePropertyMember(ctx, input.propertyId);
 

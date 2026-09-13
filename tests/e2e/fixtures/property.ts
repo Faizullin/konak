@@ -20,6 +20,9 @@ export type SeededProperty = {
   roomIds: number[];
   /** The path every front-desk screen hangs off. */
   deskPath: string;
+  /** A booking to open — the one with a bill behind it, so the report's Оплата
+      tab photographs lines and a payment rather than an empty panel. */
+  bookingPublicId: string;
 };
 
 export async function seededProperty(): Promise<SeededProperty> {
@@ -47,6 +50,19 @@ export async function seededProperty(): Promise<SeededProperty> {
     [property.id]
   );
 
+  // Preferring one that already has a folio: `order by` puts the billed ones
+  // first and falls back to any booking, so this never returns nothing on a
+  // database where nobody has checked out.
+  const booking = await one<{ publicId: string }>(
+    `select r."publicId"
+       from reservations r
+       left join folios f on f."reservationId" = r.id
+      where r."propertyId" = $1
+      order by (f.id is null), r.id
+      limit 1`,
+    [property.id]
+  );
+
   return {
     organizationSlug: property.orgSlug,
     propertySlug: property.slug,
@@ -56,5 +72,6 @@ export async function seededProperty(): Promise<SeededProperty> {
     roomTypeId: roomTypes[0]!.id,
     roomIds: rooms.map((room) => room.id),
     deskPath: `/dashboard/orgs/${property.orgSlug}/front-desk/${property.slug}`,
+    bookingPublicId: booking.publicId,
   };
 }

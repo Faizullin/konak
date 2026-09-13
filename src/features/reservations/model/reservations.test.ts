@@ -28,6 +28,8 @@ import {
   shiftStayDays,
   searchTerms,
   SEARCH_TERM_LIMIT,
+  columnOf,
+  occupancyOf,
   spanInWindow,
   statusesInView,
   staysOverlap,
@@ -581,4 +583,36 @@ test("a half-typed date is not a date", () => {
   assert.equal(fromDayInput("2026-0"), null);
   assert.equal(fromDayInput("17/09/2026"), null);
   assert.equal(fromDayInput("2026-13-01"), null);
+});
+
+test("today is a column, or it is outside the window", () => {
+  const window = { from: d(10), nights: 14 };
+
+  assert.equal(columnOf(d(10), window), 0);
+  assert.equal(columnOf(d(23), window), 13);
+
+  // One column out is a line pointing at the wrong day.
+  assert.equal(columnOf(d(24), window), null);
+  assert.equal(columnOf(d(9), window), null);
+});
+
+test("a departure and an arrival on one day is a turnover, not two nights", () => {
+  const out = { id: 1, checkIn: d(1), checkOut: d(4) };
+  const into = { id: 2, checkIn: d(4), checkOut: d(6) };
+
+  // The most ordinary event in the business, and the one an inclusive
+  // comparison refuses: neither stay holds the 4th.
+  assert.deepEqual(occupancyOf(d(4), [out, into]), { kind: "turnover", out: 1, in: 2 });
+
+  // The days either side are ordinary.
+  assert.deepEqual(occupancyOf(d(3), [out, into]), { kind: "single", out: null, in: 1 });
+  assert.deepEqual(occupancyOf(d(5), [out, into]), { kind: "single", out: null, in: 2 });
+});
+
+test("a departure with nobody arriving leaves the night free", () => {
+  const out = { id: 1, checkIn: d(1), checkOut: d(4) };
+
+  // The room is available from that morning — the whole point of half-open.
+  assert.equal(occupancyOf(d(4), [out]), null);
+  assert.equal(occupancyOf(d(9), [out]), null);
 });

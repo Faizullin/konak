@@ -13,6 +13,7 @@ const compat = new FlatCompat({
 const FEATURES = [
   "billing",
   "channels",
+  "desk",
   "directory",
   "housekeeping",
   "identity",

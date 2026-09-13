@@ -69,6 +69,18 @@ after(async () => {
 });
 
 describe("a bill that balances, settles and closes", () => {
+  test("a reservation says whether it already has a bill, without opening one", async () => {
+    const caller = callerFor(fx.owner);
+
+    // Nothing yet, and asking must not create one — the screen calls this on
+    // every render of a booking card.
+    assert.equal(await caller.billing.currentFolio({ propertyId, reservationId }), null);
+
+    const folio = await caller.billing.folioForReservation({ propertyId, reservationId });
+    const found = await caller.billing.currentFolio({ propertyId, reservationId });
+    assert.equal(found?.id, folio.id);
+  });
+
   test("the whole cycle, and the number came from the series", async () => {
     const caller = callerFor(fx.owner);
 

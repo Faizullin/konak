@@ -19,9 +19,10 @@ test("a stay goes from booked to cleaned, without anyone being told twice", asyn
   bookings,
   property,
 }) => {
-  // Booked: arriving today, in a room, so check-in is legal.
-  const booking = await bookings.create({ arrivesIn: 0, nights: 1, roomId: property.roomIds[1] });
-  const room = await roomNumber(property.roomIds[1]!);
+  // Booked: arriving today, in a room, so check-in is legal. Which room is the
+  // fixture's business — six specs want "a room today" at once.
+  const booking = await bookings.create({ arrivesIn: 0, nights: 1, roomId: "free" });
+  const room = await roomNumber(booking.roomId!);
 
   await grid.open();
   await grid.select(booking.guestName);
@@ -50,7 +51,7 @@ test("a stay goes from booked to cleaned, without anyone being told twice", asyn
   await expect(card.getByText("Clean", { exact: true })).toBeVisible();
   await expect(card.getByText("Nothing owed")).toBeVisible();
 
-  await cleanTasks(property.roomIds[1]!);
+  await cleanTasks(booking.roomId!);
 });
 
 test("a blocking fault takes the room out of sale, from the floor", async ({ page, property }) => {

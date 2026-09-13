@@ -23,10 +23,95 @@ export type BookingSeed = {
   arrivesIn?: number;
   nights?: number;
   status?: string;
-  /** A door, or `null` to leave it in the unassigned band. */
-  roomId?: number | null;
+  /**
+   * A door, `null` to leave it in the unassigned band, or `"free"` for any room
+   * nothing else holds on those nights.
+   *
+   * Prefer `"free"`. A hard-coded index is how four specs came to book the
+   * second room today at once, and `room_stays_no_overlap` refused three of
+   * them — correctly. The constraint was never the flake; the fixture was.
+   */
+  roomId?: number | null | "free";
   guest?: { firstName: string; lastName: string };
 };
+
+/** Postgres says this when two stays claim one room on one night. */
+const EXCLUSION_VIOLATION = "23P01";
+
+/**
+ * A room nothing holds between these dates, skipping any already tried.
+ *
+ * Ordered at random rather than by id: the point is that two workers asking at
+ * the same moment usually get different answers, so the retry below is a rare
+ * second attempt instead of the normal path.
+ */
+async function freeRoom(args: {
+  propertyId: number;
+  checkIn: Date;
+  checkOut: Date;
+  exclude: number[];
+}): Promise<{ id: number; roomTypeId: number }> {
+  return one<{ id: number; roomTypeId: number }>(
+    `select r.id, r."roomTypeId"
+       from rooms r
+      where r."propertyId" = $1
+        and r."archivedAt" is null
+        and not (r.id = any($4::int[]))
+        and not exists (
+          select 1 from room_stays s
+           where s."roomId" = r.id
+             and s.status = any($5::text[])
+             and s."checkIn" < $3
+             and s."checkOut" > $2)
+      order by random()
+      limit 1`,
+    [args.propertyId, args.checkIn, args.checkOut, args.exclude, [...HOLDING_STATUSES]]
+  );
+}
+
+/**
+ * The stay, and one more attempt if somebody took the room in between.
+ *
+ * Choosing and inserting are two statements, so a parallel worker can claim the
+ * room in the gap. The database is the only authority on that, and it answers
+ * with `23P01` — so the honest loop is to ask it again rather than to lock a
+ * table the product never locks.
+ */
+async function insertStay(args: {
+  reservationId: number;
+  roomTypeId: number;
+  propertyId: number;
+  roomId: number | null | "free";
+  status: string;
+  checkIn: Date;
+  checkOut: Date;
+}): Promise<number | null> {
+  const tried: number[] = [];
+
+  for (let attempt = 0; ; attempt += 1) {
+    // A chosen room brings its own category. Taking the property's first one
+    // instead puts a Double booking in a Single room — legal in SQL, and the
+    // grid then draws the chip in a group the stay does not belong to.
+    const free = args.roomId === "free" ? await freeRoom({ ...args, exclude: tried }) : null;
+    const roomId = free ? free.id : (args.roomId as number | null);
+    const roomTypeId = free ? free.roomTypeId : args.roomTypeId;
+
+    try {
+      await query(
+        `insert into room_stays
+           ("reservationId", "roomTypeId", "roomId", status,
+            "checkIn", "checkOut", adults, "currencyCode", "totalMinor", "updatedAt")
+         values ($1, $2, $3, $4, $5, $6, 1, 'EUR', 0, now())`,
+        [args.reservationId, roomTypeId, roomId, args.status, args.checkIn, args.checkOut]
+      );
+      return roomId;
+    } catch (error) {
+      const code = (error as { code?: string }).code;
+      if (args.roomId !== "free" || code !== EXCLUSION_VIOLATION || attempt >= 4) throw error;
+      tried.push(roomId as number);
+    }
+  }
+}
 
 /** UTC midnight, the way `toStayDate` in `model/stay.ts` defines a stay date. */
 const stayDate = (offsetDays: number) => {
@@ -88,16 +173,19 @@ export function createBookingsFixture(context: {
       );
       reservations.push(reservation.id);
 
-      await query(
-        `insert into room_stays
-           ("reservationId", "roomTypeId", "roomId", status,
-            "checkIn", "checkOut", adults, "currencyCode", "totalMinor", "updatedAt")
-         values ($1, $2, $3, $4, $5, $6, 1, 'EUR', 0, now())`,
-        [reservation.id, context.roomTypeId, roomId, status, checkIn, checkOut]
-      );
+      const assigned = await insertStay({
+        reservationId: reservation.id,
+        roomTypeId: context.roomTypeId,
+        propertyId: context.propertyId,
+        roomId,
+        status,
+        checkIn,
+        checkOut,
+      });
 
       return {
         id: reservation.id,
+        roomId: assigned,
         publicId,
         reference,
         guestName: `${guest.firstName} ${guest.lastName}`,

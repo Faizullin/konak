@@ -45,10 +45,10 @@ test("a booking that has not arrived cannot check in, and the button says why", 
   await expect(checkIn).toHaveAttribute("title", /room|arrive/i);
 });
 
-test("a guest arriving today, in a room, checks in", async ({ grid, bookings, property, page }) => {
-  // The second room: the seed's own booking holds the first for these nights,
-  // and the exclusion constraint is right to refuse a second guest in it.
-  const booking = await bookings.create({ arrivesIn: 0, roomId: property.roomIds[1] });
+test("a guest arriving today, in a room, checks in", async ({ grid, bookings, page }) => {
+  // Whichever room is free tonight. Naming one made four specs fight over it,
+  // and `room_stays_no_overlap` refused three — the constraint being right.
+  const booking = await bookings.create({ arrivesIn: 0, roomId: "free" });
 
   await grid.open();
   await grid.select(booking.guestName);
@@ -74,9 +74,12 @@ test("an unassigned booking is drawn in its type's band, not in a room", async (
 
   // The band is the piece most naive grids omit, and the reason a booking can
   // exist before a door is chosen.
-  const band = page.getByText("Unassigned").first();
-  await expect(band).toBeVisible();
-  await expect(grid.chip(booking.guestName)).toBeVisible();
+  //
+  // Asserted as *this* chip inside a band rather than as "a band exists": any
+  // other unassigned booking in the property would satisfy the weaker form,
+  // and the report's dataset has one.
+  const band = page.getByTestId("unassigned-band");
+  await expect(band.filter({ has: grid.chip(booking.guestName) })).toBeVisible();
 });
 
 test("the window is an anchor, so a date is reached in one act", async ({ grid, bookings }) => {

@@ -199,6 +199,30 @@ top-level route risking a collision with a public page.
 
 There are no `_components/` directories. Feature UI lives in the feature.
 
+### A component never writes the surface it lives on
+
+`/desk` is that second surface, and mounting one exposed a habit: the grid, the
+day lists and the bookings table each built
+`/dashboard/orgs/…/front-desk/…/bookings/<publicId>` inline. Rendered on the
+desk, every one of those links threw the user back into the dashboard.
+
+`store/surface-links.tsx` holds the answer. `useSurfaceLinks({ orgSlug,
+propertySlug })` returns `grid()`, `bookings()` and `booking(publicId)`; with no
+provider above it, it returns exactly the dashboard paths that used to be
+written by hand, so a component rendered anywhere behaves as it always did. A
+surface mounts `<SurfaceLinksProvider base="/desk/acme/seaside">` and the same
+components link into it instead.
+
+**What crosses into a server component is a string, not a function.** The first
+version exported a `deskLinks()` builder from that `"use client"` module and had
+the desk layout call it. React refuses — *attempted to call it from the server* —
+and every desk route 500s. A client module's exports may be rendered or passed
+as props; they may not be invoked. So the context carries a base path and the
+shapes below it are built inside the client.
+
+Add a link to the contract when a second surface needs it, not before: a
+component that builds its own URL is fine until two surfaces render it.
+
 ## Table conventions
 
 Every table obeys these. A review rejects one that does not.

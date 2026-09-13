@@ -1,0 +1,22 @@
+{
+  "nav": {
+    "label": "Sections",
+    "grid": "Grid",
+    "today": "Today",
+    "bookings": "Bookings",
+    "rooms": "Rooms",
+    "guests": "Guests"
+  },
+  "section": {
+    "grid": "Grid",
+    "today": "Today",
+    "bookings": "Bookings",
+    "rooms": "Rooms",
+    "guests": "Guests"
+  },
+  "booking": {
+    "tabs": "Booking sections",
+    "main": "Details",
+    "bill": "Bill"
+  }
+}

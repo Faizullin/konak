@@ -19,14 +19,22 @@ test("a departure opens the bill, and the desk settles and closes it", async ({
   bookings,
   property,
 }) => {
-  const booking = await bookings.create({ arrivesIn: 0, nights: 1, roomId: property.roomIds[1] });
+  const booking = await bookings.create({ arrivesIn: 0, nights: 1, roomId: "free" });
 
   await grid.open();
   await grid.select(booking.guestName);
   await grid.action("Check in").click();
+
+  // Wait for the arrival to land. Clicking straight through sends check-out
+  // against a booking that is still CONFIRMED, which is refused — and the
+  // symptom is this test failing three assertions later, on a missing bill.
+  await expect(grid.action("Check out")).toBeEnabled();
   await grid.action("Check out").click();
 
-  await grid.select(booking.guestName).catch(() => {});
+  // And for the departure. Navigating while the mutation is still in flight
+  // loads the card before the folio exists, and the bill looks unopened.
+  await expect(grid.action("Check out")).toBeHidden();
+
   await page.goto(`${property.deskPath}/bookings/${booking.publicId}`);
 
   // Opened by the departure, not by a button: the number was taken when there
@@ -54,11 +62,11 @@ test("a departure opens the bill, and the desk settles and closes it", async ({
   // And a closed bill is a record: no more charges.
   await expect(page.getByRole("button", { name: "Post", exact: true })).toBeHidden();
 
-  await cleanUp(booking.id, property.roomIds[1]!);
+  await cleanUp(booking.id, booking.roomId!);
 });
 
 test("a void is struck through, not removed", async ({ page, property, bookings }) => {
-  const booking = await bookings.create({ arrivesIn: 0, nights: 1, roomId: property.roomIds[0] });
+  const booking = await bookings.create({ arrivesIn: 0, nights: 1, roomId: "free" });
 
   await page.goto(`${property.deskPath}/bookings/${booking.publicId}`);
   await page.getByRole("button", { name: "Open the bill" }).click();
@@ -77,7 +85,7 @@ test("a void is struck through, not removed", async ({ page, property, bookings 
   await expect(line).toBeVisible();
   await expect(line).toHaveCSS("text-decoration-line", /line-through/);
 
-  await cleanUp(booking.id, property.roomIds[0]!);
+  await cleanUp(booking.id, booking.roomId!);
 });
 
 /** The bill, the task and the room state this journey created. */

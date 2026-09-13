@@ -55,7 +55,7 @@ test("the tabs partition the states, so a cancelled booking leaves Current", asy
 });
 
 test("a room number finds the booking in it", async ({ page, property, bookings }) => {
-  const booking = await bookings.create({ arrivesIn: 20, roomId: property.roomIds[1] });
+  const booking = await bookings.create({ arrivesIn: 20, roomId: "free" });
 
   await page.goto(listPath(property.deskPath));
   // The desk knows "102" and nothing else — the caller on the phone said it.

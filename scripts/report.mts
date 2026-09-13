@@ -25,6 +25,8 @@ type Row = {
   status: number | null;
   ms: number;
   redirectedToSignIn: boolean;
+  /** False when something was still a skeleton when the shutter went. */
+  loaded?: boolean;
   consoleErrors: string[];
   pageErrors: string[];
   failedRequests: string[];
@@ -42,6 +44,9 @@ const rows: Row[] = readdirSync(join(dir, "rows"))
   .map((row) => ({ ...row, consoleErrors: row.consoleErrors.filter((e) => !NOISE.test(e)) }));
 
 const findings = (row: Row) => [
+  // First, because it is the one that makes a shot worthless: a picture of a
+  // loading state is a picture of nothing.
+  ...(row.loaded === false ? ([["not loaded", "still loading when photographed"]] as const) : []),
   ...row.consoleErrors.map((e) => ["console", e] as const),
   ...row.pageErrors.map((e) => ["page error", e] as const),
   ...row.failedRequests.map((e) => ["request", e] as const),

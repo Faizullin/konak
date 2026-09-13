@@ -46,7 +46,50 @@ const run = (command: string, args: string[]) =>
   execFileSync(command, args, { stdio: "inherit", env });
 
 run("npx", ["prisma", "migrate", "deploy"]);
+
+/**
+ * Operational residue does not survive a run, and is cleared *before* the seed
+ * so the seed's own rows come back.
+ *
+ * A test that fails half-way never reaches its cleanup, and what it leaves is
+ * not inert: a departure clean on room 301 makes the next run's assertion find
+ * two of them and fail on strict mode — a green suite turning red because of
+ * the run before it. Rooms go back to clean for the same reason.
+ *
+ * The same lesson as the holds below, learnt twice. Nothing here is work
+ * anybody is waiting on.
+ */
+const before = new Client({ connectionString: url.toString() });
+await before.connect();
+const residue = await before
+  .query("delete from housekeeping_tasks")
+  .then(async (tasks) => {
+    await before.query("delete from maintenance_issues");
+    await before.query("update rooms set status = 'CLEAN'");
+    return tasks.rowCount ?? 0;
+  })
+  .catch(() => 0); // A database created this minute has no tables yet.
+await before.end();
+if (residue) console.log(`cleared ${residue} leftover task(s)`);
+
 run("npx", ["tsx", "--conditions=react-server", "prisma/seed.ts"]);
+
+/**
+ * And the demo hotel on top of it.
+ *
+ * Not decoration. The suite is `fullyParallel` against one property, and
+ * several specs need *a room tonight* — with the seed's two rooms the third
+ * worker to ask finds none, which is `room_stays_no_overlap` being right and
+ * the fixture being starved. Ten rooms is enough for any worker count this
+ * machine will choose.
+ *
+ * It is also what makes the screenshot report worth showing: a two-room hotel
+ * photographs as a product nobody would buy.
+ *
+ * `demo.mts` clears its own previous run, so the state is identical every time
+ * rather than accumulating across runs.
+ */
+run("npx", ["tsx", "--conditions=react-server", "scripts/demo.mts"]);
 
 /**
  * Holds do not survive a run.

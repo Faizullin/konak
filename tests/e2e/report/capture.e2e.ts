@@ -1,6 +1,6 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { test } from "../lib/fixtures";
+import { expect, test } from "../lib/fixtures";
 import { storageStateFor } from "../fixtures/auth";
 import { LOCALES, SCREENS, THEMES, type Screen } from "./screens";
 
@@ -66,7 +66,8 @@ for (const locale of LOCALES) {
 
           const path = screen.path
             .replace(":org", property.organizationSlug)
-            .replace(":property", property.propertySlug);
+            .replace(":property", property.propertySlug)
+            .replace(":booking", property.bookingPublicId);
 
           const started = Date.now();
           // Not `networkidle`: the desk polls every thirty seconds, so the
@@ -84,9 +85,41 @@ for (const locale of LOCALES) {
             await page.evaluate(() => document.documentElement.classList.add("dark"));
           }
 
+          /**
+           * And wait for the data, which is the whole subject.
+           *
+           * `load` fires while every query is still in flight, and the шахматка
+           * photographed at that moment is an empty grey box — the one screen
+           * the report exists for, showing nothing. `networkidle` cannot be the
+           * answer either: the desk polls every thirty seconds, so the network
+           * is never idle.
+           *
+           * Every loading state in the product is the same component, so the
+           * honest signal is that none of them is on screen any more. Recorded
+           * rather than thrown: a shot that timed out here is still worth
+           * having, and the manifest says it is not finished.
+           */
+          const skeletons = page.locator('[data-slot="skeleton"]');
+          let loaded = true;
+          try {
+            await expect(skeletons).toHaveCount(0, { timeout: 15_000 });
+          } catch {
+            loaded = false;
+          }
+
           // A signed-in screen that bounced to sign-in is a finding, not a
           // shot to quietly keep.
           const redirectedToSignIn = page.url().includes("/sign-in") && !screen.anonymous;
+
+          /**
+           * A server error is the one thing this pass does assert.
+           *
+           * It asserts little by design — but sixty green shots while every
+           * desk screen was a 500 is the report lying, and that happened: the
+           * manifest recorded it and the suite still passed. A picture of an
+           * error page is worth nothing, so this fails rather than files it.
+           */
+          expect(response?.status() ?? 0, `${path} returned a server error`).toBeLessThan(500);
 
           mkdirSync(OUT_DIR, { recursive: true });
           const file = `${name}.png`;
@@ -104,6 +137,7 @@ for (const locale of LOCALES) {
               file,
               status: response?.status() ?? null,
               ms,
+              loaded,
               redirectedToSignIn,
               consoleErrors,
               pageErrors,

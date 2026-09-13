@@ -85,6 +85,8 @@
     "close": "Close",
     "selectedBooking": "Selected booking",
     "open": "Open",
+    "linkCopied": "Link copied",
+    "linkNotCopied": "Could not copy the link",
     "moveRefused": "That move was refused",
     "previousWeek": "Previous week",
     "previousDay": "Previous day",

@@ -181,7 +181,21 @@ export async function availability(
   );
 }
 
-/** The next number in a series, consumed inside the caller's transaction. */
+/**
+ * The next number in a series, consumed inside the caller's transaction.
+ *
+ * **The increment happens in the database, not here.** This used to read the
+ * counter, add one, and write the result back — and claimed in a comment that
+ * the write was what kept two clerks apart. It was not: under `READ COMMITTED`
+ * both transactions read the same counter and both wrote the same number, and
+ * the loser died on `folios_propertyId_number_key` with the whole check-out
+ * rolled back. Two receptionists checking guests out at the same moment is not
+ * an exotic case; it is a Saturday morning.
+ *
+ * `increment` compiles to `counter = counter + 1`, which takes the row lock and
+ * re-reads the committed value — so the second transaction waits and then gets
+ * the next number rather than the same one.
+ */
 export async function nextSeriesNumber(
   tx: Pick<typeof prisma, "numberSeries">,
   args: { organizationId: number; propertyId: number; kind: string }
@@ -204,17 +218,29 @@ export async function nextSeriesNumber(
     ).with({ kind: args.kind });
   }
 
-  // A yearly series restarts when the period changes; the update is what makes
-  // two clerks saving at once take different numbers.
-  const reset = series.resetPolicy === "YEARLY" && series.period !== period;
-  const counter = reset ? 1 : series.counter + 1;
+  const format = (counter: number) =>
+    `${series.prefix}${String(counter).padStart(series.padding, "0")}`;
 
-  await tx.numberSeries.update({
+  // A yearly series restarts when the period changes. Conditional on the period
+  // it is restarting *from*, so that two transactions arriving together on New
+  // Year's Day cannot both decide they are the one taking number 1: the second
+  // re-evaluates the clause against the committed row, matches nothing, and
+  // falls through to the increment below.
+  if (series.resetPolicy === "YEARLY" && series.period !== period) {
+    const { count } = await tx.numberSeries.updateMany({
+      where: { id: series.id, period: series.period },
+      data: { counter: 1, period },
+    });
+    if (count === 1) return format(1);
+  }
+
+  const taken = await tx.numberSeries.update({
     where: { id: series.id },
-    data: { counter, period: reset ? period : series.period },
+    data: { counter: { increment: 1 } },
+    select: { counter: true },
   });
 
-  return `${series.prefix}${String(counter).padStart(series.padding, "0")}`;
+  return format(taken.counter);
 }
 
 export type GridStay = Laned<GridSpan> & {
