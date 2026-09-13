@@ -38,14 +38,12 @@ export const housekeepingRouter = createTRPCRouter({
    * about. The tasks and open faults hang off it.
    */
   board: protectedProcedure.input(boardInputSchema).query(async ({ ctx, input }) => {
-    await requirePropertyMember(ctx, input.propertyId);
+    const { property } = await requirePropertyMember(ctx, input.propertyId);
 
-    const property = await ctx.db.property.findUniqueOrThrow({
-      where: { id: input.propertyId },
-      select: { timezone: true },
-    });
     // The property's day, not the phone's: a cleaner starting at 01:00 is still
-    // on yesterday's board in some timezones and tomorrow's in others.
+    // on yesterday's board in some timezones and tomorrow's in others. The
+    // guard already read the row; asking for it again was a second round trip
+    // on a screen that polls.
     const day = input.day ? toStayDate(input.day) : todayAt(property.timezone);
 
     const [rooms, tasks, issues] = await Promise.all([
@@ -115,21 +113,15 @@ export const housekeepingRouter = createTRPCRouter({
     // Together, not one after the other: neither answer decides whether to ask
     // for the other, and three sequential round trips for one button is the
     // kind of thing the end-of-phase pass exists to catch.
-    const [room, hotel] = await Promise.all([
-      ctx.db.room.findFirst({
-        where: { id: input.roomId, propertyId: input.propertyId },
-        select: { id: true },
-      }),
-      ctx.db.property.findUniqueOrThrow({
-        where: { id: property.id },
-        select: { timezone: true },
-      }),
-    ]);
+    const room = await ctx.db.room.findFirst({
+      where: { id: input.roomId, propertyId: input.propertyId },
+      select: { id: true },
+    });
     if (!room) {
       throw new NotFoundError("room.not_found", "Room not found");
     }
 
-    const dueDate = input.day ? toStayDate(input.day) : todayAt(hotel.timezone);
+    const dueDate = input.day ? toStayDate(input.day) : todayAt(property.timezone);
 
     // The same work sent twice from a stairwell is one task. `clientEventId` is
     // unique, so this is the write itself refusing rather than a check racing it.

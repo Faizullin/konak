@@ -42,8 +42,15 @@ const validation = JSON.parse(readFileSync("messages/en/validation.json", "utf8"
  */
 function validationKeysInUse(): Set<string> {
   const keys = new Set<string>();
+  /**
+   * The third alternative is `superRefine`'s `ctx.addIssue({ message: "…" })`.
+   *
+   * A rule that needs the whole object — "these two dates are more than a year
+   * apart" — cannot be written as `.min()` on a field, so it is written there
+   * instead, and the key is just as real.
+   */
   const call =
-    /\.(?:min|max|length|regex|refine|startsWith|endsWith|nonempty)\([^)]*?"([a-z][a-z0-9_]*)"\s*\)|z\.(?:email|url|uuid|string|number)\(\s*"([a-z][a-z0-9_]*)"\s*\)/g;
+    /\.(?:min|max|length|regex|refine|startsWith|endsWith|nonempty)\([^)]*?"([a-z][a-z0-9_]*)"\s*\)|z\.(?:email|url|uuid|string|number)\(\s*"([a-z][a-z0-9_]*)"\s*\)|message:\s*"([a-z][a-z0-9_]*)"/g;
 
   for (const feature of readdirSync("src/features")) {
     const dir = `src/features/${feature}/model`;
@@ -56,8 +63,8 @@ function validationKeysInUse(): Set<string> {
     for (const file of files) {
       if (file.endsWith(".test.ts")) continue;
       const source = readFileSync(`${dir}/${file}`, "utf8");
-      for (const [, a, b] of source.matchAll(call)) {
-        const key = a ?? b;
+      for (const [, a, b, c] of source.matchAll(call)) {
+        const key = a ?? b ?? c;
         if (key) keys.add(key);
       }
     }

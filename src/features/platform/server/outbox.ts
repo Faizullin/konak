@@ -125,6 +125,38 @@ export async function enqueueOutbox(db: Enqueuer, input: EnqueueOutboxInput) {
 }
 
 /**
+ * Many intents, one statement.
+ *
+ * `enqueueOutbox` is a read and a write per task, which is right when there is
+ * one — it answers with the task, existing or new, so a caller can retry
+ * without asking first. It is wrong when there are ten thousand: deleting an
+ * organization filed one storage removal per attachment, in a loop, inside the
+ * transaction that also holds the cascade. Twenty thousand sequential
+ * statements while `organizations` is locked.
+ *
+ * `skipDuplicates` is the same promise the single version makes, made by the
+ * unique index instead: a key already filed is already said. What is given up
+ * is the returned rows, and a caller filing in bulk does not want them.
+ */
+export async function enqueueOutboxMany(db: Enqueuer, inputs: EnqueueOutboxInput[]) {
+  if (inputs.length === 0) return 0;
+
+  const parsed = inputs.map((input) => enqueueOutboxSchema.parse(input));
+  const { count } = await db.outboxTask.createMany({
+    data: parsed.map((task) => ({
+      type: task.type,
+      payloadJson: JSON.stringify(task.payload),
+      organizationId: task.organizationId ?? null,
+      idempotencyKey: task.idempotencyKey ?? null,
+      availableAt: task.availableAt ?? new Date(),
+    })),
+    skipDuplicates: true,
+  });
+
+  return count;
+}
+
+/**
  * Take up to `limit` due tasks, atomically.
  *
  * Raw SQL, and the one place in the tree that earns it: `FOR UPDATE SKIP

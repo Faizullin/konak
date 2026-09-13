@@ -45,6 +45,7 @@ before(async () => {
       stays: {
         create: [
           {
+            propertyId,
             roomTypeId: property.roomTypes[0]!.id,
             status: "CHECKED_OUT",
             checkIn: new Date(Date.UTC(2027, 2, 1)),
@@ -349,6 +350,7 @@ describe("two hands on one bill", () => {
         stays: {
           create: [
             {
+              propertyId,
               roomTypeId,
               status: "CHECKED_OUT",
               checkIn: new Date(Date.UTC(2027, 5, 1)),

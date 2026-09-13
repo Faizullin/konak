@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { Refused } from "@/lib/refusal";
 import { ReservationError } from "./errors";
-import { toStayDate } from "./stay";
+import { reservationDates, toStayDate } from "./stay";
 
 /**
  * Reservation state, as a machine. The column is a string; these values and the
@@ -88,10 +88,7 @@ export function refuseStatusChange({ from, to, stays, today }: StatusChange): Re
 
   // A booking arrives when its earliest stay does and ends when its last one
   // does, so the rules read the whole reservation.
-  const dates = stays.map((stay) => toStayDate(stay.checkIn).getTime());
-  const ends = stays.map((stay) => toStayDate(stay.checkOut).getTime());
-  const arrival = dates.length > 0 ? new Date(Math.min(...dates)) : null;
-  const departure = ends.length > 0 ? new Date(Math.max(...ends)) : null;
+  const { arrival, departure } = reservationDates(stays);
 
   if (to === ReservationStatus.CHECKED_IN && stays.some((stay) => stay.roomId === null)) {
     return { code: ReservationError.ROOM_REQUIRED, message: "Assign a room first" };

@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { Prisma } from "@/generated/prisma/client";
 import { requireUser } from "@/server/auth";
 import { InvalidError, userNotFound } from "@/server/errors";
+import { like } from "@/server/search";
 import { adminProcedure, createTRPCRouter, protectedProcedure } from "@/server/trpc";
 import {
   UserRole,
@@ -13,6 +14,8 @@ import {
   updateProfileInputSchema,
   userRoleSchema,
 } from "../model";
+import { AuditAction } from "@/features/platform";
+import { writeAudit } from "@/features/platform/server";
 
 /**
  * Identity feature — who the caller is. Better Auth owns the `User` table and
@@ -40,10 +43,10 @@ export const userRouter = createTRPCRouter({
 
     const where: Prisma.UserWhereInput = {};
     if (filter?.name) {
-      where.name = { contains: filter.name };
+      where.name = like(filter.name);
     }
     if (filter?.email) {
-      where.email = { contains: filter.email };
+      where.email = like(filter.email);
     }
     if (filter?.role) {
       where.role = filter.role;
@@ -94,9 +97,29 @@ export const userRouter = createTRPCRouter({
         }
       }
 
-      return ctx.db.user.update({
-        where: { id: input.id },
-        data: { role: input.role },
+      /**
+       * The highest-privilege act in the product, and the one with no tenant:
+       * an install-wide ADMIN can reach every organization. Recorded in the
+       * transaction that grants it, with the role it replaced.
+       */
+      return ctx.db.$transaction(async (tx) => {
+        const updated = await tx.user.update({
+          where: { id: input.id },
+          data: { role: input.role },
+        });
+
+        await writeAudit(tx, {
+          actorUserId: ctx.session.user.id,
+          action: AuditAction.UPDATE,
+          entityType: "User",
+          entityId: input.id,
+          summary: `Install role changed from ${target.role} to ${input.role}`,
+          ipAddress: ctx.ipAddress,
+          before: target,
+          after: updated,
+        });
+
+        return updated;
       });
     }),
 });

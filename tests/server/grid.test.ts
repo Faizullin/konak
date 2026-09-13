@@ -93,6 +93,7 @@ before(async () => {
         bookerPersonId: args.bookerPersonId,
         stays: {
           create: {
+            propertyId,
             roomTypeId: args.roomTypeId,
             roomId: args.roomId,
             status: args.status,
@@ -306,5 +307,40 @@ describe("the window", () => {
       () => caller.reservation.grid({ propertyId, from: day(1), to: june(3) }),
       (e) => code(e) === "BAD_REQUEST"
     );
+  });
+});
+
+describe("the stay's copy of its property", () => {
+  /**
+   * The column exists because filtering through `reservation` made the planner
+   * walk every booking a property has ever taken — 195 ms at 300k stays, on a
+   * screen that polls. Table convention 1 allows the copy only because it
+   * cannot disagree with its parent, and this is that guarantee, asserted.
+   *
+   * Without the composite foreign key the column is exactly the bug the
+   * convention warns about: a scope that quietly says the wrong hotel, on the
+   * table every availability question is answered from.
+   */
+  test("cannot be set to a property the reservation does not belong to", async () => {
+    const other = await prisma.property.create({
+      data: {
+        organizationId: fx.org.id,
+        name: `Elsewhere ${fx.tag}`,
+        slug: `elsewhere-${fx.tag}`,
+        currencyCode: "EUR",
+      },
+    });
+
+    const stay = await prisma.roomStay.findFirstOrThrow({
+      where: { propertyId },
+      select: { id: true },
+    });
+
+    await assert.rejects(
+      () => prisma.roomStay.update({ where: { id: stay.id }, data: { propertyId: other.id } }),
+      /room_stays_property_matches_reservation|foreign key/i
+    );
+
+    await prisma.property.delete({ where: { id: other.id } });
   });
 });

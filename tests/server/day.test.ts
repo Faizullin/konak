@@ -98,6 +98,7 @@ before(async () => {
         bookerPersonId: args.bookerPersonId,
         stays: {
           create: {
+            propertyId,
             roomTypeId: args.roomTypeId,
             roomId: args.roomId,
             status: args.status,
@@ -366,6 +367,7 @@ describe("moving a stay's dates", () => {
         status: "CONFIRMED",
         stays: {
           create: {
+            propertyId,
             roomTypeId: doubleId,
             roomId: room.id,
             status: "CONFIRMED",
@@ -388,6 +390,7 @@ describe("moving a stay's dates", () => {
         status: "CONFIRMED",
         stays: {
           create: {
+            propertyId,
             roomTypeId: doubleId,
             roomId: rooms["10"],
             status: "CONFIRMED",
@@ -490,6 +493,7 @@ describe("moving a stay's dates", () => {
         status: "CHECKED_IN",
         stays: {
           create: {
+            propertyId,
             roomTypeId: doubleId,
             roomId: rooms["20"],
             status: "CHECKED_IN",

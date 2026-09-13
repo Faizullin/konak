@@ -19,6 +19,7 @@ import type { InboundReservation } from "@/features/channels/server";
 let fx: Fixture;
 let propertyId: number;
 let roomTypeId: number;
+let roomId: number;
 let connection: { id: number; propertyId: number; channelCode: string; organizationId: number };
 
 const arriving = (over: Partial<InboundReservation> = {}): InboundReservation => ({
@@ -60,6 +61,12 @@ before(async () => {
   propertyId = property.id;
   roomTypeId = property.roomTypes[0]!.id;
 
+  // One real room: a walk-in needs a door, and availability counts rooms.
+  const room = await prisma.room.create({
+    data: { propertyId, roomTypeId, number: `C-${fx.tag}` },
+  });
+  roomId = room.id;
+
   const row = await prisma.channelConnection.create({
     data: {
       propertyId,
@@ -81,6 +88,9 @@ after(async () => {
   await prisma.outboxTask.deleteMany({ where: { organizationId: fx.org.id } });
   await prisma.reservation.deleteMany({ where: { propertyId } });
   await prisma.channelConnection.deleteMany({ where: { propertyId } });
+  // Rooms before types: `Room.roomType` is Restrict, so a type cannot go while
+  // a room still names it.
+  await prisma.room.deleteMany({ where: { propertyId } });
   await prisma.roomType.deleteMany({ where: { propertyId } });
   await prisma.property.deleteMany({ where: { organizationId: fx.org.id } });
   await fx.cleanup();
@@ -178,6 +188,64 @@ describe("telling the channels", () => {
       where: { organizationId: fx.org.id, type: "channel.push" },
     });
     assert.equal(tasks, 1);
+  });
+
+  /**
+   * The invariant, asserted rather than assumed.
+   *
+   * "An intent is written in the same transaction as the change it announces"
+   * was true of `create` and `setStatus` and quietly false of three others —
+   * each of which changes what is for sale. A walk-in is the worst: it takes a
+   * room off *tonight's* market while every channel is still selling it.
+   *
+   * Written as a loop over the ways the market moves, so the next one that
+   * forgets shows up here rather than as an overbooking.
+   */
+  test("every change to what is for sale enqueues a push", async () => {
+    const caller = callerFor(fx.owner);
+
+    const moves: [string, () => Promise<unknown>][] = [
+      [
+        "a walk-in",
+        () =>
+          caller.reservation.walkIn({
+            propertyId,
+            roomTypeId,
+            roomId,
+            nights: 1,
+            adults: 1,
+            children: 0,
+            firstName: "Walk",
+            lastName: `In-${fx.tag}`,
+          }),
+      ],
+      [
+        "a booking arriving from a channel",
+        () =>
+          applyInboundReservation(connection, {
+            externalRef: `IN-${fx.tag}-${Date.now()}`,
+            externalRoomTypeId: "DBL-EXT",
+            cancelled: false,
+            checkIn: new Date(Date.UTC(2027, 8, 1)),
+            checkOut: new Date(Date.UTC(2027, 8, 2)),
+            adults: 1,
+            children: 0,
+            currencyCode: "EUR",
+            totalMinor: 10_000,
+            guest: { firstName: "Ota", lastName: `Guest-${fx.tag}` },
+          }),
+      ],
+    ];
+
+    for (const [what, run] of moves) {
+      await prisma.outboxTask.deleteMany({ where: { organizationId: fx.org.id } });
+      await run();
+
+      const queued = await prisma.outboxTask.count({
+        where: { organizationId: fx.org.id, type: "channel.push" },
+      });
+      assert.equal(queued, 1, `${what} told the channels nothing`);
+    }
   });
 
   test("a paused connection is not queued for", async () => {

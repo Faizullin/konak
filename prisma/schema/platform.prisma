@@ -163,8 +163,14 @@ model CustomFieldDefinition {
 // member being removed. `VIEW` matters as much as `UPDATE`: "who read this
 // passport" is the question a regulator asks.
 model AuditLog {
-  id             Int      @id @default(autoincrement())
-  organizationId Int
+  id Int @id @default(autoincrement())
+  /**
+   * Nullable, because the highest-privilege act in the product has no tenant:
+   * making somebody an install-wide ADMIN is done from `identity.updateRole`,
+   * which is not scoped to an organization at all. A required column here would
+   * have meant either inventing a tenant for it or not recording it.
+   */
+  organizationId Int?
   actorUserId    String?
   action         String // VIEW, CREATE, UPDATE, ARCHIVE, EXPORT, SIGN
   entityType     String
@@ -174,8 +180,13 @@ model AuditLog {
   ipAddress      String?
   createdAt      DateTime @default(now())
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-
+  // **No relation to `Organization`, deliberately.** It was
+  // `onDelete: Cascade`, four lines under a comment saying nothing deletes a
+  // row here — so deleting a tenant erased the record of who deleted it, which
+  // is the row most worth keeping. `organizationId` is a scope to filter by,
+  // not a parent to inherit from: the same reading `actorUserId` already has,
+  // which is a `User` id with no foreign key so the trail survives a membership
+  // being removed.
   @@index([organizationId, createdAt])
   @@index([entityType, entityId])
   @@index([actorUserId, createdAt])

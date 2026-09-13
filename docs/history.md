@@ -2007,3 +2007,370 @@ exist, and answering "not found" would confirm another tenant's id to somebody
 guessing at numbers.
 
 250 unit, 179 integration, 103 browser.
+
+## 2026-09-13 — the guard stopped asking a question it already had the answer to
+
+`requirePropertyMember` → `requireOrgMember` → `requireUser`: three strictly
+sequential queries in front of ~90 procedures, and the grid and the day lists
+run two of those every thirty seconds per open desk.
+
+The third was redundant, and `requireUser`'s own docstring said so — *"callers
+needing only [id, email, name, role] should read `ctx.session.user` and skip
+this"*. `requireOrgMember` needed an id. A grep settled the risk: **`user.id` is
+the only field any caller of these guards reads**, 53 times across the features,
+and nothing touches `email`, `role` or anything else. `requireUser` keeps its
+six direct callers, where the live row is the point.
+
+One behaviour changes and it is the right way round: a caller deleted
+mid-session now gets FORBIDDEN rather than NOT_FOUND. `OrganizationMember`
+cascades from `User`, so they were going to be refused either way, and "is this
+yours" is the question being asked.
+
+### And five procedures stopped re-reading a row the guard had
+
+`requirePropertyMember` selected `{ id, organizationId }`, so
+`reservation.create`, `reservation.walkIn`, `housekeeping.board`,
+`housekeeping.createTask` and `properties.hasLiveStays` each fetched the same
+property again for a `timezone` or a `currencyCode`. It selects the whole small
+row now. `hasLiveStays` takes the timezone as an argument rather than fetching
+one, which is the honest shape for a helper that was never about properties.
+
+That is `roadmap.md`'s end-of-phase question — *does any request do the same
+lookup twice?* — answered five times in one change.
+
+## 2026-09-13 — three ways the market moved without telling anybody
+
+The outbox exists so that an intent is written in the same transaction as the
+change it announces — that is the whole argument for keeping it in Postgres
+rather than in a queue beside it. `create` and `setStatus` did it. Three others
+did not, and each of them changes what is for sale:
+
+- **`walkIn`** takes a room off *tonight's* market, which is the most
+  overbooking-prone moment there is: every connected channel is still selling
+  it.
+- **`moveStay`** changes which nights are sold, in both directions.
+- **`applyInboundReservation`** — a booking from Booking.com reduces what
+  Expedia and Airbnb may sell, and nothing was telling them. The one direction
+  of the whole channel design that was missing.
+
+A cancellation arriving from a channel now announces itself too: a room coming
+back is news for whoever could sell it.
+
+`moveStay` pushes from the **earlier** of the two dates. A stay that shifts
+frees the nights it left as well as taking the ones it arrived on, and
+announcing only the new dates would leave a channel refusing to sell a night
+nobody occupies any more.
+
+### The invariant is asserted now, not assumed
+
+`channels.test.ts` gained *"every change to what is for sale enqueues a push"* —
+a loop over the ways the market moves rather than a test per procedure, so the
+next one that forgets shows up as a failure instead of as an overbooking.
+Checked by removing the walk-in's push: **"a walk-in told the channels
+nothing"**, which is the assertion naming the bug.
+
+250 unit, 180 integration, 103 browser.
+
+## 2026-09-13 — the index that could not have worked
+
+The plan said *measure first*, and measuring changed the answer.
+
+300,000 stays across five years, a one-month window — the shape a real property
+reaches. As shipped: **195 ms**, on a screen that polls every thirty seconds per
+open desk. With the index the audit proposed, `(checkIn, checkOut)` on
+`room_stays`: **193 ms**. With the reverse order: 193 ms. With status added:
+199 ms.
+
+**The planner never chose any of them**, and that is the whole finding. The
+property filter lives on `reservations`, so Postgres drives from there — an
+index scan over every booking the property has ever taken, then a nested-loop
+probe into `room_stays` three hundred thousand times. An index on the stay's
+dates cannot help a plan that never reaches the stay first. One run showed
+2.5 ms for a date-leading index and it was not reproducible: the planner had
+flipped, and a number that appears once is not a result.
+
+So the answer was the option listed second, which the table conventions argue
+against: **the stay carries its own `propertyId`**, and the same query is
+**0.02 ms**. Four orders of magnitude, and it stops growing with history.
+
+### Taking the exception honestly
+
+Convention 1 does not forbid a copied tenant scope arbitrarily — it gives a
+reason: *"a copied scope can disagree with its parent, which is worse than the
+join it saves."*
+
+This one cannot disagree. `room_stays_property_matches_reservation` is a
+composite foreign key onto `reservations (id, propertyId)`, so the database
+refuses any stay whose property differs from its reservation's — written in SQL
+rather than modelled in Prisma, like the overlap constraint beside it. An
+integration test asserts the refusal, because the guarantee *is* the
+justification: without it the column is exactly the bug the convention warns
+about, on the table every availability question is answered from.
+
+The compiler found every writer that had to change, which is the argument for a
+required column over a nullable one.
+
+250 unit, 181 integration, 103 browser.
+
+## 2026-09-13 — the client's report writes itself
+
+`guides/mvp-report.ru.md` was a guide by filing accident: written in Russian for
+somebody who will never open this repository, and with no pictures — which for
+that reader was most of what it was for. It is now
+`reports/mvp-report.ru.md`, and `npm run report:mvp` generates it.
+
+**Two files, one document, and a check that they cannot drift.** The prose is
+`reports/src/mvp-report.ru.md`, because `architecture.md` keeps content out of
+code and a client-facing paragraph is content. What to photograph is
+`tests/e2e/mvp/steps.ts`, because a route, an action and a crop are code. They
+are joined by `{{shot:id}}`, and the composer refuses to write the document if a
+placeholder names a picture nobody took **or** a picture no placeholder uses.
+That check is the reason the split is safe rather than a second place to forget.
+
+**It performs actions, and most shots are crops.** A dialog nobody opened is not
+in the picture, and a 1440px page scaled into a document shows a reader nothing
+— the subject of "sold and free per night" is four numbers. The fragile half is
+named where it lives: a locator that silently moves photographs the wrong thing
+confidently, so every crop asserts its target is visible and has a box before
+the shutter. That assertion, plus a 5xx, is all this pass asserts.
+
+**Located by what a person sees, in the language of the shot.** The locators
+come from `messages/ru/*.json`, so a renamed button fails the run instead of
+quietly framing something else.
+
+**The rule about committed screenshots was narrowed, not broken.** `/reports`
+stays git-ignored: 72 shots, two locales, two schemes, a PDF, a run's output.
+`docs/reports/` is committed, because a document whose images are not in the
+repository is not a document — and it is budgeted to stay that way: one locale,
+one scheme, fifteen shots, 872 kB. The 3 MB of stale light-only PNGs in
+`docs/screenshots-report/`, from a generator that no longer exists, went in the
+same change. The repository got smaller.
+
+`gen-*.png` is the script's; anything else in `screens/` is a person's and is
+never touched. So a step removed from the manifest cannot leave a stale picture
+behind, and a photograph somebody dropped in by hand survives every run.
+
+**Two things it found by photographing them.** The seed's accounts were written
+out twice — `prisma/seed.ts` and the browser fixture — and a report quoting a
+password the seed no longer writes is worse than a report with no accounts, so
+they are `prisma/accounts.ts` now, with three readers. And the grid's two
+selects showed `comfortable` and `31` on a Russian screen: Base UI's
+`Select.Value` renders the *value* unless it is handed a function. Both are
+fixed; the other sixteen bare `<SelectValue />` are in `todo.md`, because
+sweeping them was not this change.
+
+## 2026-09-13 — a range nobody meant
+
+`model/grid.ts` has said since it was written that *"the cap exists because the
+window is what bounds the query — without it one request asks for a year of
+every room"*. It was applied to the grid and to nothing else.
+
+So any signed-in member could send `from: 2020, to: 2120` to
+`reservation.availability` or `rate.calendar` — `availability()` builds a row
+per room type per night in memory, which is thirty-six thousand of them per
+type, for free. Or to `rate.setRates`, where the same range becomes a
+`deleteMany`, one insert per night and a channel push **in a single
+transaction**: 3,653 of each, from a typo in a year.
+
+`MAX_RANGE_NIGHTS` is 400 — a little over a year, so "this date next year" is
+still one request — and `boundedRange` applies it as a schema refinement rather
+than a check in four procedures. Refused on **`to`**, because that is the field
+somebody got wrong.
+
+### The test had to learn a new shape
+
+`error-messages.test.ts` scans `model/` for validation keys and knew only about
+`.min("key")` and its siblings. A rule about *two fields at once* cannot be
+written on one of them — it lives in `superRefine`'s `ctx.addIssue({ message })`
+— and the key there is just as real. The scan reads that form now.
+
+### And one `take` that was added and then taken out again
+
+`platform.listAttachments` gained a bound; `billing.get`'s lines did not, and
+the reason is worth keeping. `refuseClose` sums those lines and `close` freezes
+the sum into `closedTotalMinor`, which is deliberately never re-derived. A
+`take` there would not have made a screen slow — it would have closed a bill at
+a total missing everything past the limit, silently and for ever. Unbounded is
+the correct answer in exactly one place, and that is it.
+
+251 unit, 181 integration, 118 browser.
+
+## 2026-09-13 — two hot paths, and a measurement that said "claim nothing"
+
+`organization.moduleAccess` carried the comment *"one query rather than two,
+because the shell asks on every navigation"* and was three, strictly
+sequential — the organization by slug, the membership, the toggles. They are one
+row and its two relations, so it is one query now and the comment is true.
+
+It is also the second place that decides whether somebody is a member, so the
+refusal moved into `noOrgAccess()` beside `userNotFound()` and
+`memberNotFound()`. Two places may make the decision; only one may word it.
+
+`frontDeskGrid` stopped counting rooms it had already read — it draws a row per
+room, so it reads them all before anything else, and `availability` then ran a
+`groupBy` for the same answer under the same filter.
+
+### The interesting part is that the benchmark refused to support it
+
+Thirty runs each, before and after: **10.1 / 9.5 / 2.5 ms** against **12.1 /
+7.4 / 18.1 ms**. Complete overlap. An earlier single pair of readings — 26 ms
+against 12 — looked like a two-fold win and was noise, which is exactly the
+lesson § 5 taught about an index that appeared to help once.
+
+The change is still right and the claim is not. What it removes is a **round
+trip**, and a round trip to a Postgres on the same machine costs nothing; on a
+managed database at 10–20 ms it is the entire cost of the query. So the honest
+statement is the count — six queries rather than seven on the grid, one rather
+than three on every navigation — and not a millisecond figure measured where
+latency is zero.
+
+Worth writing down because the temptation was to keep the first reading.
+
+251 unit, 181 integration, 103 browser.
+
+## 2026-09-13 — the booking transaction, written once
+
+`create` and `walkIn` were the same eighty lines twice: take the room type's
+lock, ask whether there is a room, take a reference from the series, write the
+guest, write the reservation and its stay, tell the channels. `bookStay` in
+`reservations/server/service.ts` is that, once, and the router is 120 lines
+shorter.
+
+The duplication had already cost twice this week and nobody had noticed it as
+duplication. The room-type lock that closed the overselling race was written
+into both. The channel push that closed the silent-availability gap was written
+into both. Each time the second edit was a copy of the first, and each time it
+could have been forgotten.
+
+What genuinely differs stayed an argument rather than a branch inside the
+function: a walk-in is `CHECKED_IN` in a room already chosen, a booking is
+`CONFIRMED` and usually has no door yet, only a booking consumes a hold or names
+a guest the directory already has — and even the field a sold-out refusal points
+at is a real difference, because a booking's dates are `checkIn` and a walk-in's
+are a count of `nights`.
+
+Everything before the transaction stayed with the caller: the range, the
+occupancy rule, the quote. Those refusals are worded for the screen that asked —
+a walk-in's *"more people than the room sleeps"* is about a room, a booking's is
+about a type — and folding them in would have made one of the two wrong.
+
+Two imports fell out of the router when it was done, which is the duplication
+leaving rather than hiding: `createGuestPerson` and `nextSeriesNumber` are the
+service's business now.
+
+251 unit, 181 integration, 103 browser — unchanged, which is the whole assertion
+a refactor gets to make.
+
+## 2026-09-13 — one reading of what a booking's dates are
+
+Three places answered "when does this reservation arrive and leave".
+`refuseStatusChange` took the true minimum and maximum across the stays. The
+bookings list and the guest's stay history each took `stays.at(0).checkIn`.
+
+Those are not the same question answered twice — they are a correct answer and a
+**coincidence**. Both queries order their stays by `checkIn`, so `at(0)` was the
+earliest; nothing in a type said it had to be, and deleting that `orderBy` for
+any reason at all would have started reporting the wrong arrival on two screens
+with nothing failing.
+
+`reservationDates` in `model/stay.ts` is the one reading, and the unit test
+hands it the stays out of order, because that is the case the old code could not
+survive. `directory` imports it from the reservations feature rather than
+keeping its own: what a booking's dates mean belongs to the feature that owns
+bookings.
+
+252 unit, 181 integration, 103 browser.
+
+## 2026-09-13 — three searches that had never worked
+
+`directory.listPeople`, `listCompanies` and `identity.adminList` filtered with a
+bare Prisma `contains`. On Postgres that compiles to `LIKE`, which is
+case-sensitive, so each one returned **nothing at all** unless the term was
+typed with exactly the capitalisation stored on the row. Measured against a
+500k-row copy of this schema: `иванов` found 0 people, `Иванов` found 418. A
+receptionist searching for a guest by surname got an empty table and no reason.
+
+The cause was on disk the whole time, at `organizations/server/router.ts:86`:
+
+> SQLite has no `mode: "insensitive"`; `contains` is already case-insensitive
+> there for ASCII. On Postgres, add it.
+
+A note to a future reader, left by the SQLite era, and the move to Postgres
+happened without anybody acting on it. The comment was also wrong on its own
+terms — SQLite's `LIKE` folds ASCII only, so Cyrillic had never matched there
+either. The two searches written afterwards, `properties.list` and the bookings
+search, both have `mode`; they were written by somebody who had not read the
+comment saying it was fine.
+
+So the fix is not "add `mode` in five places" — that is the same mistake with a
+longer fuse. Every search now goes through `like()` in `server/search.ts`, which
+carries the reason, and there is nowhere left to write `contains` by hand
+without noticing.
+
+**No index.** Measured, 25k people in a tenant: `ILIKE` behind the
+`(organizationId, …)` btree the tables already carry answers in 18–27 ms, and a
+trigram GIN index changed the `findMany` by *nothing*, because `ORDER BY
+lastName` keeps the planner on the btree regardless. It only moved the
+`count(*)` half. Index work waits for a tenant two orders of magnitude larger,
+and `citext` and non-deterministic ICU collations are both disqualified outright
+— neither supports `LIKE`, and a trigram index on a `citext` column is built and
+then silently never used.
+
+What is **not** fixed, and is asserted as a failing case in the test so whoever
+fixes it finds it ready: `ё` and `е`. Russian orthography treats `ё` as optional
+and passport offices print `е` for it, so Фёдоров and Федоров are one person
+with two spellings, and case folding does not touch that. Postgres's `unaccent`
+does not help in any general way either — its 1,650-line rule file contains
+exactly two Cyrillic lines, `Ё→Е` and `ё→е`, hardcoded as special cases, and
+**nothing at all** for Kazakh, whose ә ғ қ ң ө ұ ү һ і are atomic letters with
+no Unicode decomposition to derive a rule from. That is a normalisation decision
+about guest names, not a database feature to switch on.
+
+## 2026-09-13 — the audit table finally has a writer
+
+`AuditLog` had been declared, indexed three ways, and written by nothing since
+the table conventions were written. `writeAudit` is that writer, and it is
+twinned with `enqueueOutbox` down to its type: it takes the **caller's**
+transaction client, so the record and the act it records commit together or not
+at all.
+
+That single property is what rules out both alternatives. A database trigger is
+transactional but cannot see *who* — under a connection pool every request
+shares one role — and cannot see a read. `pgaudit` sees reads but writes to the
+log file rather than a table and says in its own README that a committed
+transaction is not guaranteed a corresponding entry. Neither can answer "who
+made this person an owner", which is the only question anybody actually asks.
+
+Two migrations came out of writing it, both from the same realisation — that the
+rows most worth keeping are the ones about things that no longer exist:
+
+- The foreign key to `Organization` **cascaded**, so the record of who deleted a
+  tenant was the deletion's first casualty. Dropped.
+- `organizationId` is nullable, because granting install-wide `ADMIN` is the
+  highest-privilege act in the product and belongs to no tenant.
+
+The trail also lied once before shipping, and the test caught it.
+`identity.updateRole` passed the whole user row as `before` and `{ role }` as
+`after`; `auditDiff` read the absent `email` as `null` and filed that an admin
+had cleared somebody's email address during a role change that never touched it.
+The rule now: a missing *side* means created or removed, and every field is
+genuinely new or gone; a field missing from a side that **is** there means the
+caller passed half a row, and the log stays silent about it. A log that invents
+acts is worse than no log.
+
+Deliberately **not** everything. The list is the management plane — privilege,
+membership, tenant deletion — because that is what OWASP's logging guidance
+names and how CloudTrail splits management events from data events. Generic read
+auditing is the thing large systems try and back out of: HHS proposed a per-read
+access report under HIPAA and withdrew it as unworkable, and both CloudTrail
+data events and GCP data-access logs are opt-in and separately priced. "Who read
+this passport" stays in Phase 9 with `IdentityDocument`, which has no writer yet.
+
+And retention is left open on purpose, with a note against enshrining
+append-only-forever: CNIL recommends six months to a year for access logs, so
+keeping identity data indefinitely is itself the harm the table exists to guard
+against. The per-entity **allowlist** — never `JSON.stringify(row)` — is what
+keeps that question small, because a passport number can never have reached the
+table in the first place.
+
+258 unit, 188 integration, 103 browser.

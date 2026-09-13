@@ -3,6 +3,7 @@ import type { Prisma } from "@/generated/prisma/client";
 import prisma from "@/server/db";
 import { ConflictError, ForbiddenError, NotFoundError, refused } from "@/server/errors";
 import { requireOrgMember } from "@/server/auth";
+import { like } from "@/server/search";
 import { createTRPCRouter, protectedProcedure } from "@/server/trpc";
 // A room cannot be archived out from under a booking, and only reservations
 // knows which statuses still hold one. The constants are model-side, so this is
@@ -106,17 +107,12 @@ async function assertNumberFree(db: Db, propertyId: number, number: string, exce
  * history — what blocks a change is a booking whose last night is still ahead,
  * counted in the property's own day.
  */
-async function hasLiveStays(db: Db, propertyId: number, roomId: number): Promise<boolean> {
-  const property = await db.property.findUniqueOrThrow({
-    where: { id: propertyId },
-    select: { timezone: true },
-  });
-
+async function hasLiveStays(db: Db, timezone: string, roomId: number): Promise<boolean> {
   const live = await db.roomStay.count({
     where: {
       roomId,
       status: { notIn: [...GRID_HIDDEN_STATUSES] },
-      checkOut: { gt: todayAt(property.timezone) },
+      checkOut: { gt: todayAt(timezone) },
     },
   });
   return live > 0;
@@ -135,7 +131,7 @@ export const propertyRouter = createTRPCRouter({
       where: {
         organizationId: input.organizationId,
         ...archiveFilter(input.includeArchived),
-        ...(input.search ? { name: { contains: input.search, mode: "insensitive" } } : {}),
+        ...(input.search ? { name: like(input.search) } : {}),
       },
       orderBy: { name: "asc" },
       select: PROPERTY_ROUTE_SELECT,
@@ -404,7 +400,7 @@ export const propertyRouter = createTRPCRouter({
   }),
 
   updateRoom: protectedProcedure.input(updateRoomSchema).mutation(async ({ ctx, input }) => {
-    const { user, role } = await requirePropertyMember(ctx, input.propertyId);
+    const { user, role, property } = await requirePropertyMember(ctx, input.propertyId);
     if (!canManageRooms(role)) {
       throw new ForbiddenError(PropertyError.ROOM_UPDATE_FORBIDDEN, "You cannot edit rooms");
     }
@@ -423,7 +419,10 @@ export const propertyRouter = createTRPCRouter({
     // `assignRoom` requires a stay's type and its room's type to agree, so
     // retyping a room that is already sold would break that pairing after the
     // fact rather than at the assignment.
-    if (data.roomTypeId !== room.roomTypeId && (await hasLiveStays(ctx.db, propertyId, id))) {
+    if (
+      data.roomTypeId !== room.roomTypeId &&
+      (await hasLiveStays(ctx.db, property.timezone, id))
+    ) {
       throw new ConflictError(
         PropertyError.ROOM_RETYPE_BLOCKED,
         "That room has bookings on its current type",
@@ -512,13 +511,13 @@ export const propertyRouter = createTRPCRouter({
   }),
 
   archiveRoom: protectedProcedure.input(archiveInventorySchema).mutation(async ({ ctx, input }) => {
-    const { user, role } = await requirePropertyMember(ctx, input.propertyId);
+    const { user, role, property } = await requirePropertyMember(ctx, input.propertyId);
     if (!canArchiveRooms(role)) {
       throw new ForbiddenError(PropertyError.ROOM_ARCHIVE_FORBIDDEN, "You cannot archive rooms");
     }
     await assertOwned(ctx.db, "room", input.id, input.propertyId);
 
-    if (input.archived && (await hasLiveStays(ctx.db, input.propertyId, input.id))) {
+    if (input.archived && (await hasLiveStays(ctx.db, property.timezone, input.id))) {
       throw new ConflictError(
         PropertyError.ROOM_ARCHIVE_BLOCKED,
         "That room has bookings that have not left yet",

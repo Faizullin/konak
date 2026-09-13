@@ -258,6 +258,7 @@ describe("rooms", () => {
         status: "CONFIRMED",
         stays: {
           create: {
+            propertyId,
             roomTypeId: doubleId,
             roomId: room.id,
             status: "CONFIRMED",
@@ -315,6 +316,7 @@ describe("rooms", () => {
         status: "CHECKED_OUT",
         stays: {
           create: {
+            propertyId,
             roomTypeId: doubleId,
             roomId: room.id,
             status: "CHECKED_OUT",

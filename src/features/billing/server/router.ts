@@ -38,6 +38,20 @@ import { lockFolio, openFolioFor } from "./service";
  */
 
 /** Lines and payments, in the shape the rules read them. */
+/**
+ * Enough of a folio to decide about it: what it is, and the two lists the
+ * balance is arithmetic on.
+ *
+ * **Deliberately not paged**, and it is the one place in this codebase where an
+ * unbounded read is the correct answer. `refuseClose` sums these to decide
+ * whether the bill balances, and `close` freezes that sum into
+ * `closedTotalMinor` — a number that is never re-derived, on purpose. A `take`
+ * here would not make a screen slow; it would close a bill at a total missing
+ * the lines past the limit, silently and for ever.
+ *
+ * The bound that matters is on the other end: a folio belongs to one stay, and
+ * `postLine` is a person typing.
+ */
 const FOLIO_STATE = {
   id: true,
   status: true,

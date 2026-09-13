@@ -99,10 +99,21 @@ async function insertStay(args: {
     try {
       await query(
         `insert into room_stays
-           ("reservationId", "roomTypeId", "roomId", status,
+           ("reservationId", "propertyId", "roomTypeId", "roomId", status,
             "checkIn", "checkOut", adults, "currencyCode", "totalMinor", "updatedAt")
-         values ($1, $2, $3, $4, $5, $6, 1, 'EUR', 0, now())`,
-        [args.reservationId, roomTypeId, roomId, args.status, args.checkIn, args.checkOut]
+         values ($1, $2, $3, $4, $5, $6, $7, 1, 'EUR', 0, now())`,
+        [
+          args.reservationId,
+          // The stay carries its own scope, and a composite foreign key refuses
+          // it if it disagrees with the reservation's — so this is checked, not
+          // merely copied.
+          args.propertyId,
+          roomTypeId,
+          roomId,
+          args.status,
+          args.checkIn,
+          args.checkOut,
+        ]
       );
       return roomId;
     } catch (error) {

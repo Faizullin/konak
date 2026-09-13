@@ -1,5 +1,7 @@
 import type { Page } from "@playwright/test";
 import { expect } from "@playwright/test";
+import { DEMO_PASSWORD, DEMO_USERS as SEEDED } from "../../../prisma/accounts";
+import { UserRole } from "@/features/identity";
 
 /**
  * Signing in, once per role.
@@ -11,13 +13,28 @@ import { expect } from "@playwright/test";
  * browser can see.
  */
 
-export const DEMO_PASSWORD = "konak-demo-pw";
+/**
+ * The addresses and the password come from `prisma/accounts.ts` — the list the
+ * seed actually writes — so a changed password is a failing sign-in here rather
+ * than a silently wrong one. What stays local is the *role name* a spec asks
+ * for, which is this suite's own vocabulary.
+ */
+export { DEMO_PASSWORD };
+
+const seeded = (role: UserRole) => {
+  // By role rather than by position: the seed's list is ordered for the seed's
+  // convenience, and a reorder there must not silently sign a spec in as
+  // somebody else.
+  const user = SEEDED.find((candidate) => candidate.role === role);
+  if (!user) throw new Error(`prisma/accounts.ts has no ${role}`);
+  return user;
+};
 
 export const DEMO_USERS = {
-  admin: { email: "admin@konak.dev", name: "Ada Admin" },
-  moderator: { email: "mod@konak.dev", name: "Mo Moderator" },
-  user: { email: "user@konak.dev", name: "Uma User" },
-} as const;
+  admin: seeded(UserRole.ADMIN),
+  moderator: seeded(UserRole.MODERATOR),
+  user: seeded(UserRole.USER),
+};
 
 export type DemoRole = keyof typeof DEMO_USERS;
 

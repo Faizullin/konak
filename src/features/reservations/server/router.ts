@@ -3,7 +3,6 @@ import { z } from "zod";
 import { ConflictError, InvalidError, NotFoundError, refused } from "@/server/errors";
 import { createTRPCRouter, protectedProcedure } from "@/server/trpc";
 import { ReservationError } from "../model";
-import { createGuestPerson } from "@/features/directory/server";
 import { isRoomSellable, RoomStatus, statusAfterCheckOut } from "@/features/properties";
 import { TaskType } from "@/features/housekeeping";
 import { openFolioFor, postRoomCharges } from "@/features/billing/server";
@@ -33,11 +32,11 @@ import {
 import { quoteStay, refusalMessage } from "@/features/rates/server";
 import {
   availability,
-  lockRoomType,
+  bookStay,
   frontDeskDay,
   frontDeskGrid,
   listReservations,
-  nextSeriesNumber,
+  lockRoomType,
 } from "./service";
 
 /**
@@ -189,11 +188,7 @@ export const reservationRouter = createTRPCRouter({
 
     // A rate plan makes the booking priced; without one it is a held room with
     // no money attached, which is a real case at a front desk.
-    const property = await ctx.db.property.findUniqueOrThrow({
-      where: { id: input.propertyId },
-      select: { currencyCode: true },
-    });
-    let currencyCode = property.currencyCode;
+    let currencyCode = scope.currencyCode;
     let totalMinor = 0;
 
     if (input.ratePlanId) {
@@ -217,118 +212,36 @@ export const reservationRouter = createTRPCRouter({
       totalMinor = quote.totalMinor;
     }
 
-    return ctx.db.$transaction(async (tx) => {
-      /**
-       * Is there a room — asked **here**, holding the type's lock, rather than
-       * before the transaction opened.
-       *
-       * The database refuses an overlapping *room*, and that is the backstop
-       * the old comment here relied on. It is not one: the exclusion
-       * constraint's clause is `WHERE ("roomId" IS NOT NULL …)`, and an
-       * unassigned stay — every advance booking, every channel booking — has no
-       * protection at all. Two clerks selling the last Double both passed a
-       * check made before either wrote.
-       */
-      await lockRoomType(tx, input.roomTypeId);
-
-      const nights = await availability(
-        {
-          propertyId: input.propertyId,
-          roomTypeId: input.roomTypeId,
-          from: range.checkIn,
-          to: range.checkOut,
-          exceptHoldKey: input.holdKey,
-        },
-        undefined,
-        tx
-      );
-      const soldOut = nights.find((night) => night.available < 1);
-      if (soldOut) {
-        throw new ConflictError(
-          ReservationError.STAY_SOLD_OUT,
-          `No rooms of that type free on ${soldOut.date.toISOString().slice(0, 10)}`,
-          "checkIn"
-        ).with({ date: soldOut.date.toISOString().slice(0, 10) });
-      }
-
-      const reference = await nextSeriesNumber(tx, {
-        organizationId: scope.organizationId,
-        propertyId: scope.id,
-        kind: "RESERVATION",
-      });
-
-      // The hold and the booking it became commit together. Releasing it before
-      // the transaction opens a window where the room is free and someone else
-      // takes it; releasing it after means a rollback leaves a claim on a
-      // booking that does not exist.
-      if (input.holdKey) {
-        await tx.inventoryHold.deleteMany({ where: { holdKey: input.holdKey } });
-      }
-
-      // A named guest who is not in the directory is written into it, the way
-      // a walk-in's is. An id given outright wins: the desk found them already.
-      const bookerPersonId =
-        input.bookerPersonId ??
-        (input.firstName && input.lastName
-          ? (
-              await createGuestPerson(
-                tx,
-                {
-                  organizationId: scope.organizationId,
-                  firstName: input.firstName,
-                  lastName: input.lastName,
-                  email: input.email,
-                  phone: input.phone,
-                },
-                user.id
-              )
-            ).id
-          : undefined);
-
-      const created = await tx.reservation.create({
-        data: {
-          propertyId: input.propertyId,
-          reference,
-          status: ReservationStatus.CONFIRMED,
-          source: input.source,
-          bookerPersonId,
-          companyId: input.companyId,
-          currencyCode,
-          totalMinor,
-          notes: input.notes,
-          createdById: user.id,
-          updatedById: user.id,
-          stays: {
-            create: [
-              {
-                roomTypeId: input.roomTypeId,
-                ratePlanId: input.ratePlanId,
-                roomId: input.roomId,
-                status: ReservationStatus.CONFIRMED,
-                checkIn: range.checkIn,
-                checkOut: range.checkOut,
-                adults: input.adults,
-                children: input.children,
-                currencyCode,
-                totalMinor,
-              },
-            ],
-          },
-        },
-        include: { stays: true },
-      });
-
-      // The nights just came off the market, so the channels are owed the news
-      // — recorded here rather than sent here, in the same transaction as the
-      // booking it announces.
-      await enqueueChannelPush(tx, {
+    return ctx.db.$transaction((tx) =>
+      bookStay(tx, {
+        scope: { id: scope.id, organizationId: scope.organizationId },
+        userId: user.id,
         propertyId: input.propertyId,
-        organizationId: scope.organizationId,
-        from: range.checkIn,
-      });
-
-      return created;
-    });
+        roomTypeId: input.roomTypeId,
+        ratePlanId: input.ratePlanId,
+        roomId: input.roomId,
+        status: ReservationStatus.CONFIRMED,
+        source: input.source,
+        checkIn: range.checkIn,
+        checkOut: range.checkOut,
+        adults: input.adults,
+        children: input.children,
+        currencyCode,
+        totalMinor,
+        notes: input.notes,
+        companyId: input.companyId,
+        holdKey: input.holdKey,
+        booker: {
+          personId: input.bookerPersonId,
+          firstName: input.firstName,
+          lastName: input.lastName,
+          email: input.email,
+          phone: input.phone,
+        },
+        // The dates are what a booking form would highlight.
+        soldOutField: "checkIn",
+      })
+    );
   }),
 
   /**
@@ -624,13 +537,9 @@ export const reservationRouter = createTRPCRouter({
   walkIn: protectedProcedure.input(walkInSchema).mutation(async ({ ctx, input }) => {
     const { property: scope, user } = await requirePropertyMember(ctx, input.propertyId);
 
-    const property = await ctx.db.property.findUniqueOrThrow({
-      where: { id: input.propertyId },
-      select: { currencyCode: true, timezone: true },
-    });
-
     // The hotel's day, not the browser's: a walk-in at 01:00 is still tonight.
-    const checkIn = todayAt(property.timezone);
+    // Read off the guard, which already fetched the row it was refusing on.
+    const checkIn = todayAt(scope.timezone);
     const checkOut = toStayDate(new Date(checkIn.getTime() + input.nights * 86_400_000));
 
     const room = await ctx.db.room.findFirst({
@@ -676,7 +585,7 @@ export const reservationRouter = createTRPCRouter({
       );
     }
 
-    let currencyCode = property.currencyCode;
+    let currencyCode = scope.currencyCode;
     let totalMinor = 0;
     if (input.ratePlanId) {
       const quote = await quoteStay({
@@ -700,83 +609,34 @@ export const reservationRouter = createTRPCRouter({
     }
 
     try {
-      return await ctx.db.$transaction(async (tx) => {
-        // Tonight's last room, decided under the type's lock. A walk-in is the
-        // most contended moment there is: it is the one booking made while the
-        // channels are also selling the same night.
-        await lockRoomType(tx, input.roomTypeId);
-
-        const nights = await availability(
-          {
-            propertyId: input.propertyId,
-            roomTypeId: input.roomTypeId,
-            from: checkIn,
-            to: checkOut,
-          },
-          undefined,
-          tx
-        );
-        const soldOut = nights.find((night) => night.available < 1);
-        if (soldOut) {
-          throw new ConflictError(
-            ReservationError.STAY_SOLD_OUT,
-            `No rooms of that type free on ${soldOut.date.toISOString().slice(0, 10)}`,
-            "nights"
-          ).with({ date: soldOut.date.toISOString().slice(0, 10) });
-        }
-
-        const reference = await nextSeriesNumber(tx, {
-          organizationId: scope.organizationId,
-          propertyId: scope.id,
-          kind: "RESERVATION",
-        });
-
-        // The guest is part of the booking, so it is written with it — the
-        // directory feature owns the write, this owns the transaction.
-        const booker = await createGuestPerson(
-          tx,
-          {
-            organizationId: scope.organizationId,
+      return await ctx.db.$transaction((tx) =>
+        bookStay(tx, {
+          scope: { id: scope.id, organizationId: scope.organizationId },
+          userId: user.id,
+          propertyId: input.propertyId,
+          roomTypeId: input.roomTypeId,
+          ratePlanId: input.ratePlanId,
+          roomId: input.roomId,
+          status: ReservationStatus.CHECKED_IN,
+          source: "WALK_IN",
+          checkIn,
+          checkOut,
+          adults: input.adults,
+          children: input.children,
+          currencyCode,
+          totalMinor,
+          notes: input.notes,
+          booker: {
             firstName: input.firstName,
             lastName: input.lastName,
             email: input.email,
             phone: input.phone,
           },
-          user.id
-        );
-
-        return tx.reservation.create({
-          data: {
-            propertyId: input.propertyId,
-            reference,
-            status: ReservationStatus.CHECKED_IN,
-            source: "WALK_IN",
-            bookerPersonId: booker.id,
-            currencyCode,
-            totalMinor,
-            notes: input.notes,
-            createdById: user.id,
-            updatedById: user.id,
-            stays: {
-              create: [
-                {
-                  roomTypeId: input.roomTypeId,
-                  ratePlanId: input.ratePlanId,
-                  roomId: input.roomId,
-                  status: ReservationStatus.CHECKED_IN,
-                  checkIn,
-                  checkOut,
-                  adults: input.adults,
-                  children: input.children,
-                  currencyCode,
-                  totalMinor,
-                },
-              ],
-            },
-          },
-          include: { stays: true },
-        });
-      });
+          // A walk-in has no date field to blame; the length of stay is what
+          // the desk would shorten.
+          soldOutField: "nights",
+        })
+      );
     } catch (error) {
       // Someone else took the room between the availability read and the write.
       if (String(error).includes("room_stays_no_overlap")) {
@@ -801,7 +661,7 @@ export const reservationRouter = createTRPCRouter({
    * constraint, which is the only answer that stays true under two clerks.
    */
   moveStay: protectedProcedure.input(moveStaySchema).mutation(async ({ ctx, input }) => {
-    await requirePropertyMember(ctx, input.propertyId);
+    const scope = await requirePropertyMember(ctx, input.propertyId);
 
     const stay = await ctx.db.roomStay.findFirst({
       where: { id: input.stayId, reservation: { propertyId: input.propertyId } },
@@ -936,6 +796,20 @@ export const reservationRouter = createTRPCRouter({
             data: { totalMinor: stays.reduce((sum, row) => sum + row.totalMinor, 0) },
           });
         }
+
+        /**
+         * Both ends of the move are news.
+         *
+         * A stay that shifts frees the nights it left and takes the ones it
+         * arrived on, so the push has to start at the **earlier** of the two —
+         * announcing only the new dates would leave a channel still refusing to
+         * sell a night nobody occupies any more.
+         */
+        await enqueueChannelPush(tx, {
+          propertyId: input.propertyId,
+          organizationId: scope.member.organizationId,
+          from: from.checkIn < to.checkIn ? from.checkIn : to.checkIn,
+        });
 
         return moved;
       });

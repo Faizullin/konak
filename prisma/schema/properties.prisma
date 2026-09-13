@@ -53,4 +53,5 @@ model Property {
   @@unique([organizationId, slug])
   @@index([organizationId, archivedAt])
   @@map("properties")
+  roomStays RoomStay[]
 }

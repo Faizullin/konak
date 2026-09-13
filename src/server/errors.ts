@@ -175,6 +175,19 @@ export function memberNotFound() {
 }
 
 /**
+ * The caller is signed in and this organization is not theirs.
+ *
+ * FORBIDDEN rather than NOT_FOUND, deliberately: the two are indistinguishable
+ * to somebody probing ids, and this is the honest answer to the case that
+ * matters. Named here because two places decide it — `requireOrgMember`, and
+ * `organization.moduleAccess`, which reads the membership in the same row set
+ * as everything else it needs and must refuse with the same words.
+ */
+export function noOrgAccess() {
+  return new ForbiddenError(SharedError.ORG_NO_ACCESS, "No access to this organization");
+}
+
+/**
  * Postgres refused a write because a unique index already holds that value.
  *
  * Read as a **question about what happened**, not as a failure. Several places

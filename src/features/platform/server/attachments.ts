@@ -14,7 +14,7 @@ import {
   uploadReleaseAt,
   type AttachmentKind,
 } from "../model";
-import { enqueueOutbox } from "./outbox";
+import { enqueueOutboxMany } from "./outbox";
 import { STORAGE_REMOVE } from "./storage-sweep";
 
 /**
@@ -272,14 +272,23 @@ export async function enqueueStorageRemoval(
   db: Prisma.TransactionClient,
   rows: { id: number; storageKey: string; provider: string | null; providerId: string | null }[]
 ) {
-  for (const row of rows) {
-    if (!row.provider) continue; // nothing was ever stored for it
-    await enqueueOutbox(db, {
-      type: STORAGE_REMOVE,
-      payload: { provider: row.provider, providerId: row.providerId ?? row.storageKey },
-      idempotencyKey: `${STORAGE_REMOVE}:${row.id}`,
-    });
-  }
+  // One statement, not two per row. Deleting an organization files one of these
+  // per attachment, inside the transaction that also holds the cascade.
+  await enqueueOutboxMany(
+    db,
+    rows.flatMap((row) =>
+      // Nothing was ever stored for it.
+      row.provider
+        ? [
+            {
+              type: STORAGE_REMOVE,
+              payload: { provider: row.provider, providerId: row.providerId ?? row.storageKey },
+              idempotencyKey: `${STORAGE_REMOVE}:${row.id}`,
+            },
+          ]
+        : []
+    )
+  );
 }
 
 /** Bytes and row together, for a file that was refused on arrival. */

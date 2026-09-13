@@ -33,7 +33,7 @@ is a diff, and a pull, because a booking made on Booking.com happens where we
 cannot see it. **No vendor is connected**: `ChannelAdapter` is two methods and
 the registry is deliberately empty, so say "ready for", not "connected to".
 
-**There is a second surface.** `/desk/<orgSlug>/<propertySlug>` — five sections
+**There is a second surface.** `/desk/<orgSlug>/<propertySlug>` — six sections
 down the left, its own layout, its own token block under
 `[data-surface="desk"]`. It imports the routers and edits nothing that already
 existed; deleting it would leave the dashboard byte-identical. Built for the
@@ -43,7 +43,7 @@ was built under.
 **Load the demo data before showing anyone.** `npm run demo`, after the seed:
 ten rooms across three types, ninety nights priced, fifteen bookings in every
 state, a guest with three stays. It clears its own previous run, so rehearse
-freely. `guides/demo.md` is the path through it — ten stops, the client's eight
+freely. `guides/demo.md` is the path through it — eleven stops, the client's eight
 items, and what not to promise.
 
 **Start the database first.** `docker compose -f docker/compose/db.yml up -d`,
@@ -85,7 +85,9 @@ throw `StorageNotImplementedError`.
 `/directory/<personId>` — reached by clicking a name in the directory — carries
 three, one each for identity documents, consents and other files. A panel lists
 and uploads **one kind**, so mounting several on a page does not repeat itself.
-`uploadAttachment()` opens the same panel as a dialog from anywhere.
+`uploadAttachment()` exists to open the same panel as a dialog from anywhere —
+and **nothing calls it**, which is in `todo.md`: either a screen should, or the
+file and this sentence should go.
 
 Uploading is a MEMBER right and deleting is a manager's, because deleting takes
 the bytes with it. Try it on the demo: sign in as `admin@konak.dev`, open
@@ -104,14 +106,41 @@ withheld, and `property.setBlock` is the write path. A property set up through
 the app sells on the day it is created. `guides/architecture.md` § What is
 counted, never stored.
 
-**The overselling races are closed.** `lockRoomType` and `lockReservation` sit
-beside `lockOrganization` as the pattern — take the row lock, then decide,
-inside the transaction that writes. `guides/architecture.md` § A check and the
-write it authorises are one act. `lockFolio` closed the last three — `postLine`, `close` and `takePayment` — so
-**every read-then-write the audit found is now decided under a lock**. What is
-left in `plans/server-hardening.md` is performance and completeness, not
-correctness: the guard chain (§ 4), three changes the channels are never told
-about (§ 3), and the indexes (§ 5).
+**Every read-then-write the audit found is decided under a lock.**
+`lockRoomType`, `lockReservation`, `lockFolio` and `lockOrganization` are the
+pattern — take the row lock, then decide, inside the transaction that writes.
+`guides/architecture.md` § A check and the write it authorises are one act.
+
+**Every change to what is for sale announces itself** in the transaction that
+makes it, and a test loops over the ways the market moves so the next omission
+fails rather than oversells.
+
+**The grid's query went from 195 ms to 0.02 ms at 300k stays — and not by adding
+an index.** Three were benchmarked and the planner chose none of them, because
+the filter they would serve lives on the other table. The stay carries its own
+`propertyId` now, with a composite foreign key making it impossible for that
+copy to disagree with its reservation.
+
+**`plans/server-hardening.md` is finished except for cosmetics**: §§ 1–11 have
+shipped. What is left of § 10 is a handful of missing `select`s, and nothing
+there is correctness.
+
+**The last two items in it were not cosmetic, though.** The "case-sensitive
+search" line turned out to mean three searches — the directory's people and
+companies, and the install's user list — that returned **nothing at all** unless
+the term was capitalised exactly as stored. On Postgres a bare Prisma `contains`
+is `LIKE`. Every search now goes through `like()` in `server/search.ts`;
+`architecture.md` § Searching a text column is the rule, and `todo.md` carries
+what it does *not* fix — `ё`/`е`, and the directory not splitting on whitespace.
+
+And `AuditLog` has a writer: `writeAudit`, twinned with `enqueueOutbox` and
+taking the caller's transaction client, so a mutation that rolls back leaves no
+trail of having happened. It records the management plane only — privilege,
+membership, tenant deletion. Two things it deliberately is not: it is **not** a
+generic read log (that waits for Phase 9 and `IdentityDocument`), and it is
+**not** append-only forever by decree — CNIL recommends six months to a year for
+access logs, so retention is left open on purpose in § 11 rather than closed the
+wrong way.
 
 **Dark mode works, and a person chooses it.** `next-themes` at the root,
 `AppearanceToggle` in the dashboard header and in the desk's bar. Both surfaces
@@ -129,7 +158,9 @@ untouched and still works.
 desk.** The last two to arrive were the guest card
 (`/desk/<org>/<property>/guests/<personId>`) and the housekeeping board, which
 is the desk's sixth section. **All eight of the client's items have a screen**, and the report that says so
-is `guides/mvp-report.ru.md` — in Russian, for them. The last gap was their
+is `reports/mvp-report.ru.md` — in Russian, for them, and **generated**:
+`npm run report:mvp` drives the desk, photographs fifteen things and writes the
+document. Edit the prose in `reports/src/`, never the report itself. The last gap was their
 fourth item: a room's *commercial* state, свободен/забронирован/занят, which
 nothing showed. It is the **Сегодня** column in Rooms now, derived from
 tonight's stay.
@@ -147,8 +178,17 @@ property, for a history that crosses them) and `usePersonLink` — because the
 directory is organisation-wide and the dashboard's table has no property at
 all.
 
-**Where to start.** `docs/todo.md`, top entry — which is the overselling
-races.
+**Where to start.** `docs/todo.md`, which is now short on purpose — a title and
+a line each, with the design in a plan where there is one. Its top entry is two
+questions for the **client**, not code, and they are worth asking before more
+schema is built on the current answer.
+
+The largest piece of code left with a plan behind it is
+[plans/data-table.md](plans/data-table.md): `useDataTable` calls nuqs
+unconditionally, which is why six components hand-roll `<Table>` instead. It is
+a **port** — the hook here is byte-identical to `next-better-auth-template`
+before its `f298695` fixed exactly this — so the design is settled and only the
+application is left.
 
 **Before you finish — once, not per edit.** `lint`, `format:check`,
 `test:server`, `build` and the browser suite are minutes each on this machine,

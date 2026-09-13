@@ -67,7 +67,10 @@ export default defineConfig({
     {
       name: "journeys",
       dependencies: ["setup"],
-      testIgnore: /report\//,
+      // Both deliverables are excluded by directory. A new one that is not
+      // listed here is picked up by this project and run with its settings —
+      // which is silent, because a capture pass asserts almost nothing.
+      testIgnore: /(report|mvp)\//,
       use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 } },
     },
     {
@@ -76,6 +79,15 @@ export default defineConfig({
       name: "report",
       dependencies: ["setup"],
       testMatch: /report\/.*\.e2e\.ts/,
+      use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 } },
+    },
+    {
+      // The client's report: the desk only, in Russian, in light, with crops
+      // and actions. `scripts/mvp-report.mts` turns what this writes into
+      // `docs/reports/mvp-report.ru.md`.
+      name: "mvp",
+      dependencies: ["setup"],
+      testMatch: /mvp\/.*\.e2e\.ts/,
       use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 } },
     },
   ],

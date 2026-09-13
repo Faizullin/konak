@@ -1,5 +1,6 @@
 import "dotenv/config";
 import { UserRole } from "../src/features/identity/model";
+import { DEMO_PASSWORD, DEMO_USERS } from "./accounts";
 import { OrgRole } from "../src/features/organizations/model";
 import { newStorageKey } from "../src/features/platform/model";
 import { env } from "../src/env.mjs";
@@ -19,7 +20,9 @@ const DEMO_PDF = Buffer.from(
  * hand-rolled sign-up flow is a poor first run.
  *
  * Every account uses the same password so the README can print one line
- * instead of a table. That is also why this refuses to run in production.
+ * instead of a table — the list is `prisma/accounts.ts`, because the browser
+ * fixtures and the MVP report quote it too. That is also why this refuses to
+ * run in production.
  *
  * `import "dotenv/config"` is the one concession to running outside Next.js —
  * `env.mjs` reads `process.env`, and nothing has populated it in a bare `tsx`
@@ -40,22 +43,12 @@ const DEMO_PDF = Buffer.from(
  * would change that — see `docs/guides/local-development.md`.
  */
 
-// Not a common password: `haveIBeenPwned()` in `auth.ts` rejects anything
-// that appears in a breach corpus, which "password123" very much does.
-const PASSWORD = "konak-demo-pw";
-
 /** ISO 4217. `minorUnits` is what keeps integer money arithmetic honest. */
 const CURRENCIES = [
   { code: "USD", name: "US Dollar", symbol: "$", minorUnits: 2 },
   { code: "EUR", name: "Euro", symbol: "€", minorUnits: 2 },
   { code: "KZT", name: "Kazakhstani Tenge", symbol: "₸", minorUnits: 2 },
   { code: "JPY", name: "Japanese Yen", symbol: "¥", minorUnits: 0 },
-];
-
-const USERS = [
-  { email: "admin@konak.dev", name: "Ada Admin", role: UserRole.ADMIN },
-  { email: "mod@konak.dev", name: "Mo Moderator", role: UserRole.MODERATOR },
-  { email: "user@konak.dev", name: "Uma User", role: UserRole.USER },
 ];
 
 async function main() {
@@ -65,7 +58,7 @@ async function main() {
 
   let created = 0;
 
-  for (const { email, name, role } of USERS) {
+  for (const { email, name, role } of DEMO_USERS) {
     // Re-running is a no-op rather than an error, so this is safe to call
     // after adding a user to the list above.
     if (await prisma.user.findUnique({ where: { email } })) continue;
@@ -74,7 +67,7 @@ async function main() {
     // credential into `accounts`. A user row inserted directly through Prisma
     // has no password and can never sign in.
     const { user } = await auth.api.signUpEmail({
-      body: { email, name, password: PASSWORD },
+      body: { email, name, password: DEMO_PASSWORD },
     });
 
     // `role` is an `input: false` field, so it cannot arrive through
@@ -326,6 +319,7 @@ async function main() {
       stays: {
         create: [
           {
+            propertyId: property.id,
             roomTypeId: roomType.id,
             ratePlanId: ratePlan.id,
             roomId: null,
@@ -624,8 +618,8 @@ async function main() {
 
   console.log(
     created === 0
-      ? `Nothing to do — all ${USERS.length} demo users already exist.`
-      : `Created ${created} of ${USERS.length} demo users. Password: ${PASSWORD}`
+      ? `Nothing to do — all ${DEMO_USERS.length} demo users already exist.`
+      : `Created ${created} of ${DEMO_USERS.length} demo users. Password: ${DEMO_PASSWORD}`
   );
 }
 
