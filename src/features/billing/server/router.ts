@@ -1,5 +1,11 @@
 import "server-only";
-import { ConflictError, NotFoundError, refused } from "@/server/errors";
+import {
+  ConflictError,
+  InvalidError,
+  isUniqueViolation,
+  NotFoundError,
+  refused,
+} from "@/server/errors";
 import { createTRPCRouter, protectedProcedure } from "@/server/trpc";
 import { requirePropertyMember } from "@/features/properties/server";
 import { nextSeriesNumber } from "@/features/reservations/server";
@@ -18,7 +24,7 @@ import {
   takePaymentSchema,
   voidLineSchema,
 } from "../model";
-import { openFolioFor } from "./service";
+import { lockFolio, openFolioFor } from "./service";
 
 /**
  * The bill attached to a stay.
@@ -156,35 +162,66 @@ export const billingRouter = createTRPCRouter({
   postLine: protectedProcedure.input(postLineSchema).mutation(async ({ ctx, input }) => {
     const { user } = await requirePropertyMember(ctx, input.propertyId);
 
-    const folio = await ctx.db.folio.findFirst({
-      where: { id: input.folioId, propertyId: input.propertyId },
-      select: { id: true, status: true },
-    });
-    if (!folio) {
-      throw new NotFoundError(BillingError.FOLIO_NOT_FOUND, "Folio not found");
-    }
-
-    const closed = refusePosting(folio.status);
-    if (closed) throw refused(closed);
-
     // The parts are computed rather than accepted, so a line cannot exist whose
     // tax disagrees with its own quantity and price.
     const amounts = priceLine(input);
 
-    return ctx.db.folioLine.create({
-      data: {
-        folioId: folio.id,
-        type: input.type,
-        description: input.description,
-        quantity: input.quantity,
-        unitPriceMinor: input.unitPriceMinor,
-        taxRateBp: input.taxRateBp,
-        taxAmountMinor: amounts.taxAmountMinor,
-        amountMinor: amounts.amountMinor,
-        roomStayId: input.roomStayId,
-        serviceDate: input.serviceDate,
-        postedById: user.id,
-      },
+    return ctx.db.$transaction(async (tx) => {
+      await lockFolio(tx, input.folioId);
+
+      const folio = await tx.folio.findFirst({
+        where: { id: input.folioId, propertyId: input.propertyId },
+        select: { id: true, status: true, reservationId: true },
+      });
+      if (!folio) {
+        throw new NotFoundError(BillingError.FOLIO_NOT_FOUND, "Folio not found");
+      }
+
+      // Read under the lock, so a folio closed a moment ago cannot still be
+      // posted to. Before, the status was read and then written against, and
+      // the gap between was enough.
+      const closed = refusePosting(folio.status);
+      if (closed) throw refused(closed);
+
+      /**
+       * A room line names the stay it is for, and that stay has to be on the
+       * booking this bill is billing.
+       *
+       * It was accepted as a bare number with no check at all, so a line could
+       * be bound to **another tenant's** stay — which also poisons
+       * `postRoomCharges`, whose idempotency is "does this stay already have a
+       * line". The id is the caller's claim; this is the question.
+       */
+      if (input.roomStayId !== undefined && input.roomStayId !== null) {
+        const stay = await tx.roomStay.count({
+          where: { id: input.roomStayId, reservationId: folio.reservationId ?? -1 },
+        });
+        if (stay === 0) {
+          // Invalid rather than not-found: the row may well exist, and saying
+          // so would confirm another tenant's id to somebody guessing.
+          throw new InvalidError(
+            BillingError.LINE_STAY_FOREIGN,
+            "That stay is not on this bill's booking",
+            "roomStayId"
+          );
+        }
+      }
+
+      return tx.folioLine.create({
+        data: {
+          folioId: folio.id,
+          type: input.type,
+          description: input.description,
+          quantity: input.quantity,
+          unitPriceMinor: input.unitPriceMinor,
+          taxRateBp: input.taxRateBp,
+          taxAmountMinor: amounts.taxAmountMinor,
+          amountMinor: amounts.amountMinor,
+          roomStayId: input.roomStayId,
+          serviceDate: input.serviceDate,
+          postedById: user.id,
+        },
+      });
     });
   }),
 
@@ -215,40 +252,62 @@ export const billingRouter = createTRPCRouter({
   takePayment: protectedProcedure.input(takePaymentSchema).mutation(async ({ ctx, input }) => {
     const { user } = await requirePropertyMember(ctx, input.propertyId);
 
-    const folio = await ctx.db.folio.findFirst({
-      where: { id: input.folioId, propertyId: input.propertyId },
-      select: { id: true, status: true, currencyCode: true, reservationId: true },
-    });
-    if (!folio) {
-      throw new NotFoundError(BillingError.FOLIO_NOT_FOUND, "Folio not found");
-    }
+    return ctx.db.$transaction(async (tx) => {
+      await lockFolio(tx, input.folioId);
 
-    const closed = refusePosting(folio.status);
-    if (closed) throw refused(closed);
-
-    // A double-click must not take the money twice. The key is unique in the
-    // schema, so the second attempt reads the first rather than racing it.
-    if (input.idempotencyKey) {
-      const already = await ctx.db.payment.findUnique({
-        where: { idempotencyKey: input.idempotencyKey },
+      const folio = await tx.folio.findFirst({
+        where: { id: input.folioId, propertyId: input.propertyId },
+        select: { id: true, status: true, currencyCode: true, reservationId: true },
       });
-      if (already) return already;
-    }
+      if (!folio) {
+        throw new NotFoundError(BillingError.FOLIO_NOT_FOUND, "Folio not found");
+      }
 
-    return ctx.db.payment.create({
-      data: {
-        propertyId: input.propertyId,
-        folioId: folio.id,
-        reservationId: folio.reservationId,
-        method: input.method,
-        status: PaymentStatus.CAPTURED,
-        amountMinor: input.amountMinor,
-        currencyCode: folio.currencyCode,
-        externalRef: input.externalRef,
-        idempotencyKey: input.idempotencyKey,
-        capturedAt: new Date(),
-        createdById: user.id,
-      },
+      const closed = refusePosting(folio.status);
+      if (closed) throw refused(closed);
+
+      /**
+       * A double-click must not take the money twice.
+       *
+       * The old comment here said the key is unique in the schema "so the
+       * second attempt reads the first rather than racing it". It raced it: a
+       * read and a create are two statements, and the loser got a raw
+       * duplicate-key **500** — at somebody who pressed a button once and saw
+       * nothing happen, which is the one moment they will press it again.
+       */
+      if (input.idempotencyKey) {
+        const already = await tx.payment.findUnique({
+          where: { idempotencyKey: input.idempotencyKey },
+        });
+        if (already) return already;
+      }
+
+      try {
+        return await tx.payment.create({
+          data: {
+            propertyId: input.propertyId,
+            folioId: folio.id,
+            reservationId: folio.reservationId,
+            method: input.method,
+            status: PaymentStatus.CAPTURED,
+            amountMinor: input.amountMinor,
+            currencyCode: folio.currencyCode,
+            externalRef: input.externalRef,
+            idempotencyKey: input.idempotencyKey,
+            capturedAt: new Date(),
+            createdById: user.id,
+          },
+        });
+      } catch (error) {
+        // The folio lock serialises two clicks on *this* bill; the key is
+        // unique across all of them, so a key reused on another folio still
+        // arrives here. Taken means taken.
+        if (!input.idempotencyKey || !isUniqueViolation(error)) throw error;
+
+        return tx.payment.findUniqueOrThrow({
+          where: { idempotencyKey: input.idempotencyKey },
+        });
+      }
     });
   }),
 
@@ -295,28 +354,41 @@ export const billingRouter = createTRPCRouter({
   close: protectedProcedure.input(closeFolioSchema).mutation(async ({ ctx, input }) => {
     const { user } = await requirePropertyMember(ctx, input.propertyId);
 
-    const folio = await ctx.db.folio.findFirst({
-      where: { id: input.id, propertyId: input.propertyId },
-      select: FOLIO_STATE,
-    });
-    if (!folio) {
-      throw new NotFoundError(BillingError.FOLIO_NOT_FOUND, "Folio not found");
-    }
+    /**
+     * Read the lines and freeze their total in one act.
+     *
+     * `closedTotalMinor` is deliberately not re-derivable — that is the point
+     * of freezing it — so a line posted between the read and the write was
+     * excluded from the number for ever, and nothing downstream could notice.
+     * The lock is what makes "balanced" and "closed at this total" the same
+     * instant.
+     */
+    return ctx.db.$transaction(async (tx) => {
+      await lockFolio(tx, input.id);
 
-    const refusal = refuseClose(folio);
-    if (refusal) throw refused(refusal);
+      const folio = await tx.folio.findFirst({
+        where: { id: input.id, propertyId: input.propertyId },
+        select: FOLIO_STATE,
+      });
+      if (!folio) {
+        throw new NotFoundError(BillingError.FOLIO_NOT_FOUND, "Folio not found");
+      }
 
-    return ctx.db.folio.update({
-      where: { id: folio.id },
-      data: {
-        status: FolioStatus.CLOSED,
-        closedAt: new Date(),
-        closedTotalMinor: folio.lines.reduce(
-          (total, line) => (line.voidedAt ? total : total + line.amountMinor),
-          0
-        ),
-        updatedById: user.id,
-      },
+      const refusal = refuseClose(folio);
+      if (refusal) throw refused(refusal);
+
+      return tx.folio.update({
+        where: { id: folio.id },
+        data: {
+          status: FolioStatus.CLOSED,
+          closedAt: new Date(),
+          closedTotalMinor: folio.lines.reduce(
+            (total, line) => (line.voidedAt ? total : total + line.amountMinor),
+            0
+          ),
+          updatedById: user.id,
+        },
+      });
     });
   }),
 

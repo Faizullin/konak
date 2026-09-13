@@ -13,6 +13,8 @@ export const BillingError = {
   FOLIO_VOID: "folio.void",
   FOLIO_UNBALANCED: "folio.unbalanced",
   LINE_NOT_FOUND: "folio_line.not_found",
+  /** A line may only name a stay on the reservation the folio is billing. */
+  LINE_STAY_FOREIGN: "folio_line.stay_foreign",
   LINE_ALREADY_VOID: "folio_line.already_void",
   PAYMENT_NOT_FOUND: "payment.not_found",
   PAYMENT_NOT_CAPTURED: "payment.not_captured",

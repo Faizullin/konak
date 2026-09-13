@@ -49,18 +49,10 @@ used to abort the transaction it was enqueued in — so two cancellations in the
 same minute rolled one of them back. `isUniqueViolation` in `server/errors.ts`
 is the shared shape-match.
 
-### Still open — § 2.3, the rest of billing
-
-- **`takePayment`** reads by `idempotencyKey`, then creates. A double-click is a
-  P2002 **500** rather than the payment that already exists.
-- **`close`** reads lines and payments, computes `closedTotalMinor`, and
-  updates — **not in a transaction**. A line posted between the two is frozen
-  out of a total that can never be re-derived.
-- **`postLine`** reads `folio.status`, then creates. A folio closed
-  concurrently accepts the line.
-
-All three want the same treatment: `lockReservation` or a transaction around the
-decision, and `isUniqueViolation` where a unique index already exists.
+**And § 2.3 with them.** `lockFolio` covers `postLine`, `close` and
+`takePayment` — three procedures that read a bill's state and then wrote
+against it. `takePayment` also catches P2002, because its key is unique across
+*all* folios and the folio lock only serialises two hands on one of them.
 
 ---
 
@@ -180,14 +172,14 @@ Two more without a `take` that actually grow: `platform.listAttachments`, and
 
 ---
 
-## 8. One security hole — **worth fixing**
+## 8. ~~One security hole~~ — shipped
 
-`billing.postLine` writes `roomStayId` with **no check that the stay belongs to
-this folio's reservation, or even to this property**. `postLineSchema` types it
-as a bare optional number. A line can be bound to another tenant's stay, which
-also poisons `postRoomCharges`'s idempotency check.
-
----
+`billing.postLine` accepted any `roomStayId` with no check that the stay belongs
+to the folio's reservation — so a line could be bound to another tenant's stay,
+which also poisoned `postRoomCharges`'s idempotency ("does this stay already
+have a line"). It is checked now, and refused as **invalid** rather than *not
+found*: the row may well exist, and saying so would confirm another tenant's id
+to somebody guessing.
 
 ## 9. Duplication worth collapsing — **worth fixing**
 
@@ -233,9 +225,13 @@ also poisons `postRoomCharges`'s idempotency check.
 1. ~~**§ 1**, the inventory write path.~~ Shipped.
 2. ~~**§ 2.1, § 2.2 and § 2.4**~~ — shipped. `lockRoomType` and
    `lockReservation` are the worked examples now, beside `lockOrganization`.
-3. **§ 2.3**, the last three in billing. **Top of the list.**
-4. **§ 4**, the guard chain — one change, every procedure faster.
-5. **§ 8**, then the rest by appetite.
+3. ~~**§ 2.3**~~ and ~~**§ 8**~~ — shipped.
+4. **§ 4**, the guard chain. Half of it is done: `requirePropertyMember` selects
+   the whole small property row, so five procedures stopped re-reading it. What
+   is left is dropping the redundant `requireUser` — three sequential auth
+   queries become two, on every one of 90 procedures.
+5. **§ 3**, the three changes the channels are never told about.
+6. **§ 5**, the indexes — measure first.
 
 Each of § 1, § 2.1 and § 2.2 wants an **integration test that runs two callers
 at once**, the way `reservations.test.ts` now does for the series number. The

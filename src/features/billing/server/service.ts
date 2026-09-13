@@ -19,6 +19,28 @@ import { FolioStatus, LineType, priceLine } from "../model";
 type Tx = Prisma.TransactionClient;
 
 /**
+ * Hold one bill still while something decides what may be done to it.
+ *
+ * Three procedures read a folio's state and then write against it — post a
+ * line, take a payment, close it — and each pair of statements has a gap a
+ * second request fits into. What comes out of the gap is not a crash but a
+ * quietly wrong bill:
+ *
+ * - a line posted onto a folio that was closed a moment earlier;
+ * - a closing total frozen without a line that had just been posted, and
+ *   `closedTotalMinor` is deliberately not re-derivable, so the number stays
+ *   wrong for ever;
+ * - a double-click taking the money twice, or raising a duplicate-key 500 at
+ *   somebody who pressed a button once and saw nothing happen.
+ *
+ * Same shape as `lockRoomType` and `lockReservation`: take the row lock, then
+ * decide, inside the transaction that writes.
+ */
+export async function lockFolio(tx: Prisma.TransactionClient, folioId: number): Promise<void> {
+  await tx.$queryRaw`SELECT "id" FROM "folios" WHERE "id" = ${folioId} FOR UPDATE`;
+}
+
+/**
  * The reservation's folio, opened if it has none.
  *
  * `VOID` does not count as having one — a bill raised in error and voided

@@ -107,8 +107,11 @@ counted, never stored.
 **The overselling races are closed.** `lockRoomType` and `lockReservation` sit
 beside `lockOrganization` as the pattern — take the row lock, then decide,
 inside the transaction that writes. `guides/architecture.md` § A check and the
-write it authorises are one act. What is left is
-`plans/server-hardening.md` § 2.3: `takePayment`, `close` and `postLine`.
+write it authorises are one act. `lockFolio` closed the last three — `postLine`, `close` and `takePayment` — so
+**every read-then-write the audit found is now decided under a lock**. What is
+left in `plans/server-hardening.md` is performance and completeness, not
+correctness: the guard chain (§ 4), three changes the channels are never told
+about (§ 3), and the indexes (§ 5).
 
 **Dark mode works, and a person chooses it.** `next-themes` at the root,
 `AppearanceToggle` in the dashboard header and in the desk's bar. Both surfaces

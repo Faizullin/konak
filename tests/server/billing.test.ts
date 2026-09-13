@@ -320,3 +320,171 @@ describe("splitting a bill", () => {
     assert.notEqual(original.number, moved.number);
   });
 });
+
+describe("two hands on one bill", () => {
+  /**
+   * Its own reservation, and one per test.
+   *
+   * The file's shared one is closed by the cycle above, and these are about
+   * what happens to an **open** bill. A test that depends on the order the
+   * others ran in is a test that will fail for the wrong reason one day.
+   */
+  let roomTypeId: number;
+
+  before(async () => {
+    const type = await prisma.roomType.findFirstOrThrow({
+      where: { propertyId },
+      select: { id: true },
+    });
+    roomTypeId = type.id;
+  });
+
+  const freshReservation = async (tag: string) => {
+    const reservation = await prisma.reservation.create({
+      data: {
+        propertyId,
+        reference: `BILL-${fx.tag}-${tag}`,
+        status: "CHECKED_OUT",
+        currencyCode: "EUR",
+        stays: {
+          create: [
+            {
+              roomTypeId,
+              status: "CHECKED_OUT",
+              checkIn: new Date(Date.UTC(2027, 5, 1)),
+              checkOut: new Date(Date.UTC(2027, 5, 3)),
+              currencyCode: "EUR",
+            },
+          ],
+        },
+      },
+    });
+    return reservation.id;
+  };
+
+  /**
+   * All three of these read a folio's state and then wrote against it, and the
+   * gap between the two statements was wide enough for a second request. None
+   * of them crashed in a way anybody would notice — they produced a quietly
+   * wrong bill, which is worse.
+   */
+  test("a double-click takes the money once, and returns the payment rather than a 500", async () => {
+    const caller = callerFor(fx.owner);
+    const mine = await freshReservation("pay");
+    const folio = await caller.billing.folioForReservation({
+      propertyId,
+      reservationId: mine,
+    });
+
+    const key = `pay-${fx.tag}`;
+    const attempt = () =>
+      caller.billing.takePayment({
+        propertyId,
+        folioId: folio.id,
+        method: "CARD",
+        amountMinor: 5_000,
+        idempotencyKey: key,
+      });
+
+    // Sent together, the way a double-click sends them.
+    const [a, b] = await Promise.all([attempt(), attempt()]);
+
+    // Both callers are told about the same payment; neither is handed a
+    // duplicate-key error for pressing a button twice.
+    assert.equal(a.id, b.id);
+
+    const taken = await prisma.payment.count({ where: { idempotencyKey: key } });
+    assert.equal(taken, 1, "the money was taken once");
+  });
+
+  test("a line posted while the bill is closing does not vanish from the frozen total", async () => {
+    const caller = callerFor(fx.owner);
+    const mine = await freshReservation("close");
+    const folio = await caller.billing.folioForReservation({
+      propertyId,
+      reservationId: mine,
+    });
+
+    await caller.billing.postLine({
+      propertyId,
+      folioId: folio.id,
+      type: "ROOM",
+      description: "A night",
+      quantity: 1,
+      unitPriceMinor: 10_000,
+    });
+    await caller.billing.takePayment({
+      propertyId,
+      folioId: folio.id,
+      method: "CARD",
+      amountMinor: 10_000,
+    });
+
+    /**
+     * Closing and posting at once. Either order is legitimate — the line lands
+     * first and the close refuses because the bill no longer balances, or the
+     * close wins and the line is refused because the bill is shut. What must
+     * not happen is both succeeding, which is how `closedTotalMinor` came to
+     * exclude a line that is on the folio: the number is deliberately not
+     * re-derivable, so it stays wrong for ever.
+     */
+    const [closing, posting] = await Promise.allSettled([
+      caller.billing.close({ propertyId, id: folio.id }),
+      caller.billing.postLine({
+        propertyId,
+        folioId: folio.id,
+        type: "EXTRA",
+        description: "A late minibar",
+        quantity: 1,
+        unitPriceMinor: 450,
+      }),
+    ]);
+
+    if (closing.status === "fulfilled" && posting.status === "fulfilled") {
+      assert.fail("a bill closed and took another line in the same instant");
+    }
+
+    const after = await prisma.folio.findUniqueOrThrow({
+      where: { id: folio.id },
+      select: { status: true, closedTotalMinor: true, lines: { select: { amountMinor: true } } },
+    });
+
+    // If it closed, the frozen total is every line that was on it.
+    if (after.status === "CLOSED") {
+      const onIt = after.lines.reduce((total, line) => total + line.amountMinor, 0);
+      assert.equal(after.closedTotalMinor, onIt);
+    }
+  });
+
+  test("a line cannot name a stay from somebody else's booking", async () => {
+    const caller = callerFor(fx.owner);
+    const mine = await freshReservation("foreign");
+    const folio = await caller.billing.folioForReservation({
+      propertyId,
+      reservationId: mine,
+    });
+
+    // A stay that exists and belongs to a different reservation. Accepted
+    // without a word before — which also poisons `postRoomCharges`, whose
+    // idempotency is "does this stay already have a line".
+    const foreign = await prisma.roomStay.findFirstOrThrow({
+      where: { reservationId: { not: mine } },
+      select: { id: true },
+    });
+
+    const error = await caller.billing
+      .postLine({
+        propertyId,
+        folioId: folio.id,
+        type: "ROOM",
+        description: "Not mine",
+        quantity: 1,
+        unitPriceMinor: 100,
+        roomStayId: foreign.id,
+      })
+      .then(() => null)
+      .catch((e) => e);
+
+    assert.equal(domainCodeOf(error), BillingError.LINE_STAY_FOREIGN);
+  });
+});

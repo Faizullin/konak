@@ -5,13 +5,14 @@ boxes. A finished item leaves here; the fact of it goes to `history.md`.
 
 Where this sits in the whole build: `plans/roadmap.md`.
 
-## Three more read-then-writes, all in billing
-`takePayment` turns a double-click into a P2002 500 instead of returning the
-payment that exists; `close` computes a frozen total **outside a transaction**,
-so a line posted between the read and the write is excluded from a number that
-can never be re-derived; `postLine` reads the folio's status and then creates,
-so a folio closed concurrently accepts the line. `plans/server-hardening.md`
-§ 2.3 — and `lockReservation` is now the worked example beside it.
+## The guard chain asks three questions where two would do
+`requirePropertyMember` → `requireOrgMember` → `requireUser`, strictly
+sequential, on every one of ~90 procedures — and the grid and the day lists poll
+every thirty seconds per open desk. The user lookup is redundant:
+`requireOrgMember` uses only `user.id`, which *is* `ctx.session.user.id`, and a
+deleted user already yields no member row. `plans/server-hardening.md` § 4; the
+other half of it (a guard that selected too little, so five procedures re-read
+the property) is done.
 
 ## Two questions for the client, in writing, before MVP sign-off
 Both break assumptions the schema turns on, and both are cheap to ask and

@@ -46,8 +46,9 @@
     "unbalanced": "That bill does not balance yet"
   },
   "folio_line": {
+    "already_void": "That line is already void",
     "not_found": "That line was not found",
-    "already_void": "That line is already void"
+    "stay_foreign": "That stay is not on this bill's booking"
   },
   "grid": {
     "window_invalid": "A grid window is between one and {max} nights"

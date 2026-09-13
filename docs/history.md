@@ -1968,3 +1968,42 @@ desk in it. Eight items, the screen each lives on, what is there beyond the
 brief, and an honest list of what is not: no channel connected ("ready for", not
 "connected to"), no fiscal receipts, no booking history tab, and two questions
 still owed an answer.
+
+## 2026-09-13 — two hands on one bill
+
+The last three of the audit's read-then-writes, all in billing, all the same
+shape: read a folio's state, then write against it, with a gap in between. None
+of them crashed in a way anybody would notice. They produced a quietly wrong
+bill, which is worse.
+
+`lockFolio` joins `lockRoomType`, `lockReservation` and `lockOrganization`.
+
+- **`postLine`** read `folio.status` and then created, so a folio closed a
+  moment earlier still took the line.
+- **`close`** read the lines, summed them, and updated — **outside a
+  transaction**. `closedTotalMinor` is deliberately not re-derivable, which is
+  the point of freezing it, so a line posted between the read and the write was
+  excluded from that number for ever and nothing downstream could notice.
+- **`takePayment`** read by `idempotencyKey` and then created, under a comment
+  claiming the unique key meant "the second attempt reads the first rather than
+  racing it". It raced it. The loser got a raw duplicate-key **500** — handed to
+  somebody who pressed a button once, saw nothing happen, and pressed it again,
+  which is exactly when it fires. It catches P2002 as well as locking, because
+  the key is unique across *all* folios and a lock on one does not cover a key
+  reused on another.
+
+The two race tests were checked the way the others were: the lock was removed,
+both failed, the lock was restored.
+
+### And a line could be bound to another tenant's stay
+
+`postLine` took `roomStayId` as a bare optional number and wrote it with no
+check at all. Beyond the obvious, it poisoned `postRoomCharges`, whose
+idempotency is "does this stay already have a line" — a foreign line on a stay
+would have suppressed that stay's own room charge.
+
+Refused as **invalid** rather than *not found*, deliberately: the row may well
+exist, and answering "not found" would confirm another tenant's id to somebody
+guessing at numbers.
+
+250 unit, 179 integration, 103 browser.
