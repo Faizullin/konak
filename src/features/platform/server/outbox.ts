@@ -10,6 +10,7 @@ import {
   type EnqueueOutboxInput,
 } from "../model";
 import { STORAGE_HANDLERS } from "./storage-sweep";
+import { CHANNEL_HANDLERS } from "@/features/channels/server";
 
 /**
  * The outbox worker: claiming work, running it, and deciding what a failure
@@ -56,6 +57,7 @@ export type OutboxHandlers = Record<string, OutboxHandler>;
  */
 export const OUTBOX_HANDLERS: OutboxHandlers = {
   ...STORAGE_HANDLERS,
+  ...CHANNEL_HANDLERS,
 };
 
 /** The client a caller's transaction hands us, or the plain one. */

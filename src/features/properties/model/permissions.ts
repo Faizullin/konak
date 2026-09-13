@@ -6,6 +6,8 @@ import { OrgRole } from "@/features/organizations";
  * `orgStatements` — declared once, granted per role, asked by name.
  */
 export const propertyStatements = {
+  /** The hotel itself. Adding one is a decision about what the company runs. */
+  property: ["create", "update", "archive"],
   roomType: ["read", "create", "update", "archive"],
   room: ["read", "create", "update", "archive"],
 } as const;
@@ -19,10 +21,12 @@ const ac = createAccessControl(propertyStatements);
  */
 const PROPERTY_ROLE_AC = {
   [OrgRole.OWNER]: ac.newRole({
+    property: ["create", "update", "archive"],
     roomType: ["read", "create", "update", "archive"],
     room: ["read", "create", "update", "archive"],
   }),
   [OrgRole.ADMIN]: ac.newRole({
+    property: ["create", "update", "archive"],
     roomType: ["read", "create", "update", "archive"],
     room: ["read", "create", "update", "archive"],
   }),
@@ -58,4 +62,9 @@ export function canManageRoomTypes(role: string): boolean {
 
 export function canArchiveRoomTypes(role: string): boolean {
   return propertyCan(role, { roomType: ["archive"] });
+}
+
+/** Adding a hotel is a manager's decision, like pricing one. */
+export function canManageProperties(role: string): boolean {
+  return propertyCan(role, { property: ["create", "update"] });
 }

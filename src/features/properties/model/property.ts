@@ -24,6 +24,38 @@ export const listPropertiesSchema = z.object({
 
 export type ListPropertiesInput = z.infer<typeof listPropertiesSchema>;
 
+/**
+ * A new hotel.
+ *
+ * The timezone is not cosmetic and is not defaulted away: a hotel's day ends at
+ * its front desk, and "has this booking arrived yet" is answered against the
+ * property's own day or answered wrongly twice a day. The currency is the same
+ * kind of decision — every price beneath it is denominated in it.
+ */
+export const createPropertySchema = z.object({
+  organizationId: z.number(),
+  name: z.string().min(1, "name_required").max(120),
+  slug: propertySlugSchema,
+  timezone: z.string().min(1, "name_required").max(64),
+  currencyCode: z
+    .string()
+    .length(3, "currency_code")
+    .regex(/^[A-Z]{3}$/, "currency_code"),
+  /** Minutes from midnight, property-local. 14:00 is 840. */
+  checkInMinutes: z.number().int().min(0).max(1439).default(840),
+  checkOutMinutes: z.number().int().min(0).max(1439).default(660),
+});
+
+export type CreatePropertyInput = z.infer<typeof createPropertySchema>;
+
+/** The dialog's half: the organization comes from the route. */
+export const propertyFormSchema = createPropertySchema.omit({ organizationId: true }).extend({
+  checkInMinutes: z.number().int().min(0).max(1439),
+  checkOutMinutes: z.number().int().min(0).max(1439),
+});
+
+export type PropertyFormInput = z.infer<typeof propertyFormSchema>;
+
 export const propertyBySlugSchema = z.object({
   organizationId: z.number(),
   slug: propertySlugSchema,

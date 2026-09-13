@@ -57,5 +57,18 @@
     "maxAdults": "Max adults",
     "maxChildren": "Max children",
     "position": "Order"
+  },
+  "propertyForm": {
+    "title": "New property",
+    "description": "One hotel. Its timezone decides whose day a booking arrives on.",
+    "add": "Add property",
+    "created": "Property added",
+    "name": "Name",
+    "slug": "Address",
+    "timezone": "Timezone",
+    "currencyCode": "Currency",
+    "checkIn": "Check-in from",
+    "checkOut": "Check-out by",
+    "new": "New property"
   }
 }

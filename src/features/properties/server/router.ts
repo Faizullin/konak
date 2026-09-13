@@ -13,9 +13,11 @@ import {
   PropertyError,
   canArchiveRooms,
   canArchiveRoomTypes,
+  canManageProperties,
   canManageRooms,
   canManageRoomTypes,
   compareRoomNumbers,
+  createPropertySchema,
   createRoomSchema,
   createRoomTypeSchema,
   refuseOccupancy,
@@ -127,6 +129,69 @@ export const propertyRouter = createTRPCRouter({
         ...(input.search ? { name: { contains: input.search, mode: "insensitive" } } : {}),
       },
       orderBy: { name: "asc" },
+      select: PROPERTY_ROUTE_SELECT,
+    });
+  }),
+
+  /**
+   * A new hotel, with the numbers it cannot operate without.
+   *
+   * **Both series are written in the same transaction.** A legal number comes
+   * from a sequence, and a property missing one of these is a property that can
+   * be booked into and never checked out of — which is exactly how it was
+   * discovered: the seed wrote both and a test fixture wrote one.
+   *
+   * The counters start at zero and the period is this year; `nextSeriesNumber`
+   * resets a yearly series when the year turns, so seeding a period now does
+   * not date the property.
+   */
+  create: protectedProcedure.input(createPropertySchema).mutation(async ({ ctx, input }) => {
+    const { role, user } = await requireOrgMember(ctx, input.organizationId);
+    if (!canManageProperties(role)) {
+      throw new ForbiddenError(PropertyError.MANAGER_REQUIRED, "Only managers can add a property");
+    }
+
+    const taken = await ctx.db.property.findFirst({
+      where: { organizationId: input.organizationId, slug: input.slug },
+      select: { id: true },
+    });
+    if (taken) {
+      throw new ConflictError(PropertyError.SLUG_TAKEN, "That slug is already used here", "slug");
+    }
+
+    const period = String(new Date().getUTCFullYear());
+    const prefix = input.slug.slice(0, 3).toUpperCase();
+
+    return ctx.db.property.create({
+      data: {
+        organizationId: input.organizationId,
+        name: input.name,
+        slug: input.slug,
+        timezone: input.timezone,
+        currencyCode: input.currencyCode,
+        checkInMinutes: input.checkInMinutes,
+        checkOutMinutes: input.checkOutMinutes,
+        createdById: user.id,
+        updatedById: user.id,
+        numberSeries: {
+          create: [
+            {
+              organizationId: input.organizationId,
+              kind: "RESERVATION",
+              prefix: `${prefix}-`,
+              period,
+              counter: 0,
+            },
+            {
+              organizationId: input.organizationId,
+              kind: "FOLIO",
+              prefix: `${prefix}-F-`,
+              period,
+              counter: 0,
+            },
+          ],
+        },
+      },
       select: PROPERTY_ROUTE_SELECT,
     });
   }),

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { after, before, describe, test } from "node:test";
 import { TRPCError } from "@trpc/server";
-import { callerFor, createFixture, prisma, type Fixture } from "./harness";
+import { callerFor, createFixture, domainCodeOf, prisma, type Fixture } from "./harness";
 
 /**
  * The axes the front desk is drawn against: which hotels an organization runs,
@@ -199,6 +199,101 @@ describe("the property guard", () => {
     await assert.rejects(
       () => callerFor(fx.outsider).property.listRoomTypes({ propertyId }),
       (e) => code(e) === "FORBIDDEN"
+    );
+  });
+});
+
+describe("adding a hotel", () => {
+  test("a new property gets both number series, or it cannot be operated", async () => {
+    const caller = callerFor(fx.owner);
+    const slug = `new-${fx.tag}`;
+
+    const created = await caller.property.create({
+      organizationId: fx.org.id,
+      name: "The New One",
+      slug,
+      timezone: "Europe/Berlin",
+      currencyCode: "EUR",
+      checkInMinutes: 840,
+      checkOutMinutes: 660,
+    });
+
+    // A booking takes a reference and the bill it becomes takes a folio number.
+    // A property with one of them can be booked into and never checked out of,
+    // which is how the gap was found.
+    const series = await prisma.numberSeries.findMany({
+      where: { propertyId: created.id },
+      select: { kind: true, counter: true },
+      orderBy: { kind: "asc" },
+    });
+    assert.deepEqual(
+      series.map((s) => s.kind),
+      ["FOLIO", "RESERVATION"]
+    );
+    assert.ok(series.every((s) => s.counter === 0));
+
+    await prisma.property.delete({ where: { id: created.id } });
+  });
+
+  test("a slug is taken once per organization, not once per install", async () => {
+    const caller = callerFor(fx.owner);
+    const slug = `twice-${fx.tag}`;
+
+    const first = await caller.property.create({
+      organizationId: fx.org.id,
+      name: "First",
+      slug,
+      timezone: "UTC",
+      currencyCode: "EUR",
+      checkInMinutes: 840,
+      checkOutMinutes: 660,
+    });
+
+    await assert.rejects(
+      caller.property.create({
+        organizationId: fx.org.id,
+        name: "Second",
+        slug,
+        timezone: "UTC",
+        currencyCode: "EUR",
+        checkInMinutes: 840,
+        checkOutMinutes: 660,
+      }),
+      (e) => domainCodeOf(e) === "property.slug_taken"
+    );
+
+    // Another company may have a "riverside" of its own.
+    const other = await createFixture();
+    try {
+      const theirs = await callerFor(other.owner).property.create({
+        organizationId: other.org.id,
+        name: "Theirs",
+        slug,
+        timezone: "UTC",
+        currencyCode: "EUR",
+        checkInMinutes: 840,
+        checkOutMinutes: 660,
+      });
+      await prisma.property.delete({ where: { id: theirs.id } });
+    } finally {
+      await other.cleanup();
+    }
+
+    await prisma.property.delete({ where: { id: first.id } });
+  });
+
+  test("a receptionist does not add hotels", async () => {
+    await assert.rejects(
+      callerFor(fx.member).property.create({
+        organizationId: fx.org.id,
+        name: "Nope",
+        slug: `member-${fx.tag}`,
+        timezone: "UTC",
+        currencyCode: "EUR",
+        checkInMinutes: 840,
+        checkOutMinutes: 660,
+      }),
+      (e) => domainCodeOf(e) === "property.manager_required"
     );
   });
 });

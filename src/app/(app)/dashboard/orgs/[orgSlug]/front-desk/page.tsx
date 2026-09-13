@@ -1,8 +1,8 @@
 import { getTranslations } from "next-intl/server";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { redirect } from "next/navigation";
 import { PageHeader } from "@/components/common/page-header";
+import { NewPropertyButton } from "@/features/properties/client/components/new-property-button";
 import { isOrgModuleEnabled } from "@/features/organizations";
 import { organizationBySlug } from "@/features/organizations/server";
 import prisma from "@/server/db";
@@ -36,17 +36,20 @@ export default async function FrontDeskPage({ params }: { params: Promise<{ orgS
     select: { name: true, slug: true, timezone: true },
   });
 
-  if (properties.length === 1) {
-    redirect(`/dashboard/orgs/${orgSlug}/front-desk/${properties[0]!.slug}`);
-  }
+  // No redirect when there is exactly one. It was a kindness — a list of one
+  // is a click nobody needs — but it also made this the only screen from which
+  // a second property can be added, and skipping it made the second hotel
+  // unreachable. One click is the cheaper half of that trade.
 
   return (
     <div className="space-y-6">
-      <PageHeader title={t("frontDesk.title")} description={t("frontDesk.description")} />
+      <PageHeader
+        title={t("frontDesk.title")}
+        description={t("frontDesk.description")}
+        actions={<NewPropertyButton organizationId={organization.id} orgSlug={orgSlug} />}
+      />
       {properties.length === 0 ? (
-        <p className="text-muted-foreground text-sm">
-          This organization has no properties yet. One has to exist before there is a desk to run.
-        </p>
+        <p className="text-muted-foreground text-sm">{t("frontDesk.empty")}</p>
       ) : (
         <ul className="grid gap-2 sm:grid-cols-2">
           {properties.map((property) => (

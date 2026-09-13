@@ -16,6 +16,12 @@
     "admin_required": "This action requires an administrator",
     "not_signed_in": "You must be signed in"
   },
+  "channel": {
+    "connection_not_found": "That channel connection no longer exists",
+    "connection_paused": "That channel connection is paused",
+    "mapping_not_found": "That room type is not mapped to this channel",
+    "mapping_unknown": "The channel sold a room type this property does not have"
+  },
   "company": {
     "create_forbidden": "You cannot add companies",
     "not_found": "Company not found",
@@ -77,7 +83,9 @@
     "subject_not_found": "That subject was not found"
   },
   "property": {
-    "not_found": "Property not found"
+    "manager_required": "Only owners and admins can add a property",
+    "not_found": "Property not found",
+    "slug_taken": "That slug is already used in this organization"
   },
   "rate": {
     "prices_forbidden": "You cannot change prices",

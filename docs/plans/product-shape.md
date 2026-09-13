@@ -310,6 +310,19 @@ count, and what happens at the desk when it bites. A hotel that never
 overbooks leaves money on the table; one that overbooks without a policy walks
 guests without a plan.
 
+**The policy, written down.** It is a per-property setting with two values, and
+the default is `NONE`: a property that has not thought about this does not
+overbook. `FIXED` sells a stated number of rooms beyond the count, per type per
+night. Two rules bound it:
+
+- **It applies to what a channel is told, never to what the desk can sell.**
+  The desk's availability is derived from stays and is the truth; overbooking is
+  a deliberate lie told outward, and the moment it stops being a lie the desk has
+  to walk somebody.
+- **A sold-out night stays sold out.** Overbooking adds to what is free, not to
+  what is gone. A policy that reopened a closed night would be the hotel walking
+  a guest by arithmetic rather than by decision.
+
 An intent to tell an outside system is recorded in the same transaction as the
 thing it announces, then carried out afterwards. A booking and the message
 announcing it commit together or not at all — otherwise a network failure

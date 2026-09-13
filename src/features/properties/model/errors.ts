@@ -9,6 +9,9 @@
  */
 export const PropertyError = {
   NOT_FOUND: "property.not_found",
+  /** Adding or renaming a hotel is a decision, not a shift's work. */
+  MANAGER_REQUIRED: "property.manager_required",
+  SLUG_TAKEN: "property.slug_taken",
 
   ROOM_TYPE_NOT_FOUND: "room_type.not_found",
   ROOM_TYPE_CODE_TAKEN: "room_type.code_taken",

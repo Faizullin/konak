@@ -17,7 +17,8 @@
   },
   "frontDesk": {
     "title": "Front desk",
-    "description": "Choose a property to open its grid."
+    "description": "Choose a property to open its grid.",
+    "empty": "No properties yet. One has to exist before there is a desk to run."
   },
   "property": {
     "description": "Check-in from {checkIn}, check-out by {checkOut}.",
