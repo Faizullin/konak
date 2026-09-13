@@ -10,6 +10,7 @@ import {
   type EnqueueOutboxInput,
 } from "../model";
 import { STORAGE_HANDLERS } from "./storage-sweep";
+import { isUniqueViolation } from "@/server/errors";
 
 /**
  * The outbox worker: claiming work, running it, and deciding what a failure
@@ -88,16 +89,39 @@ export async function enqueueOutbox(db: Enqueuer, input: EnqueueOutboxInput) {
     if (existing) return existing;
   }
 
-  return db.outboxTask.create({
-    data: {
-      type: parsed.type,
-      payloadJson: JSON.stringify(parsed.payload),
-      organizationId: parsed.organizationId ?? null,
-      idempotencyKey: parsed.idempotencyKey ?? null,
-      availableAt: parsed.availableAt ?? new Date(),
-    },
-    select: { id: true, type: true, status: true },
-  });
+  try {
+    return await db.outboxTask.create({
+      data: {
+        type: parsed.type,
+        payloadJson: JSON.stringify(parsed.payload),
+        organizationId: parsed.organizationId ?? null,
+        idempotencyKey: parsed.idempotencyKey ?? null,
+        availableAt: parsed.availableAt ?? new Date(),
+      },
+      select: { id: true, type: true, status: true },
+    });
+  } catch (error) {
+    /**
+     * Somebody filed the same key between the read above and this write.
+     *
+     * That is precisely what the key *means* — "this has already been said" —
+     * so it is the answer, not a failure. But the read and the create are two
+     * statements and the gap is wide enough to matter: `pushKey` is
+     * minute-grained, so two cancellations in the same minute compute the same
+     * key, both miss, and the loser's `INSERT` raised P2002 and **took its
+     * whole transaction with it**. The booking rolled back because the message
+     * announcing it was already queued.
+     *
+     * Only recoverable when a key was given. Without one there is nothing to
+     * recover to, and a violation means something else is wrong.
+     */
+    if (!parsed.idempotencyKey || !isUniqueViolation(error)) throw error;
+
+    return db.outboxTask.findUniqueOrThrow({
+      where: { idempotencyKey: parsed.idempotencyKey },
+      select: { id: true, type: true, status: true },
+    });
+  }
 }
 
 /**

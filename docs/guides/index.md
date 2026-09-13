@@ -16,6 +16,7 @@ guide, and the fact of it is appended to history.
 | [ui-patterns.md](ui-patterns.md) | building a form, list, dialog or combobox |
 | [local-development.md](local-development.md) | setting up, running scripts, the seed, the database |
 | [demo.md](demo.md) | showing the product to someone — the data to load and the path through it |
+| [mvp-report.ru.md](mvp-report.ru.md) | **the client's report, in Russian** — their eight MVP items, the screen each lives on, and what is deliberately not there |
 
 ## Tests
 

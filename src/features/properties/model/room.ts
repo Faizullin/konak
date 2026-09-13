@@ -270,3 +270,46 @@ export function refuseBlock(args: {
 
   return null;
 }
+
+/**
+ * Whether a room is for sale tonight — the client's fourth MVP item,
+ * «свободен, забронирован, занят».
+ *
+ * **Commercial state, not housekeeping state**, and the two are genuinely
+ * different questions about the same room. `RoomStatus` answers *is it clean*;
+ * this answers *can I sell it tonight*. A room can be clean and sold, or dirty
+ * and free, and a screen that shows only one of them answers the wrong half.
+ *
+ * Derived from the stay that covers the night, never stored — the same rule
+ * everything else here follows: a column would need updating every time a
+ * booking moved, and would be wrong between the move and the update.
+ */
+export const RoomSaleState = {
+  FREE: "FREE",
+  BOOKED: "BOOKED",
+  OCCUPIED: "OCCUPIED",
+} as const;
+
+export type RoomSaleState = (typeof RoomSaleState)[keyof typeof RoomSaleState];
+
+export const ROOM_SALE_STATE_VALUES = Object.values(RoomSaleState);
+
+/**
+ * `stays` is every stay on this room that covers the night, which is normally
+ * nought or one — and exactly two on a turnover day, where somebody leaves in
+ * the morning and somebody else arrives in the afternoon.
+ *
+ * A guest in the room outranks a guest expected: on a turnover the room is
+ * **booked** for tonight even though this morning's guest has not gone far, and
+ * the arriving booking is the one that decides. So a departing `CHECKED_OUT`
+ * stay never makes a room occupied — it has ended, and the night belongs to
+ * whoever comes next or to nobody.
+ */
+export function roomSaleState(stays: readonly { status: string }[]): RoomSaleState {
+  if (stays.some((stay) => stay.status === "CHECKED_IN")) return RoomSaleState.OCCUPIED;
+  if (stays.some((stay) => stay.status === "CONFIRMED")) return RoomSaleState.BOOKED;
+
+  // ENQUIRY holds nothing — it is a question, and the room is still sellable.
+  // CHECKED_OUT is a stay that is over.
+  return RoomSaleState.FREE;
+}

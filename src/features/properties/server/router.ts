@@ -28,6 +28,7 @@ import {
   createRoomTypeSchema,
   refuseBlock,
   refuseOccupancy,
+  roomSaleState,
   setRoomBlockSchema,
   updateRoomSchema,
   updateRoomTypeSchema,
@@ -250,7 +251,7 @@ export const propertyRouter = createTRPCRouter({
    * the same ten rows sixty times.
    */
   listRooms: protectedProcedure.input(listRoomsSchema).query(async ({ ctx, input }) => {
-    await requirePropertyMember(ctx, input.propertyId);
+    const scope = await requirePropertyMember(ctx, input.propertyId);
 
     const where: Prisma.RoomWhereInput = {
       propertyId: input.propertyId,
@@ -259,22 +260,52 @@ export const propertyRouter = createTRPCRouter({
       ...(input.status ? { status: input.status } : {}),
     };
 
-    const rooms = await ctx.db.room.findMany({
-      where,
-      select: {
-        id: true,
-        number: true,
-        floor: true,
-        status: true,
-        roomTypeId: true,
-        archivedAt: true,
-      },
-    });
+    /**
+     * The rooms, and whether each is for sale **tonight**.
+     *
+     * Two queries rather than one per room: the stays that cover tonight are
+     * one bounded read, grouped in memory. The board learnt that lesson in
+     * Phase 5 and it is cheaper to apply it than to rediscover it.
+     */
+    const tonight = todayAt(scope.property.timezone);
+    const tomorrow = new Date(tonight.getTime() + 86_400_000);
+
+    const [rooms, stays] = await Promise.all([
+      ctx.db.room.findMany({
+        where,
+        select: {
+          id: true,
+          number: true,
+          floor: true,
+          status: true,
+          roomTypeId: true,
+          archivedAt: true,
+        },
+      }),
+      ctx.db.roomStay.findMany({
+        where: {
+          room: { propertyId: input.propertyId },
+          checkIn: { lt: tomorrow },
+          checkOut: { gt: tonight },
+        },
+        select: { roomId: true, status: true },
+      }),
+    ]);
+
+    const byRoom = new Map<number, { status: string }[]>();
+    for (const stay of stays) {
+      if (stay.roomId === null) continue;
+      const found = byRoom.get(stay.roomId);
+      if (found) found.push(stay);
+      else byRoom.set(stay.roomId, [stay]);
+    }
 
     // Sorted here, not in the query: room numbers are strings, so Postgres puts
     // 10 before 2. `compareRoomNumbers` is the corridor's order, and it is
     // tested without a database.
-    return rooms.sort((a, b) => compareRoomNumbers(a.number, b.number));
+    return rooms
+      .map((room) => ({ ...room, saleState: roomSaleState(byRoom.get(room.id) ?? []) }))
+      .sort((a, b) => compareRoomNumbers(a.number, b.number));
   }),
 
   createRoomType: protectedProcedure

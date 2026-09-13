@@ -173,3 +173,25 @@ export function userNotFound() {
 export function memberNotFound() {
   return new NotFoundError(SharedError.MEMBER_NOT_FOUND, "Member not found");
 }
+
+/**
+ * Postgres refused a write because a unique index already holds that value.
+ *
+ * Read as a **question about what happened**, not as a failure. Several places
+ * here read "is there one already" and then create — and no matter how close
+ * the two statements are, a second caller fits between them. The index is what
+ * makes that a refusal instead of a duplicate; this is what lets the loser
+ * recover rather than hand a 500 to somebody who did nothing wrong.
+ *
+ * Matched by shape rather than by importing Prisma's error class, for the same
+ * reason `lib/errors.ts` matches `UploadTransferError` by shape: this file is
+ * reached by `auth.ts`, which `auth:generate` loads through jiti.
+ */
+export function isUniqueViolation(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as { code?: unknown }).code === "P2002"
+  );
+}

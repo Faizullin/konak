@@ -18,16 +18,23 @@ plan for the one thing that is not built.
 ## First, the cheap answer, so the expensive one is a choice
 
 **If the goal is "a surface that looks different", it is an afternoon and no new
-library.** Every colour in this product is a token; no component names one. A
-new palette is a CSS block plus a line in `config/surfaces.ts`:
+library — and it is now proven rather than asserted.** The desk carries two
+palettes, `default` and `contrast`, and adding the second was three things: a
+CSS file, an import, a registry line. No component changed, because no component
+names a colour. `guides/ui-patterns.md` § Adding a palette is the recipe.
 
 ```css
-[data-surface="desk2"]                    { /* light */ }
-[data-surface="desk2"]:is(.dark, .dark *) { /* dark  */ }
+[data-surface="desk2"]                                   { /* its default   */ }
+[data-surface="desk2"]:is(.dark, .dark *)                { /* …dark         */ }
+[data-surface="desk2"][data-theme="warm"]                { /* a second one  */ }
 ```
 
 Different spacing, density and radius are the same block — `--radius`, and the
 grid's `--grid-night` / `--grid-lane` custom properties.
+
+**What is *not* ready is a theme for a surface on a different base**, and that
+is § 2.4 below rather than a gap in the mechanism: a `data-theme` attribute
+cannot switch a compiled stylesheet.
 
 **Only reach for § 2 if the goal is genuinely a different component library** —
 because a client insists on their design system, or because a second product is
@@ -99,7 +106,30 @@ find it by looking rather than by reading.
 `experimental.cssChunking` (`true` by default, `'graph'` on Turbopack) is the
 knob if cross-surface load order misbehaves.
 
-### 2.3 A surface with its own base owns its own components
+### 2.3 Its themes are a different mechanism
+
+`Surface.base` decides how a theme is *applied*, and only `shadcn` is in
+`ATTRIBUTE_THEMED` — the list `AppearanceToggle` will draw a theme row for. A
+surface on Bootstrap or Ant declares its palettes the same way and switches them
+a different way, because those ship **compiled** stylesheets per theme rather
+than custom properties.
+
+Two options when that day comes, and the second is almost certainly right:
+
+- **Load both and toggle a class the vendor understands.** Simple, and it ships
+  every theme's bytes to everyone.
+- **Let the layout choose the stylesheet**, from the same cookie the attribute
+  mechanism reads. A theme is already resolved on the server — that is the whole
+  point of it being a cookie — so the layout that knows the theme is the thing
+  that imports the file. Constraint 4 still applies: whatever it imports is
+  never unloaded, so each theme's build must be wrapped in
+  `[data-surface="desk2"][data-theme="…"]` at build time exactly as the base is.
+
+Either way `ATTRIBUTE_THEMED` grows a second member or the control grows a
+second branch — and the registry, the cookie and the label convention are
+already shared.
+
+### 2.4 A surface with its own base owns its own components
 
 `components/ui/*` is shadcn and Tailwind and stays that way. `desk2` does not
 re-skin them; it writes `features/desk2/client/components/` against its own

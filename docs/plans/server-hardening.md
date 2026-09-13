@@ -27,74 +27,40 @@ The table now holds only what staff deliberately withheld, written by
 `property.setBlock`. See `guides/architecture.md` § What is counted, never
 stored.
 
-## 2. Read-then-write, five times — **blocking**
+## 2. ~~Read-then-write~~ — mostly shipped
 
-### 2.1 The last room oversells
+**Availability is decided under a lock now**, inside the transaction that
+writes it: `lockRoomType` in `reservations/server/service.ts`, taken by
+`create`, `walkIn`, `moveStay` and `hold`. `availability()` takes the client to
+ask, so the decision and the write are one act. An integration test sends three
+bookings at once for two rooms and asserts that exactly one is refused — and it
+fails if the lock is removed.
 
-`reservations/server/router.ts:192` reads `availability()`. The transaction that
-writes the stay opens at `:238`. Between them, another request reads the same
-count. `walkIn` (`:648` → `:687`) and `moveStay` (`:823` → `:868`) have the same
-shape.
+**The folio race is closed by `lockReservation`**, not by an index. A unique
+index was written first and an integration test refused it within the minute:
+`billing.split` puts a company on the room and the guest on the bar, so **two**
+live folios against one reservation is correct. What was wrong was two callers
+both believing they were the first. `billing.folioForReservation` calls the
+service now instead of being a second implementation of it.
 
-The comment at `:189` says the database refuses an overlapping room — and it
-does, but the exclusion constraint is
-`EXCLUDE … WHERE ("roomId" IS NOT NULL AND …)`. **An unassigned stay has no
-protection at all**, and unassigned is the normal case: every advance booking,
-and every channel booking (`channels/server/inbound.ts:138` — *"No room. The
-channel sold a type"*). `InventoryHold` bounds it only when the caller passes a
-`holdKey`, which the desk's own booking path leaves optional.
+**`enqueueOutbox` recovers from its own key being taken.** The read and the
+create were two statements, `pushKey` is minute-grained, and the loser's P2002
+used to abort the transaction it was enqueued in — so two cancellations in the
+same minute rolled one of them back. `isUniqueViolation` in `server/errors.ts`
+is the shared shape-match.
 
-Two clerks sell the last Double for the same night. Both succeed. The grid shows
-eleven stays against ten rooms.
+### Still open — § 2.3, the rest of billing
 
-**The fix has a worked example in this repo.** `lockOrganization`
-(`platform/server/attachments.ts:95`) is exactly this pattern done right for the
-storage quota: take the lock, then decide, then write, all inside one
-transaction. Availability wants the same — lock the `RoomTypeInventory` rows for
-the range, or the room type, and move the check inside.
+- **`takePayment`** reads by `idempotencyKey`, then creates. A double-click is a
+  P2002 **500** rather than the payment that already exists.
+- **`close`** reads lines and payments, computes `closedTotalMinor`, and
+  updates — **not in a transaction**. A line posted between the two is frozen
+  out of a total that can never be re-derived.
+- **`postLine`** reads `folio.status`, then creates. A folio closed
+  concurrently accepts the line.
 
-### 2.2 A reservation can end up with two folios
-
-`billing.folioForReservation` (`billing/server/router.ts:63`) and `openFolioFor`
-(`billing/server/service.ts:37`) both read *"is there a non-VOID folio"* then
-create one. `billing.prisma` has `@@unique([propertyId, number])` and **nothing
-stopping two open folios on one reservation**. A clerk pressing *Open the bill*
-while the check-out transaction is running gets two folios, two burnt numbers,
-and the room charges on only one of them.
-
-A partial unique index — one non-VOID folio per reservation — turns this from a
-race into an error the second caller can recover from.
-
-### 2.3 Three more in billing
-
-- **`takePayment`** (`router.ts:236`) reads by `idempotencyKey`, then creates.
-  The comment says *"the second attempt reads the first rather than racing
-  it"*; under concurrency it races it, and the unique index turns a
-  double-click into an unmapped P2002 **500** instead of returning the payment
-  that already exists.
-- **`close`** (`router.ts:300`) reads lines and payments, computes
-  `closedTotalMinor`, and updates — **not in a transaction**. A line posted
-  between the two freezes a total that excludes it, permanently: `folio.ts:88`
-  explains why that number can never be re-derived.
-- **`postLine`** (`router.ts:164`) reads `folio.status`, then creates. A folio
-  closed concurrently accepts the line anyway.
-
-### 2.4 `enqueueOutbox` turns a duplicate key into a failed booking
-
-`platform/server/outbox.ts:83` is `findUnique`-then-`create` against a `@unique`
-column. `pushKey` is minute-grained, so two writers in the same minute compute
-the same key, both miss on the read, and the second `INSERT` raises P2002 —
-**aborting the transaction it was enqueued in**.
-
-On `create` and on check-out this is accidentally masked, because
-`nextSeriesNumber`'s increment takes the series row lock earlier in the same
-transaction and serialises the two. It is **not** masked on `setStatus` to
-`CANCELLED` or `NO_SHOW`, nor on `rate.setRates`, `rate.setRestrictions`,
-`channel.map` or `channel.unmap`. Two cancellations in the same minute: one
-fails with a raw duplicate-key 500 and the cancellation rolls back.
-
-`createMany({ skipDuplicates: true })`, or catching P2002 and treating it as
-*already enqueued* — which is what the key means.
+All three want the same treatment: `lockReservation` or a transaction around the
+decision, and `isUniqueViolation` where a unique index already exists.
 
 ---
 
@@ -265,9 +231,9 @@ also poisons `postRoomCharges`'s idempotency check.
 ## Order
 
 1. ~~**§ 1**, the inventory write path.~~ Shipped.
-2. **§ 2.1 and § 2.2**, the two overselling races, using `lockOrganization` as
-   the worked example. **This is the top of the list now.**
-3. **§ 2.4**, because it turns an ordinary cancellation into a 500.
+2. ~~**§ 2.1, § 2.2 and § 2.4**~~ — shipped. `lockRoomType` and
+   `lockReservation` are the worked examples now, beside `lockOrganization`.
+3. **§ 2.3**, the last three in billing. **Top of the list.**
 4. **§ 4**, the guard chain — one change, every procedure faster.
 5. **§ 8**, then the rest by appetite.
 

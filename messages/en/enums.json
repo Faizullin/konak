@@ -16,6 +16,11 @@
     "INSPECTED": "Inspected",
     "OUT_OF_ORDER": "Out of order"
   },
+  "roomSaleState": {
+    "FREE": "Free",
+    "BOOKED": "Booked",
+    "OCCUPIED": "Occupied"
+  },
   "mealPlan": {
     "ROOM_ONLY": "Room only",
     "BREAKFAST": "Breakfast",

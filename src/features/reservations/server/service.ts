@@ -82,7 +82,17 @@ export async function availability(
      */
     exceptHoldKey?: string;
   },
-  scope?: AvailabilityScope
+  scope?: AvailabilityScope,
+  /**
+   * The client to ask, so the decision can be made **inside** the transaction
+   * that acts on it.
+   *
+   * Read outside one, this function answers a question that is already stale by
+   * the time the caller writes: two requests for the last room both see one
+   * free and both commit. Defaulted, because the grid and the day lists read it
+   * to *draw* and have nothing to protect.
+   */
+  db: Prisma.TransactionClient = prisma
 ): Promise<NightAvailability[]> {
   const from = toStayDate(args.from);
   const to = toStayDate(args.to);
@@ -124,21 +134,21 @@ export async function availability(
      * March, and letting it shrink a future night loses bookings that could
      * have been taken. A room genuinely out of service for a period is a block.
      */
-    prisma.room.groupBy({
+    db.room.groupBy({
       by: ["roomTypeId"],
       where: { roomTypeId: { in: roomTypeIds }, archivedAt: null },
       _count: { _all: true },
     }),
     // Only the nights somebody deliberately held rooms back on. Most have no
     // row, and that means nothing withheld rather than nothing for sale.
-    prisma.roomTypeInventory.findMany({
+    db.roomTypeInventory.findMany({
       where: { roomTypeId: { in: roomTypeIds }, date: { gte: from, lt: to } },
       select: { roomTypeId: true, date: true, blockedRooms: true },
     }),
     // Every stay that touches the window; each contributes to the nights it
     // actually occupies, not to the whole range.
     scope?.stays ??
-      prisma.roomStay.findMany({
+      db.roomStay.findMany({
         where: {
           roomTypeId: { in: roomTypeIds },
           checkIn: { lt: to },
@@ -146,7 +156,7 @@ export async function availability(
         },
         select: { roomTypeId: true, checkIn: true, checkOut: true, status: true },
       }),
-    prisma.inventoryHold.findMany({
+    db.inventoryHold.findMany({
       where: {
         roomTypeId: { in: roomTypeIds },
         checkIn: { lt: to },
@@ -203,6 +213,55 @@ export async function availability(
       };
     })
   );
+}
+
+/**
+ * Hold the room type still while a booking decides whether it fits.
+ *
+ * The exclusion constraint refuses two stays in **one room**, and that was the
+ * only thing believed to be protecting this. It is not: its clause is
+ * `WHERE ("roomId" IS NOT NULL AND …)`, and an unassigned stay is the normal
+ * case — every advance booking, and every booking a channel sends. So two
+ * clerks could sell the last Double for the same night, both succeed, and leave
+ * eleven stays against ten rooms with nothing in the database objecting.
+ *
+ * A row lock on the *type* is the narrowest thing that serialises the decision:
+ * bookings of different types never wait on each other, and one hotel does not
+ * take two bookings of the same type in the same instant often enough for the
+ * queue to matter. `lockOrganization` in `platform/server/attachments.ts` does
+ * exactly this for the storage quota, and `claimOutboxBatch` for the same
+ * reason again.
+ *
+ * **Take it before reading availability, inside the transaction that writes.**
+ * A check made outside the transaction is a check of the past.
+ */
+export async function lockRoomType(
+  tx: Prisma.TransactionClient,
+  roomTypeId: number
+): Promise<void> {
+  await tx.$queryRaw`SELECT "id" FROM "room_types" WHERE "id" = ${roomTypeId} FOR UPDATE`;
+}
+
+/**
+ * Hold one reservation still while something decides what it already has.
+ *
+ * `openFolioFor` reads "is there a live folio" and creates one if not, and two
+ * callers fit between those statements easily — a clerk pressing *Open the
+ * bill* while the check-out transaction is running is one click. The result was
+ * two folios, two folio numbers burnt, and the room charges on only one of
+ * them, so the guest was shown a bill missing the room.
+ *
+ * A unique index cannot say this. A reservation may legitimately have **two**
+ * live folios, because `billing.split` puts a company on the room and the guest
+ * on the bar — an index forbidding that was written, and an integration test
+ * refused it within the minute. What is wrong is not the second bill; it is two
+ * callers both believing they are the first.
+ */
+export async function lockReservation(
+  tx: Prisma.TransactionClient,
+  reservationId: number
+): Promise<void> {
+  await tx.$queryRaw`SELECT "id" FROM "reservations" WHERE "id" = ${reservationId} FOR UPDATE`;
 }
 
 /**

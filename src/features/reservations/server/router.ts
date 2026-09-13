@@ -33,6 +33,7 @@ import {
 import { quoteStay, refusalMessage } from "@/features/rates/server";
 import {
   availability,
+  lockRoomType,
   frontDeskDay,
   frontDeskGrid,
   listReservations,
@@ -186,25 +187,6 @@ export const reservationRouter = createTRPCRouter({
       );
     }
 
-    // Availability is checked here and the database refuses an overlapping
-    // *room*. Between the two, the check is what gives a usable message and the
-    // constraint is what is actually true.
-    const nights = await availability({
-      propertyId: input.propertyId,
-      roomTypeId: input.roomTypeId,
-      from: range.checkIn,
-      to: range.checkOut,
-      exceptHoldKey: input.holdKey,
-    });
-    const soldOut = nights.find((night) => night.available < 1);
-    if (soldOut) {
-      throw new ConflictError(
-        ReservationError.STAY_SOLD_OUT,
-        `No rooms of that type free on ${soldOut.date.toISOString().slice(0, 10)}`,
-        "checkIn"
-      ).with({ date: soldOut.date.toISOString().slice(0, 10) });
-    }
-
     // A rate plan makes the booking priced; without one it is a held room with
     // no money attached, which is a real case at a front desk.
     const property = await ctx.db.property.findUniqueOrThrow({
@@ -236,6 +218,39 @@ export const reservationRouter = createTRPCRouter({
     }
 
     return ctx.db.$transaction(async (tx) => {
+      /**
+       * Is there a room — asked **here**, holding the type's lock, rather than
+       * before the transaction opened.
+       *
+       * The database refuses an overlapping *room*, and that is the backstop
+       * the old comment here relied on. It is not one: the exclusion
+       * constraint's clause is `WHERE ("roomId" IS NOT NULL …)`, and an
+       * unassigned stay — every advance booking, every channel booking — has no
+       * protection at all. Two clerks selling the last Double both passed a
+       * check made before either wrote.
+       */
+      await lockRoomType(tx, input.roomTypeId);
+
+      const nights = await availability(
+        {
+          propertyId: input.propertyId,
+          roomTypeId: input.roomTypeId,
+          from: range.checkIn,
+          to: range.checkOut,
+          exceptHoldKey: input.holdKey,
+        },
+        undefined,
+        tx
+      );
+      const soldOut = nights.find((night) => night.available < 1);
+      if (soldOut) {
+        throw new ConflictError(
+          ReservationError.STAY_SOLD_OUT,
+          `No rooms of that type free on ${soldOut.date.toISOString().slice(0, 10)}`,
+          "checkIn"
+        ).with({ date: soldOut.date.toISOString().slice(0, 10) });
+      }
+
       const reference = await nextSeriesNumber(tx, {
         organizationId: scope.organizationId,
         propertyId: scope.id,
@@ -343,42 +358,58 @@ export const reservationRouter = createTRPCRouter({
       throw new NotFoundError(ReservationError.ROOM_TYPE_NOT_FOUND, "Room type not found");
     }
 
-    // Availability already discounts live holds, so re-using a key extends the
-    // existing hold instead of competing with it.
-    const existing = await ctx.db.inventoryHold.findUnique({
-      where: { holdKey: input.holdKey },
-      select: { id: true },
-    });
-    if (!existing) {
-      const nights = await availability({
-        propertyId: input.propertyId,
-        roomTypeId: input.roomTypeId,
-        from: range.checkIn,
-        to: range.checkOut,
-      });
-      const short = nights.find((night) => night.available < input.quantity);
-      if (short) {
-        throw new ConflictError(
-          ReservationError.HOLD_SHORT,
-          `Only ${short.available} free on ${short.date.toISOString().slice(0, 10)}`,
-          "checkIn"
-        ).with({ available: short.available, date: short.date.toISOString().slice(0, 10) });
-      }
-    }
-
     const releaseAt = new Date(Date.now() + input.minutes * 60_000);
 
-    return ctx.db.inventoryHold.upsert({
-      where: { holdKey: input.holdKey },
-      update: { releaseAt, quantity: input.quantity },
-      create: {
-        roomTypeId: input.roomTypeId,
-        checkIn: range.checkIn,
-        checkOut: range.checkOut,
-        quantity: input.quantity,
-        holdKey: input.holdKey,
-        releaseAt,
-      },
+    /**
+     * Checked and taken together, or two checkouts hold the same last room.
+     *
+     * A hold exists to stop the second guest ever reaching payment, so a hold
+     * that is granted on a stale count defeats its own purpose — and does it
+     * quietly, because nothing downstream re-asks.
+     */
+    return ctx.db.$transaction(async (tx) => {
+      await lockRoomType(tx, input.roomTypeId);
+
+      // Availability already discounts live holds, so re-using a key extends
+      // the existing hold instead of competing with it.
+      const existing = await tx.inventoryHold.findUnique({
+        where: { holdKey: input.holdKey },
+        select: { id: true },
+      });
+
+      if (!existing) {
+        const nights = await availability(
+          {
+            propertyId: input.propertyId,
+            roomTypeId: input.roomTypeId,
+            from: range.checkIn,
+            to: range.checkOut,
+          },
+          undefined,
+          tx
+        );
+        const short = nights.find((night) => night.available < input.quantity);
+        if (short) {
+          throw new ConflictError(
+            ReservationError.HOLD_SHORT,
+            `Only ${short.available} free on ${short.date.toISOString().slice(0, 10)}`,
+            "checkIn"
+          ).with({ available: short.available, date: short.date.toISOString().slice(0, 10) });
+        }
+      }
+
+      return tx.inventoryHold.upsert({
+        where: { holdKey: input.holdKey },
+        update: { releaseAt, quantity: input.quantity },
+        create: {
+          roomTypeId: input.roomTypeId,
+          checkIn: range.checkIn,
+          checkOut: range.checkOut,
+          quantity: input.quantity,
+          holdKey: input.holdKey,
+          releaseAt,
+        },
+      });
     });
   }),
 
@@ -645,21 +676,6 @@ export const reservationRouter = createTRPCRouter({
       );
     }
 
-    const nights = await availability({
-      propertyId: input.propertyId,
-      roomTypeId: input.roomTypeId,
-      from: checkIn,
-      to: checkOut,
-    });
-    const soldOut = nights.find((night) => night.available < 1);
-    if (soldOut) {
-      throw new ConflictError(
-        ReservationError.STAY_SOLD_OUT,
-        `No rooms of that type free on ${soldOut.date.toISOString().slice(0, 10)}`,
-        "nights"
-      ).with({ date: soldOut.date.toISOString().slice(0, 10) });
-    }
-
     let currencyCode = property.currencyCode;
     let totalMinor = 0;
     if (input.ratePlanId) {
@@ -685,6 +701,30 @@ export const reservationRouter = createTRPCRouter({
 
     try {
       return await ctx.db.$transaction(async (tx) => {
+        // Tonight's last room, decided under the type's lock. A walk-in is the
+        // most contended moment there is: it is the one booking made while the
+        // channels are also selling the same night.
+        await lockRoomType(tx, input.roomTypeId);
+
+        const nights = await availability(
+          {
+            propertyId: input.propertyId,
+            roomTypeId: input.roomTypeId,
+            from: checkIn,
+            to: checkOut,
+          },
+          undefined,
+          tx
+        );
+        const soldOut = nights.find((night) => night.available < 1);
+        if (soldOut) {
+          throw new ConflictError(
+            ReservationError.STAY_SOLD_OUT,
+            `No rooms of that type free on ${soldOut.date.toISOString().slice(0, 10)}`,
+            "nights"
+          ).with({ date: soldOut.date.toISOString().slice(0, 10) });
+        }
+
         const reference = await nextSeriesNumber(tx, {
           organizationId: scope.organizationId,
           propertyId: scope.id,
@@ -816,28 +856,10 @@ export const reservationRouter = createTRPCRouter({
       }
     }
 
-    // Only the nights the move adds are asked about. Over the whole new range
-    // the stay would find itself already there and refuse its own move.
+    // Only the nights the move *adds* are asked about — over the whole new
+    // range the stay would find itself already there and refuse its own move.
+    // Asked inside the transaction below, for the same reason `create` is.
     const added = addedNights(from, to);
-    if (added.length > 0) {
-      const nights = await availability({
-        propertyId: input.propertyId,
-        roomTypeId: stay.roomTypeId,
-        from: to.checkIn,
-        to: to.checkOut,
-      });
-      const wanted = new Set(added.map((night) => night.getTime()));
-      const soldOut = nights.find(
-        (night) => wanted.has(night.date.getTime()) && night.available < 1
-      );
-      if (soldOut) {
-        throw new ConflictError(
-          ReservationError.STAY_SOLD_OUT,
-          `No rooms of that type free on ${soldOut.date.toISOString().slice(0, 10)}`,
-          "checkIn"
-        ).with({ date: soldOut.date.toISOString().slice(0, 10) });
-      }
-    }
 
     // The nights changed, so the price did. A priced stay is re-quoted rather
     // than carried across, which is what makes a move a decision.
@@ -866,6 +888,32 @@ export const reservationRouter = createTRPCRouter({
 
     try {
       return await ctx.db.$transaction(async (tx) => {
+        if (added.length > 0) {
+          await lockRoomType(tx, stay.roomTypeId);
+
+          const nights = await availability(
+            {
+              propertyId: input.propertyId,
+              roomTypeId: stay.roomTypeId,
+              from: to.checkIn,
+              to: to.checkOut,
+            },
+            undefined,
+            tx
+          );
+          const wanted = new Set(added.map((night) => night.getTime()));
+          const soldOut = nights.find(
+            (night) => wanted.has(night.date.getTime()) && night.available < 1
+          );
+          if (soldOut) {
+            throw new ConflictError(
+              ReservationError.STAY_SOLD_OUT,
+              `No rooms of that type free on ${soldOut.date.toISOString().slice(0, 10)}`,
+              "checkIn"
+            ).with({ date: soldOut.date.toISOString().slice(0, 10) });
+          }
+        }
+
         const moved = await tx.roomStay.update({
           where: { id: stay.id },
           data: {

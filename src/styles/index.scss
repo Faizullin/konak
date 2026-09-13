@@ -14,4 +14,10 @@
 @import "./globals.css";
 @import "./overrides.css";
 @import "./status.css";
-@import "./desk.css";
+
+// A surface's own blocks, last, so they win on equal specificity — and a
+// surface's *themes* after its default, for the same reason. One file per
+// `<surface>[.<theme>]`, which is where the next one goes without anybody
+// having to decide again.
+@import "./surfaces/desk.css";
+@import "./surfaces/desk.contrast.css";

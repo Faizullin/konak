@@ -32,7 +32,8 @@
     "number": "Номер",
     "type": "Категория",
     "floor": "Этаж",
-    "housekeeping": "Уборка"
+    "housekeeping": "Уборка",
+    "tonight": "Сегодня"
   },
   "roomForm": {
     "editTitle": "Изменить номер",

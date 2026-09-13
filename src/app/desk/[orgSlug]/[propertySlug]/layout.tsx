@@ -1,4 +1,4 @@
-import { headers } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import type { ReactNode } from "react";
 import { NextIntlClientProvider } from "next-intl";
@@ -8,6 +8,7 @@ import { isOrgModuleEnabled } from "@/features/organizations";
 import { organizationBySlug } from "@/features/organizations/server";
 import { NiceModalProvider } from "@/store/nice-modal-context";
 import { SurfaceLinksProvider } from "@/store/surface-links";
+import { themeCookie, toTheme } from "@/config/surfaces";
 import { auth } from "@/server/auth";
 import prisma from "@/server/db";
 
@@ -59,7 +60,18 @@ export default async function DeskLayout({
     notFound();
   }
 
-  const [locale, messages] = await Promise.all([getLocale(), getMessages()]);
+  const [locale, messages, jar] = await Promise.all([getLocale(), getMessages(), cookies()]);
+
+  /**
+   * Which palette this surface is wearing, resolved **here** rather than in the
+   * browser.
+   *
+   * A theme needs no asking the machine anything, so the server can know it and
+   * paint the first frame right — no flash, no effect, no inline script. That
+   * is the whole reason it is a cookie and the colour scheme is not:
+   * `system` is only knowable in a browser.
+   */
+  const theme = toTheme("desk", jar.get(themeCookie("desk"))?.value);
 
   return (
     <NextIntlClientProvider
@@ -95,7 +107,14 @@ export default async function DeskLayout({
           {/* The one place the desk's look is switched on. Everything beneath
             reads tokens, so a second treatment is another block in
             `styles/desk.css` rather than a second set of components. */}
-          <div data-surface="desk" className="bg-background flex h-svh w-full overflow-hidden">
+          <div
+            data-surface="desk"
+            // Stamped even when it is the default. The default block is
+            // unconditional either way, and an attribute you can read in
+            // devtools is worth more than one saved byte.
+            data-theme={theme}
+            className="bg-background flex h-svh w-full overflow-hidden"
+          >
             <aside className="bg-sidebar flex shrink-0 flex-col border-r">
               <DeskNav base={`/desk/${orgSlug}/${propertySlug}`} />
             </aside>

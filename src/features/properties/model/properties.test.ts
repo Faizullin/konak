@@ -4,6 +4,8 @@ import { test } from "node:test";
 import { OrgRole } from "@/features/organizations";
 import {
   MAX_BLOCK_NIGHTS,
+  RoomSaleState,
+  roomSaleState,
   PropertyError,
   refuseBlock,
   canArchiveRoomTypes,
@@ -176,5 +178,31 @@ test("a block covers between one night and two years", () => {
   assert.equal(
     refuseBlock({ blockedRooms: 1, totalRooms: 2, nights: MAX_BLOCK_NIGHTS + 1 })?.code,
     PropertyError.BLOCK_RANGE_INVALID
+  );
+});
+
+test("a room is occupied, booked or free — and a guest in it outranks a guest expected", () => {
+  assert.equal(roomSaleState([]), RoomSaleState.FREE);
+  assert.equal(roomSaleState([{ status: "CONFIRMED" }]), RoomSaleState.BOOKED);
+  assert.equal(roomSaleState([{ status: "CHECKED_IN" }]), RoomSaleState.OCCUPIED);
+
+  // A turnover day: this morning's guest has gone, tonight's is expected. The
+  // room is booked for tonight, and the stay that ended does not decide it.
+  assert.equal(
+    roomSaleState([{ status: "CHECKED_OUT" }, { status: "CONFIRMED" }]),
+    RoomSaleState.BOOKED
+  );
+
+  // Departed and nobody following: the room is for sale again.
+  assert.equal(roomSaleState([{ status: "CHECKED_OUT" }]), RoomSaleState.FREE);
+
+  // An enquiry is a question, not a claim — it holds no inventory anywhere
+  // else either, and a room it names is still sellable.
+  assert.equal(roomSaleState([{ status: "ENQUIRY" }]), RoomSaleState.FREE);
+
+  // Someone in the room outranks anything else on the same night.
+  assert.equal(
+    roomSaleState([{ status: "CONFIRMED" }, { status: "CHECKED_IN" }]),
+    RoomSaleState.OCCUPIED
   );
 });

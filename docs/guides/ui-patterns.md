@@ -473,14 +473,54 @@ Three axes, and the whole design is keeping them apart.
 
 `config/surfaces.ts` is the registry. `basic` is the dashboard, `desk` is the
 front desk; each stamps its own id and each declares the palettes it can wear.
-Every surface has exactly one today, so `AppearanceToggle` draws the scheme and
-nothing else — the theme row appears when a registry entry gains a second entry,
-from the same code.
+The desk has two, the dashboard one, and `AppearanceToggle` draws the theme row
+or does not **because of the registry** rather than a condition in the
+component.
 
 **Colour scheme is install-wide and theme is per surface**, deliberately: light
 or dark is about the room a person is sitting in and should follow them from the
 dashboard to the desk, while which palette a surface wears is about that
 surface.
+
+They are also stored differently, and the difference is not taste:
+
+| | Where | Why |
+|---|---|---|
+| Colour scheme | `localStorage`, by `next-themes` | `system` is only knowable in a browser |
+| Theme | a cookie, `konak.theme.<surface>` | the server can resolve it, so the first frame is already right |
+
+A preference that *can* be resolved on the server should be — the surface's
+layout reads the cookie and stamps `data-theme` before any client code runs, so
+there is no flash and no effect. `konak.locale` and `sidebar_state` are the
+precedent. The scheme is the exception and it pays for itself with an inline
+script.
+
+### Adding a palette
+
+Three things, none of them a component:
+
+1. `src/styles/surfaces/<surface>.<theme>.css`, holding
+   `[data-surface="…"][data-theme="…"]` and its `:is(.dark, .dark *)` pair.
+2. An import in `styles/index.scss`, after that surface's default block.
+3. An entry in `SURFACES[surface].themes`, and `shell.theme.<id>` in both
+   locales.
+
+The label is `shell.theme.<id>` **by convention rather than a registry field**:
+the control reads it as a template, which is what lets `message-keys.test` count
+the whole prefix as used, and one fewer field is one fewer place to forget.
+
+### The mechanism belongs to the base
+
+`Surface.base` is not a label. `shadcn` means Tailwind and custom properties, so
+a theme is an attribute on an element already on screen and switching it is a
+cookie and a refresh.
+
+**A vendor base does not work that way.** Bootstrap and Ant ship *compiled*
+stylesheets per theme, so switching one is choosing which file loads — decided
+at build or by the layout, not by an attribute. `ATTRIBUTE_THEMED` is the list
+the control will draw a theme row for; a base outside it gets no row, because a
+control that cannot do the thing it offers is a button that lies.
+`plans/second-surface.md` carries what such a surface costs.
 
 ### No component names a colour
 
@@ -504,8 +544,8 @@ need a component edited, the colour is in the wrong place.
 
 `styles/globals.css` is shadcn's and the CLI rewrites it; ours goes beside it,
 imported in `styles/index.scss` in an order that matters — `globals`,
-`overrides`, `status`, then each surface, so a surface block wins on equal
-specificity.
+`overrides`, `status`, then `surfaces/`, so a surface block wins on equal
+specificity and a surface's *theme* wins over its default.
 
 ### A surface with its own CSS base owns its own components
 

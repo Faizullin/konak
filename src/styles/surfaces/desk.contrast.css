@@ -1,0 +1,126 @@
+/* The desk, turned up.
+ *
+ * A second palette for one surface, and the thing that makes the theme axis
+ * real rather than a shape in a registry: `[data-surface][data-theme]` is the
+ * selector the design promised and this is the first block to use it.
+ *
+ * It has a reason, not a demonstration. A front desk is read for eight hours in
+ * a lobby nobody chose the lighting of — dark answers the dim end, and this
+ * answers the other: a sunlit counter, a screen at an angle, or an operator who
+ * cannot separate the two greys a dense grid is drawn in.
+ *
+ * So this is not "the same colours, louder". It widens the *tonal* distance
+ * between background, card and border, darkens foregrounds toward black, and
+ * strengthens every border — which is what a grid of hundreds of small
+ * rectangles needs when the light is wrong. The hue stays: a receptionist
+ * switching themes should not have to relearn what indigo means.
+ */
+
+[data-surface="desk"][data-theme="contrast"] {
+  /* Neutrals, pushed apart. Stock desk sits 0.985 / 1 / 0.898; this spends the
+   * whole range so a row reads without a box around it. */
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.13 0.01 264);
+  --card: oklch(0.975 0.003 264);
+  --card-foreground: oklch(0.13 0.01 264);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.13 0.01 264);
+  --muted: oklch(0.93 0.005 264);
+  --muted-foreground: oklch(0.38 0.016 264);
+  --accent: oklch(0.9 0.03 275);
+  --accent-foreground: oklch(0.2 0.07 275);
+  --secondary: oklch(0.93 0.006 264);
+  --secondary-foreground: oklch(0.18 0.02 264);
+  /* A border that is actually visible at an angle. */
+  --border: oklch(0.76 0.012 264);
+  --input: oklch(0.7 0.014 264);
+
+  --primary: oklch(0.36 0.16 275);
+  --primary-foreground: oklch(1 0 0);
+  --ring: oklch(0.44 0.15 275);
+
+  --destructive: oklch(0.46 0.22 25);
+
+  --sidebar: oklch(0.955 0.005 264);
+  --sidebar-foreground: oklch(0.13 0.01 264);
+  --sidebar-primary: oklch(0.36 0.16 275);
+  --sidebar-primary-foreground: oklch(1 0 0);
+  --sidebar-accent: oklch(0.89 0.035 275);
+  --sidebar-accent-foreground: oklch(0.2 0.07 275);
+  --sidebar-border: oklch(0.76 0.012 264);
+  --sidebar-ring: oklch(0.44 0.15 275);
+
+  /* The states, on the same arc but further apart — the grid is the screen
+   * this theme exists for. */
+  --stay-enquiry: oklch(0.94 0.004 264);
+  --stay-enquiry-foreground: oklch(0.34 0.014 264);
+  --stay-enquiry-border: oklch(0.55 0.016 264 / 0.8);
+
+  --stay-confirmed: oklch(0.88 0.075 255);
+  --stay-confirmed-foreground: oklch(0.22 0.11 262);
+  --stay-confirmed-border: oklch(0.45 0.14 258 / 0.7);
+
+  --stay-checked-in: oklch(0.85 0.12 168);
+  --stay-checked-in-foreground: oklch(0.2 0.08 170);
+  --stay-checked-in-border: oklch(0.45 0.13 168 / 0.75);
+
+  --stay-checked-out: oklch(0.9 0.004 264);
+  --stay-checked-out-foreground: oklch(0.4 0.012 264);
+  --stay-checked-out-border: oklch(0.58 0.012 264 / 0.8);
+
+  --grid-full: oklch(0.22 0.09 275);
+  --grid-unassigned: color-mix(in oklab, var(--color-amber-400) 22%, transparent);
+}
+
+/* Dim and high-contrast is a real pair: a night shift in a lobby with one lamp
+ * behind the screen. Every value above has one. */
+[data-surface="desk"][data-theme="contrast"]:is(.dark, .dark *) {
+  --background: oklch(0.11 0.008 264);
+  --foreground: oklch(1 0 0);
+  --card: oklch(0.17 0.012 264);
+  --card-foreground: oklch(1 0 0);
+  --popover: oklch(0.17 0.012 264);
+  --popover-foreground: oklch(1 0 0);
+  --muted: oklch(0.24 0.012 264);
+  --muted-foreground: oklch(0.8 0.012 264);
+  --accent: oklch(0.34 0.06 275);
+  --accent-foreground: oklch(0.98 0.01 275);
+  --secondary: oklch(0.24 0.012 264);
+  --secondary-foreground: oklch(0.98 0.004 264);
+  --border: oklch(0.48 0.016 264);
+  --input: oklch(0.52 0.016 264);
+
+  --primary: oklch(0.8 0.13 275);
+  --primary-foreground: oklch(0.11 0.03 275);
+  --ring: oklch(0.72 0.12 275);
+
+  --destructive: oklch(0.7 0.2 25);
+
+  --sidebar: oklch(0.14 0.01 264);
+  --sidebar-foreground: oklch(1 0 0);
+  --sidebar-primary: oklch(0.8 0.13 275);
+  --sidebar-primary-foreground: oklch(0.11 0.03 275);
+  --sidebar-accent: oklch(0.34 0.06 275);
+  --sidebar-accent-foreground: oklch(0.98 0.01 275);
+  --sidebar-border: oklch(0.48 0.016 264);
+  --sidebar-ring: oklch(0.72 0.12 275);
+
+  --stay-enquiry: oklch(0.24 0.01 264);
+  --stay-enquiry-foreground: oklch(0.84 0.014 264);
+  --stay-enquiry-border: oklch(0.6 0.016 264 / 0.85);
+
+  --stay-confirmed: oklch(0.3 0.09 258);
+  --stay-confirmed-foreground: oklch(0.96 0.06 255);
+  --stay-confirmed-border: oklch(0.7 0.13 258 / 0.8);
+
+  --stay-checked-in: oklch(0.32 0.1 168);
+  --stay-checked-in-foreground: oklch(0.96 0.1 168);
+  --stay-checked-in-border: oklch(0.72 0.13 168 / 0.8);
+
+  --stay-checked-out: oklch(0.22 0.006 264);
+  --stay-checked-out-foreground: oklch(0.82 0.012 264);
+  --stay-checked-out-border: oklch(0.58 0.012 264 / 0.85);
+
+  --grid-full: oklch(0.95 0.06 275);
+  --grid-unassigned: color-mix(in oklab, var(--color-amber-400) 14%, transparent);
+}

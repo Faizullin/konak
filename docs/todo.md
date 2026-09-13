@@ -5,13 +5,13 @@ boxes. A finished item leaves here; the fact of it goes to `history.md`.
 
 Where this sits in the whole build: `plans/roadmap.md`.
 
-## The overselling races
-Availability is read before the transaction that writes the stay, and the
-exclusion constraint only protects an *assigned* room — while unassigned is the
-normal case for every advance and every channel booking. Same shape for folios:
-two "open the bill" presses make two folios. `plans/server-hardening.md` § 2.
-`lockOrganization` in `platform/server/attachments.ts` is the worked example of
-doing this right.
+## Three more read-then-writes, all in billing
+`takePayment` turns a double-click into a P2002 500 instead of returning the
+payment that exists; `close` computes a frozen total **outside a transaction**,
+so a line posted between the read and the write is excluded from a number that
+can never be re-derived; `postLine` reads the folio's status and then creates,
+so a folio closed concurrently accepts the line. `plans/server-hardening.md`
+§ 2.3 — and `lockReservation` is now the worked example beside it.
 
 ## Two questions for the client, in writing, before MVP sign-off
 Both break assumptions the schema turns on, and both are cheap to ask and
@@ -26,6 +26,13 @@ plan.
 property-local midnight, deliberately. The research half of this is settled:
 Kontur, Bnovo and TravelLine all answer it with a *second grid*, not by folding
 hours into the nightly one — so it is another screen, not a rewrite of this one.
+
+## The dashboard has one palette, and no reason for a second yet
+`basic` declares `default` and nothing else, so its theme row never draws — the
+registry says so rather than a condition in the control. That is the right
+answer until somebody asks what the dashboard looks like in another palette, at
+which point it is a CSS file, an import and a registry line:
+`guides/ui-patterns.md` § Adding a palette. Do not build it speculatively.
 
 ## Two components still name their own colours
 `platform/client/components/attachment-status-badge.tsx` and the `destructive`

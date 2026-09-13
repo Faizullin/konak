@@ -18,6 +18,7 @@ import {
   takePaymentSchema,
   voidLineSchema,
 } from "../model";
+import { openFolioFor } from "./service";
 
 /**
  * The bill attached to a stay.
@@ -60,31 +61,25 @@ export const billingRouter = createTRPCRouter({
         throw new NotFoundError("reservation.not_found", "Reservation not found");
       }
 
-      const existing = await ctx.db.folio.findFirst({
-        where: { reservationId: reservation.id, status: { not: FolioStatus.VOID } },
-        select: FOLIO_STATE,
-      });
-      if (existing) return existing;
-
-      return ctx.db.$transaction(async (tx) => {
-        const number = await nextSeriesNumber(tx, {
+      /**
+       * The service, not a second implementation of it.
+       *
+       * This procedure and `openFolioFor` were two readings of one sentence —
+       * "the reservation's folio, opened if it has none" — including the same
+       * `status: { not: VOID }` reasoning written out twice. One of them now
+       * knows how to lose the race to the other, and a copy would not have.
+       */
+      const { id } = await ctx.db.$transaction((tx) =>
+        openFolioFor(tx, {
           organizationId: property.organizationId,
           propertyId: property.id,
-          kind: "FOLIO",
-        });
+          reservationId: reservation.id,
+          currencyCode: reservation.currencyCode,
+          userId: user.id,
+        })
+      );
 
-        return tx.folio.create({
-          data: {
-            propertyId: input.propertyId,
-            reservationId: reservation.id,
-            number,
-            currencyCode: reservation.currencyCode,
-            createdById: user.id,
-            updatedById: user.id,
-          },
-          select: FOLIO_STATE,
-        });
-      });
+      return ctx.db.folio.findUniqueOrThrow({ where: { id }, select: FOLIO_STATE });
     }),
 
   /**

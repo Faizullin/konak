@@ -16,6 +16,11 @@
     "INSPECTED": "Проверен",
     "OUT_OF_ORDER": "Вне продажи"
   },
+  "roomSaleState": {
+    "FREE": "Свободен",
+    "BOOKED": "Забронирован",
+    "OCCUPIED": "Занят"
+  },
   "mealPlan": {
     "ROOM_ONLY": "Только номер",
     "BREAKFAST": "Завтрак",

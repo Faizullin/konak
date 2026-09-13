@@ -18,9 +18,25 @@ import { PropertyError } from "../model";
  * distinction `requireOrgMember` draws.
  */
 export async function requirePropertyMember(ctx: AuthedContext, propertyId: number) {
+  /**
+   * Wide enough that nobody re-reads it.
+   *
+   * It used to select `{ id, organizationId }`, and five procedures then
+   * fetched the same row again for a `timezone` or a `currencyCode` — the very
+   * thing `roadmap.md`'s end-of-phase gate asks about ("does any request do the
+   * same lookup twice?"). The row is tiny and every caller is already paying
+   * for the round trip.
+   */
   const property = await ctx.db.property.findUnique({
     where: { id: propertyId },
-    select: { id: true, organizationId: true },
+    select: {
+      id: true,
+      organizationId: true,
+      slug: true,
+      name: true,
+      timezone: true,
+      currencyCode: true,
+    },
   });
   if (!property) {
     throw new NotFoundError(PropertyError.NOT_FOUND, "Property not found");

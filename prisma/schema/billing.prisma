@@ -45,6 +45,10 @@ model Folio {
 
   @@unique([propertyId, number])
   @@index([propertyId, status])
+  // Deliberately **not** unique: `billing.split` puts a company on the room and
+  // the guest on the bar, which is two live folios against one stay. Two
+  // callers opening a bill at once is stopped by a lock on the reservation in
+  // `openFolioFor`, not by an index.
   @@index([reservationId])
   @@map("folios")
 }

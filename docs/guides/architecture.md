@@ -267,6 +267,40 @@ Every table obeys these. A review rejects one that does not.
 13. **One Prisma file per domain.** Prisma concatenates `prisma/schema/`, so the
     split is for readers.
 
+### A check and the write it authorises are one act
+
+Read a count, decide, write — with the decision outside the transaction that
+acts on it — and two requests both pass the check. It has been found four times
+in this codebase, in four tables, and it is worth naming so it is recognised on
+the fifth.
+
+The shape of the fix is always the same: **take the row lock, then decide,
+inside the transaction that writes.**
+
+| Lock | Guards |
+|---|---|
+| `lockRoomType` | the last room of a type, for `create`, `walkIn`, `moveStay` and `hold` |
+| `lockReservation` | one caller at a time deciding whether a bill exists |
+| `lockOrganization` | the storage quota |
+| `claimOutboxBatch`'s `SKIP LOCKED` | two workers claiming one task |
+
+Two things that look like the answer and are not:
+
+- **A constraint is not always the backstop it looks like.** The stay-overlap
+  exclusion constraint reads
+  `EXCLUDE … WHERE ("roomId" IS NOT NULL AND …)`, so it protects an *assigned*
+  room and nothing else — while unassigned is the normal case for every advance
+  booking and everything a channel sends.
+- **A unique index encodes an invariant, so it has to be one.** "One live folio
+  per reservation" was written as a partial unique index and refused by an
+  integration test in the same minute: `billing.split` puts a company on the
+  room and the guest on the bar, which is two live folios against one stay and
+  entirely correct. The race was real; the invariant was not.
+
+Where a unique index *does* hold, the loser recovers rather than failing:
+`isUniqueViolation` in `server/errors.ts` is the shape-match, and `enqueueOutbox`
+is the worked example — a key already taken is what the key *means*.
+
 ### What is counted, never stored
 
 A number that is a fact about rows in another table is **derived on read**, not

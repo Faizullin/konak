@@ -129,3 +129,34 @@ test("the theme is a choice, and the product is what sets the class", async ({
   await page.goto(property.deskPath);
   await expect(html).toHaveClass(/dark/);
 });
+
+test("a palette is the surface's own, and the server is what stamps it", async ({
+  page,
+  property,
+}) => {
+  await page.goto(property.surfacePath);
+
+  const shell = page.locator('[data-surface="desk"]');
+  await expect(shell).toHaveAttribute("data-theme", "default");
+
+  await page.getByRole("button", { name: "Appearance" }).click();
+  await page.getByRole("menuitemradio", { name: "High contrast" }).click();
+
+  await expect(shell).toHaveAttribute("data-theme", "contrast");
+
+  /**
+   * And it survives a reload without a flash, which is the whole reason it is a
+   * cookie rather than `localStorage`: the layout resolves it and the first
+   * frame is already right. A client-side theme would paint the default and
+   * correct itself afterwards.
+   */
+  await page.reload();
+  await expect(shell).toHaveAttribute("data-theme", "contrast");
+
+  // The dashboard has one palette, so it is never stamped with another's.
+  await page.goto(property.deskPath);
+  await expect(page.locator('[data-surface="basic"]')).not.toHaveAttribute(
+    "data-theme",
+    "contrast"
+  );
+});

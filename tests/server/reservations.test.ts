@@ -476,6 +476,50 @@ describe("the booking transaction", () => {
    * checking guests out on a Saturday morning — and what it produced was a
    * duplicate folio number and a rolled-back departure.
    */
+  /**
+   * The race the room-type lock exists for.
+   *
+   * Two rooms of the type, three bookings sent together: exactly two may
+   * survive. Before the lock all three passed a check made *before* any of them
+   * wrote, and the exclusion constraint could not catch it — its clause is
+   * `WHERE ("roomId" IS NOT NULL …)`, and these are unassigned, which is the
+   * normal case for an advance booking and for everything a channel sends.
+   */
+  test("three bookings at once for two rooms: one is refused, not oversold", async () => {
+    const caller = callerFor(fx.owner);
+    const night = { checkIn: day(90), checkOut: day(91), adults: 1, children: 0 };
+
+    const results = await Promise.allSettled(
+      [0, 1, 2].map(() =>
+        caller.reservation.create({
+          propertyId,
+          roomTypeId,
+          source: "DIRECT",
+          ...night,
+        })
+      )
+    );
+
+    const taken = results.filter((r) => r.status === "fulfilled");
+    const refused = results.filter((r) => r.status === "rejected");
+
+    assert.equal(taken.length, 2, "both rooms should sell");
+    assert.equal(refused.length, 1, "the third should be refused, not oversold");
+
+    // Refused with the reason, not with a constraint violation a screen cannot
+    // read: the desk has to be able to say *why*.
+    assert.equal(
+      domainCodeOf((refused[0] as PromiseRejectedResult).reason),
+      ReservationError.STAY_SOLD_OUT
+    );
+
+    // And the truth in the database matches what was told to the callers.
+    const stays = await prisma.roomStay.count({
+      where: { roomTypeId, checkIn: day(90) },
+    });
+    assert.equal(stays, 2);
+  });
+
   test("two transactions taking a number at once take different ones", async () => {
     const args = { organizationId: fx.org.id, propertyId, kind: "RESERVATION" };
 

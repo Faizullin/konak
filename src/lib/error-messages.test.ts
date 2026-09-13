@@ -152,6 +152,7 @@ const ENUM_SOURCES: Record<string, string> = {
   roomStatus: "src/features/properties/model/room.ts:RoomStatus",
   mealPlan: "src/features/rates/model/plan.ts:MealPlan",
   dayRole: "src/features/reservations/model/day.ts:DayRole",
+  roomSaleState: "src/features/properties/model/room.ts:RoomSaleState",
   reservationStatus: "src/features/reservations/model/status.ts:ReservationStatus",
   bookingView: "src/features/reservations/model/list.ts:BookingView",
   taskType: "src/features/housekeeping/model/task.ts:TaskType",

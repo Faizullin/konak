@@ -19,13 +19,17 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useErrorHandlers } from "@/lib/errors";
+import { cn } from "@/lib/utils";
 import { OrgRole } from "@/features/organizations";
 import {
   canArchiveRoomTypes,
   canManageRooms,
   canManageRoomTypes,
+  ROOM_SALE_STATE_VALUES,
   ROOM_STATUS_VALUES,
+  RoomSaleState,
   RoomStatus,
+  type RoomSaleState as RoomSaleStateValue,
   type RoomStatus as RoomStatusValue,
 } from "@/features/properties";
 import { trpc } from "@/utils/trpc";
@@ -205,6 +209,7 @@ export function RoomsPanel({
   organizationId: number;
 }) {
   const labels = useEnumLabels("roomStatus", ROOM_STATUS_VALUES);
+  const saleLabels = useEnumLabels("roomSaleState", ROOM_SALE_STATE_VALUES);
   const t = useTranslations("properties");
   const { handleError } = useErrorHandlers();
   const [includeArchived, setIncludeArchived] = useState(false);
@@ -268,6 +273,10 @@ export function RoomsPanel({
               <TableHead>{t("rooms.number")}</TableHead>
               <TableHead>{t("rooms.type")}</TableHead>
               <TableHead>{t("rooms.floor")}</TableHead>
+              {/* Two different questions about one room, and a screen that
+                  answered only the second was answering the wrong half: this
+                  one is *can I sell it tonight*, that one is *is it clean*. */}
+              <TableHead>{t("rooms.tonight")}</TableHead>
               <TableHead>{t("rooms.housekeeping")}</TableHead>
               <TableHead className="w-24" />
             </TableRow>
@@ -292,6 +301,21 @@ export function RoomsPanel({
                 </TableCell>
                 <TableCell>{typeName(room.roomTypeId)}</TableCell>
                 <TableCell>{room.floor ?? "—"}</TableCell>
+                <TableCell>
+                  {/* Derived from tonight's stay, never stored — a column would
+                      be wrong between a booking moving and somebody updating
+                      it. Shape as well as hue, because colour is never the only
+                      cue: `ui-patterns.md` § Colour as data. */}
+                  <Badge
+                    variant={room.saleState === RoomSaleState.OCCUPIED ? "default" : "outline"}
+                    className={cn(
+                      room.saleState === RoomSaleState.BOOKED &&
+                        "border-stay-confirmed-border bg-stay-confirmed text-stay-confirmed-foreground"
+                    )}
+                  >
+                    {saleLabels[room.saleState as RoomSaleStateValue] ?? room.saleState}
+                  </Badge>
+                </TableCell>
                 <TableCell>
                   <Badge
                     variant={room.status === RoomStatus.OUT_OF_ORDER ? "destructive" : "outline"}

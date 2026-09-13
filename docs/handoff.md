@@ -104,10 +104,11 @@ withheld, and `property.setBlock` is the write path. A property set up through
 the app sells on the day it is created. `guides/architecture.md` § What is
 counted, never stored.
 
-**What is left is `plans/server-hardening.md` § 2** — five read-then-write races
-of the shape `nextSeriesNumber` already taught, two of which oversell rooms.
-`lockOrganization` in `platform/server/attachments.ts` is the worked example of
-the fix.
+**The overselling races are closed.** `lockRoomType` and `lockReservation` sit
+beside `lockOrganization` as the pattern — take the row lock, then decide,
+inside the transaction that writes. `guides/architecture.md` § A check and the
+write it authorises are one act. What is left is
+`plans/server-hardening.md` § 2.3: `takePayment`, `close` and `postLine`.
 
 **Dark mode works, and a person chooses it.** `next-themes` at the root,
 `AppearanceToggle` in the dashboard header and in the desk's bar. Both surfaces
@@ -124,7 +125,13 @@ untouched and still works.
 **All eight of the client's MVP items are now reachable without leaving the
 desk.** The last two to arrive were the guest card
 (`/desk/<org>/<property>/guests/<personId>`) and the housekeeping board, which
-is the desk's sixth section. **The MVP is closed.** `tests/e2e/desk.e2e.ts` drives the surface — a chip
+is the desk's sixth section. **All eight of the client's items have a screen**, and the report that says so
+is `guides/mvp-report.ru.md` — in Russian, for them. The last gap was their
+fourth item: a room's *commercial* state, свободен/забронирован/занят, which
+nothing showed. It is the **Сегодня** column in Rooms now, derived from
+tonight's stay.
+
+**The MVP is closed.** `tests/e2e/desk.e2e.ts` drives the surface — a chip
 opening its booking without leaving the shell, the tabs as URLs, a guest and
 their history, the floor's board, and the theme following a person between
 surfaces. It found that the appearance menu had never opened.

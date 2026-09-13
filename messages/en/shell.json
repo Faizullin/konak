@@ -4,6 +4,11 @@
     "scheme": "Colour scheme",
     "system": "System",
     "light": "Light",
-    "dark": "Dark"
+    "dark": "Dark",
+    "theme": "Theme"
+  },
+  "theme": {
+    "default": "Default",
+    "contrast": "High contrast"
   }
 }

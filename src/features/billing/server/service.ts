@@ -4,7 +4,7 @@ import type { Prisma } from "@/generated/prisma/client";
 // re-exports the router, the router enqueues a channel push, and importing it
 // from here closes a cycle Node refuses to instantiate. The barrel is the
 // convention; a cycle is the exception to it.
-import { nextSeriesNumber } from "@/features/reservations/server/service";
+import { lockReservation, nextSeriesNumber } from "@/features/reservations/server/service";
 import { FolioStatus, LineType, priceLine } from "../model";
 
 /**
@@ -34,6 +34,9 @@ export async function openFolioFor(
     userId?: string;
   }
 ): Promise<{ id: number; created: boolean }> {
+  // Decide under the lock, or two callers both decide there is none.
+  await lockReservation(tx, args.reservationId);
+
   const existing = await tx.folio.findFirst({
     where: { reservationId: args.reservationId, status: { not: FolioStatus.VOID } },
     select: { id: true },

@@ -21,6 +21,7 @@ export function useEnumLabels<T extends string>(
     | "userRole"
     | "orgRole"
     | "roomStatus"
+    | "roomSaleState"
     | "mealPlan"
     | "dayRole"
     | "reservationStatus"

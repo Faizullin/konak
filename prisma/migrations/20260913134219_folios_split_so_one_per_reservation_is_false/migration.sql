@@ -1,0 +1,13 @@
+-- The index added one migration ago said a reservation has at most one live
+-- folio. It does not, and `billing.split` is why: a company settles the room
+-- while the guest settles the bar, and that is two folios against one stay with
+-- a `companyId` telling them apart. A hotel does this often enough that the
+-- procedure exists and a test asserts it.
+--
+-- The race it was aimed at is real — two callers both read "no folio" and both
+-- create one — but the answer is to serialise the decision, not to forbid the
+-- second bill. `openFolioFor` locks the reservation row now, the way
+-- `lockRoomType` locks a room type and `lockOrganization` locks an
+-- organization. Kept as its own migration rather than edited into the last one:
+-- a wrong idea and its correction is what a migration history is for.
+DROP INDEX IF EXISTS "folios_one_live_per_reservation";

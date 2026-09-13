@@ -32,7 +32,8 @@
     "number": "Number",
     "type": "Type",
     "floor": "Floor",
-    "housekeeping": "Housekeeping"
+    "housekeeping": "Housekeeping",
+    "tonight": "Tonight"
   },
   "roomForm": {
     "editTitle": "Edit room",

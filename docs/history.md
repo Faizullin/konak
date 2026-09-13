@@ -1833,3 +1833,138 @@ matching is a substring by default. And a stay-history row is labelled by its
 was what it was really asserting.
 
 102 browser tests, 246 unit, 175 integration.
+
+## 2026-09-13 — the theme axis stopped being a shape
+
+The registry had said since the day it was written that a surface *wears* a
+theme. Three things were true when anyone looked:
+
+- **nothing wrote `data-theme`** — the selector the whole design rested on had
+  never appeared in a document;
+- **the theme row in `AppearanceToggle` was inert.** It rendered only when a
+  surface had two palettes, which never happened, and if it had it would have
+  shown `themes[0]` with **no `onValueChange`** — dead code that looked
+  implemented, which is worse than absent;
+- **`Surface.base` was a marker nothing read.**
+
+So "adding a theme is a CSS block and a registry line" was not true. It would
+also have needed a writer, a store, and a control that did something.
+
+### It is true now, and the desk proves it
+
+`contrast`, a second desk palette with a reason rather than a demonstration: a
+front desk is read for eight hours in a lobby nobody chose the lighting of, dark
+answers the dim end, and this answers the other — a sunlit counter, a screen at
+an angle, an operator who cannot separate the two greys a dense grid is drawn
+in. It widens the tonal distance and strengthens every border, and keeps the
+hue, because switching themes should not mean relearning what indigo means.
+
+**The theme is a cookie, not `localStorage`**, and that is the interesting half.
+A theme needs nothing asked of the machine, so the desk's layout resolves it and
+stamps `data-theme` before any client code runs — no flash, no effect, no inline
+script. The colour scheme is the exception in the other direction and pays for
+itself with one: `system` is only knowable in a browser. The rule is now
+written down: *a preference that can be resolved on the server should be.*
+
+The control reads that cookie itself rather than being handed the value.
+Threading it through eight pages would have bought a correct tick a few
+milliseconds earlier **inside a menu that is shut until somebody clicks it**,
+long after mount — while the page itself was already right from the server.
+
+### And `base` became load-bearing
+
+`ATTRIBUTE_THEMED` is the list of bases whose themes this product knows how to
+switch. `shadcn` means custom properties, so a theme is an attribute on an
+element already on screen. Bootstrap and Ant ship **compiled** stylesheets per
+theme, so switching one there is choosing which file loads — a different
+mechanism entirely. The control draws a theme row only for a base in that list,
+and a unit test fails if a surface offers two palettes on a base that cannot
+switch them. A control that cannot do what it offers is a button that lies.
+
+Stylesheets moved to `styles/surfaces/<surface>[.<theme>].css`, so the next one
+has a place to go without anybody deciding again.
+
+## 2026-09-13 — the overselling races, and an invariant that was not one
+
+`nextSeriesNumber` taught this shape and the audit found it in four more places:
+read a count, decide, write, with the decision outside the transaction that acts
+on it.
+
+**Availability is decided under a lock now.** `lockRoomType`, taken by `create`,
+`walkIn`, `moveStay` and `hold` inside the transaction that writes, and
+`availability()` takes the client to ask so the decision and the write are one
+act. The comment that used to sit above the old check said the database refuses
+an overlapping room and that between them the check gave the message and the
+constraint was what was true. The constraint is
+`EXCLUDE … WHERE ("roomId" IS NOT NULL AND …)` — it protects an *assigned* room,
+and unassigned is the normal case for every advance booking and everything a
+channel sends. There was no backstop at all.
+
+The test sends three bookings at once for two rooms and asserts exactly one is
+refused, with its reason rather than a constraint violation no screen can read.
+Checked the only way worth checking: the lock was removed, the test failed, the
+lock was restored.
+
+### The folio invariant was wrong, and a test said so within the minute
+
+The folio race is the same shape, and the first fix was a partial unique index —
+one non-VOID folio per reservation. `npm run test:server` refused it
+immediately: *the company pays the room and the guest pays the bar*.
+`billing.split` exists, a hotel does that, and **two live folios against one
+reservation is correct**.
+
+So the guard is `lockReservation`, not an index. The race was real; the
+invariant was not, and the difference is the whole lesson — a unique index is a
+statement about the world, and this one was a statement about a case nobody had
+in mind. The wrong index and its removal are both in the migration history,
+which is what a migration history is for.
+
+`billing.folioForReservation` calls `openFolioFor` now instead of being a second
+reading of the same sentence.
+
+### And a duplicate key stopped rolling back the thing it announced
+
+`enqueueOutbox` read for its idempotency key and then created, and `pushKey` is
+minute-grained — so two cancellations in the same minute computed the same key,
+both missed, and the loser's P2002 **aborted the transaction it was enqueued
+in**. The booking rolled back because the message announcing it was already
+queued. A key already taken is what the key *means*, so it re-reads and returns
+it. `isUniqueViolation` in `server/errors.ts` matches by shape, for the same
+reason `lib/errors.ts` matches `UploadTransferError` by shape: `auth.ts` reaches
+that file through jiti.
+
+249 unit, 176 integration, 103 browser.
+
+## 2026-09-13 — the client's fourth item was the one nobody had built
+
+Writing the client-facing report meant reading their brief line by line against
+the product, and one line did not have a screen behind it:
+
+> отображение статуса номера (свободен, забронирован, занят)
+
+The Rooms table showed number, type, floor and **housekeeping**. Housekeeping
+answers *is it clean*. The brief asks *can I sell it tonight*. Those are two
+different questions about one room — a room is clean and sold, or dirty and free
+— and the product answered only the second while an internal note had recorded
+the item as "modelled differently" and moved on.
+
+`roomSaleState` in `properties/model/room.ts` answers it, derived from tonight's
+stay and never stored, with the rule that a guest **in** the room outranks a
+guest expected: on a turnover day the departing stay does not decide the night,
+the arriving one does. `listRooms` gained one bounded query grouped in memory —
+not one per room — and the table gained a **Сегодня** column.
+
+Two things fell out of it. `requirePropertyMember` now selects the whole small
+property row instead of `{ id, organizationId }`, because this would have been
+the **sixth** procedure to re-read it for a `timezone` — half of the audit's
+§ 4. And `error-messages.test.ts` refused the new labels until the enum was
+registered against its source file, which is the test doing exactly its job.
+
+### And the report itself
+
+`guides/mvp-report.ru.md`, the one guide written in Russian — deliberately: its
+readers are the client who wrote the brief in Russian and the staff who work the
+desk in it. Eight items, the screen each lives on, what is there beyond the
+brief, and an honest list of what is not: no channel connected ("ready for", not
+"connected to"), no fiscal receipts, no booking history tab, and two questions
+still owed an answer.
