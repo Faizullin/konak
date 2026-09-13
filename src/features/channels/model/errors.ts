@@ -5,6 +5,7 @@ export const ChannelError = {
   /** A type sold on a channel that no longer maps to anything here. */
   MAPPING_UNKNOWN: "channel.mapping_unknown",
   CONNECTION_PAUSED: "channel.connection_paused",
+  CONNECTION_EXISTS: "channel.connection_exists",
 } as const;
 
 export type ChannelError = (typeof ChannelError)[keyof typeof ChannelError];

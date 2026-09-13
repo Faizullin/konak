@@ -28,19 +28,19 @@ export interface OrgModule {
 
 export const ORG_MODULE_REGISTRY = {
   OVERVIEW: {
-    label: "Overview",
+    label: "overview",
     icon: "LayoutDashboard",
     segment: "",
     core: true,
   },
   MEMBERS: {
-    label: "Members",
+    label: "members",
     icon: "Users",
     segment: "members",
     core: true,
   },
   SETTINGS: {
-    label: "Settings",
+    label: "settings",
     icon: "Settings",
     segment: "settings",
     core: true,
@@ -50,7 +50,7 @@ export const ORG_MODULE_REGISTRY = {
   // off by default, so nothing links to a route that is not there — switching
   // it on is what makes it appear.
   DIRECTORY: {
-    label: "Directory",
+    label: "directory",
     icon: "Contact",
     segment: "directory",
     enabledByDefault: false,
@@ -59,7 +59,7 @@ export const ORG_MODULE_REGISTRY = {
   // default like the directory — an organization keeping only a guest list has
   // no rooms to draw, and a hotel switches it on once.
   FRONT_DESK: {
-    label: "Front desk",
+    label: "frontDesk",
     icon: "CalendarRange",
     segment: "front-desk",
     enabledByDefault: false,

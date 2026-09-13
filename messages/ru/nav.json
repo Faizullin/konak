@@ -1,0 +1,12 @@
+{
+  "main": "Главное",
+  "overview": "Обзор",
+  "organizations": "Организации",
+  "users": "Пользователи",
+  "allOrganizations": "Все организации",
+  "organization": "Организация",
+  "members": "Сотрудники",
+  "settings": "Настройки",
+  "directory": "Справочник",
+  "frontDesk": "Стойка"
+}

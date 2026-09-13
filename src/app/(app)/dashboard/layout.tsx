@@ -55,6 +55,7 @@ export default async function DashboardLayout({ children }: Readonly<{ children:
         errors: messages.errors,
         housekeeping: messages.housekeeping,
         identity: messages.identity,
+        nav: messages.nav,
         organizations: messages.organizations,
         platform: messages.platform,
         properties: messages.properties,
@@ -73,7 +74,11 @@ export default async function DashboardLayout({ children }: Readonly<{ children:
               <SidebarTrigger className="-ml-1" />
               <Separator orientation="vertical" className="mr-2 h-4" />
             </header>
-            <div className="mx-auto w-full max-w-5xl flex-1 p-6">{children}</div>
+            {/* Wide enough for the screen this product is about: a 31-night grid at
+              comfortable density is 88rem, and the old 5xl cap (976px) showed
+              twenty nights on any monitor. Still capped, because a line of
+              prose across an ultrawide is unreadable. */}
+            <div className="mx-auto w-full max-w-[110rem] flex-1 p-6">{children}</div>
           </SidebarInset>
         </SidebarProvider>
       </NiceModalProvider>

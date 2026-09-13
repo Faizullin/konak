@@ -12,12 +12,12 @@ import { test } from "node:test";
  * screen that read it changed, and those accumulate silently until a translator
  * is paid to translate them.
  *
- * `errors`, `validation` and `enums` are keyed dynamically — by a domain code,
- * by a Zod message, and by an enum value — so they are checked against the
- * *code* in `error-messages.test.ts` instead.
+ * `errors`, `validation`, `enums` and `nav` are keyed dynamically — by a domain
+ * code, by a Zod message, by an enum value, and by a registry id — so they are
+ * checked against the *code* in `error-messages.test.ts` instead.
  */
 
-const DYNAMIC = new Set(["enums", "errors", "validation"]);
+const DYNAMIC = new Set(["enums", "errors", "nav", "validation"]);
 
 /** `{ a: { b: "x" } }` → `a.b`, prefixed with its namespace. */
 function flatten(value: unknown, prefix: string): string[] {

@@ -7,6 +7,7 @@ export * from "./enqueue";
 export * from "./inbound";
 export * from "./pull";
 export * from "./push";
+export * from "./router";
 
 /** Both directions, for the worker to register in one line. */
 export const CHANNEL_HANDLERS: OutboxHandlers = {

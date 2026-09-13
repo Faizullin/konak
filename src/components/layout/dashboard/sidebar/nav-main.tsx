@@ -2,6 +2,7 @@
 
 import { ChevronRight } from "lucide-react";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import { usePathname } from "next/navigation";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
@@ -42,6 +43,20 @@ const ComingSoon = () => (
 
 export function NavMain({ items }: { readonly items: readonly NavGroup[] }) {
   const path = usePathname();
+  const t = useTranslations("nav");
+
+  /**
+   * The sidebar's words, which were English in both locales.
+   *
+   * `nav-items.ts` and `ORG_MODULE_REGISTRY` are **data** — isomorphic, no
+   * translator — so they carry a key and the rendering resolves it. An
+   * unrecognised one renders as itself: a nav entry added without a message is
+   * a readable label rather than a blank row.
+   */
+  const label = (key: string) => {
+    const id = key as Parameters<typeof t.has>[0];
+    return t.has(id) ? t(id) : key;
+  };
   const { state, isMobile } = useSidebar();
   const isCollapsed = state === "collapsed" && !isMobile;
 
@@ -59,7 +74,7 @@ export function NavMain({ items }: { readonly items: readonly NavGroup[] }) {
     <>
       {items.map((group) => (
         <SidebarGroup key={group.id}>
-          {group.label && <SidebarGroupLabel>{group.label}</SidebarGroupLabel>}
+          {group.label && <SidebarGroupLabel>{label(group.label)}</SidebarGroupLabel>}
           <SidebarGroupContent>
             <SidebarMenu>
               {group.items.map((item) => {
@@ -69,14 +84,14 @@ export function NavMain({ items }: { readonly items: readonly NavGroup[] }) {
                     <SidebarMenuItem key={item.title}>
                       <SidebarMenuButton
                         aria-disabled={item.comingSoon}
-                        tooltip={item.title}
+                        tooltip={label(item.title)}
                         isActive={isItemActive(item)}
                         render={
                           <Link href={item.url} target={item.newTab ? "_blank" : undefined} />
                         }
                       >
                         {item.icon && <item.icon />}
-                        <span>{item.title}</span>
+                        <span>{label(item.title)}</span>
                         {item.comingSoon && <ComingSoon />}
                       </SidebarMenuButton>
                     </SidebarMenuItem>
@@ -91,13 +106,13 @@ export function NavMain({ items }: { readonly items: readonly NavGroup[] }) {
                           render={
                             <SidebarMenuButton
                               disabled={item.comingSoon}
-                              tooltip={item.title}
+                              tooltip={label(item.title)}
                               isActive={isItemActive(item)}
                             />
                           }
                         >
                           {item.icon && <item.icon />}
-                          <span>{item.title}</span>
+                          <span>{label(item.title)}</span>
                           <ChevronRight />
                         </DropdownMenuTrigger>
                         <DropdownMenuContent side="right" align="start" className="w-50">
@@ -133,12 +148,12 @@ export function NavMain({ items }: { readonly items: readonly NavGroup[] }) {
                         <SidebarMenuButton
                           disabled={item.comingSoon}
                           isActive={isItemActive(item)}
-                          tooltip={item.title}
+                          tooltip={label(item.title)}
                         />
                       }
                     >
                       {item.icon && <item.icon />}
-                      <span>{item.title}</span>
+                      <span>{label(item.title)}</span>
                       {item.comingSoon && <ComingSoon />}
                       <ChevronRight className="ml-auto transition-transform duration-200 group-data-open/collapsible:rotate-90" />
                     </CollapsibleTrigger>

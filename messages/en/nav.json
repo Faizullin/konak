@@ -1,0 +1,12 @@
+{
+  "main": "Main",
+  "overview": "Overview",
+  "organizations": "Organizations",
+  "users": "Users",
+  "allOrganizations": "All organizations",
+  "organization": "Organization",
+  "members": "Members",
+  "settings": "Settings",
+  "directory": "Directory",
+  "frontDesk": "Front desk"
+}

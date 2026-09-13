@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { after, before, describe, test } from "node:test";
-import { createFixture, prisma, type Fixture } from "./harness";
+import { callerFor, createFixture, prisma, type Fixture } from "./harness";
 import {
   applyInboundReservation,
   enqueueChannelPulls,
@@ -212,5 +212,88 @@ describe("asking the channels", () => {
       where: { organizationId: fx.org.id, type: "channel.pull" },
     });
     assert.equal(tasks, 1);
+  });
+});
+
+describe("connecting a channel", () => {
+  test("a new connection starts paused, and is not queued for", async () => {
+    const caller = callerFor(fx.owner);
+    await prisma.outboxTask.deleteMany({ where: { organizationId: fx.org.id } });
+
+    const created = await caller.channel.create({
+      propertyId,
+      provider: "example-vendor",
+      channelCode: "AIRBNB",
+    });
+
+    // Selling the moment it was saved would push before anybody mapped a room
+    // type — and absent means off, so that push would say everything is closed.
+    assert.equal(created.status, "PAUSED");
+    assert.equal(
+      await prisma.outboxTask.count({ where: { organizationId: fx.org.id, type: "channel.push" } }),
+      0
+    );
+
+    await prisma.channelConnection.delete({ where: { id: created.id } });
+  });
+
+  test("one connection per channel per property", async () => {
+    const caller = callerFor(fx.owner);
+    await assert.rejects(
+      caller.channel.create({
+        propertyId,
+        provider: "example-vendor",
+        channelCode: "BOOKING_COM",
+      }),
+      (e) => /already connected/i.test(e instanceof Error ? e.message : "")
+    );
+  });
+
+  test("switching it on tells it everything, because it knows nothing", async () => {
+    const caller = callerFor(fx.owner);
+    await prisma.outboxTask.deleteMany({ where: { organizationId: fx.org.id } });
+
+    await caller.channel.setStatus({ propertyId, id: connection.id, status: "ACTIVE" });
+
+    assert.equal(
+      await prisma.outboxTask.count({ where: { organizationId: fx.org.id, type: "channel.push" } }),
+      1
+    );
+  });
+
+  test("unmapping deactivates rather than deletes", async () => {
+    const caller = callerFor(fx.owner);
+    const mapping = await prisma.channelMapping.findFirstOrThrow({
+      where: { connectionId: connection.id },
+    });
+
+    await caller.channel.unmap({ propertyId, id: mapping.id });
+
+    // The mirror rows written against it are evidence of what the channel was
+    // told, and the type has to stop appearing in `current` without its history
+    // disappearing with it.
+    const after = await prisma.channelMapping.findUniqueOrThrow({ where: { id: mapping.id } });
+    assert.equal(after.isActive, false);
+
+    // And mapping it again is how it comes back.
+    await caller.channel.map({
+      propertyId,
+      connectionId: connection.id,
+      roomTypeId,
+      externalRoomTypeId: "DBL-EXT",
+    });
+    const back = await prisma.channelMapping.findUniqueOrThrow({ where: { id: mapping.id } });
+    assert.equal(back.isActive, true);
+  });
+
+  test("a receptionist does not decide where the hotel sells", async () => {
+    await assert.rejects(
+      callerFor(fx.member).channel.create({
+        propertyId,
+        provider: "example-vendor",
+        channelCode: "EXPEDIA",
+      }),
+      (e) => /manager/i.test(e instanceof Error ? e.message : "")
+    );
   });
 });

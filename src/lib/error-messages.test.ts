@@ -309,3 +309,36 @@ test("every message is valid ICU, and names only placeholders it is given", asyn
 
   assert.deepEqual(broken, [], "messages that do not format");
 });
+
+/* --- navigation ----------------------------------------------------------- */
+
+test("every sidebar entry has a word, and every word is used by one", () => {
+  /**
+   * The sidebar was English in both locales for as long as Russian has
+   * existed, because `nav-items.ts` and `ORG_MODULE_REGISTRY` are *data*: they
+   * carry a key and the rendering resolves it, so no `t("…")` call exists for
+   * the orphan scan to find. This is that check, against the source.
+   */
+  const nav = JSON.parse(readFileSync("messages/en/nav.json", "utf8")) as Record<string, string>;
+
+  const ids = new Set<string>();
+  for (const file of ["src/config/nav-items.ts", "src/features/organizations/model/registry.ts"]) {
+    const source = readFileSync(file, "utf8");
+    for (const [, id] of source.matchAll(/(?:title|label):\s*"([a-z][A-Za-z]*)"/g)) {
+      ids.add(id);
+    }
+  }
+
+  assert.deepEqual(
+    [...ids].filter((id) => !(id in nav)).sort(),
+    [],
+    "sidebar entries with no word in messages/en/nav.json"
+  );
+  assert.deepEqual(
+    Object.keys(nav)
+      .filter((key) => !ids.has(key))
+      .sort(),
+    [],
+    "words in nav.json no sidebar entry names"
+  );
+});

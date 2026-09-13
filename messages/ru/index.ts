@@ -5,6 +5,7 @@ import enums from "./enums.json";
 import errors from "./errors.json";
 import housekeeping from "./housekeeping.json";
 import identity from "./identity.json";
+import nav from "./nav.json";
 import organizations from "./organizations.json";
 import pages from "./pages.json";
 import platform from "./platform.json";
@@ -29,6 +30,7 @@ const ru = {
   errors,
   housekeeping,
   identity,
+  nav,
   organizations,
   pages,
   platform,

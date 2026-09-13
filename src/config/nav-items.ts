@@ -43,20 +43,20 @@ export interface NavGroup {
 export const accountNavItems: NavGroup[] = [
   {
     id: "main",
-    label: "Main",
+    label: "main",
     items: [
       {
-        title: "Overview",
+        title: "overview",
         url: "/dashboard",
         icon: LayoutDashboard,
       },
       {
-        title: "Organizations",
+        title: "organizations",
         url: "/dashboard/orgs",
         icon: Building2,
       },
       {
-        title: "Users",
+        title: "users",
         url: "/dashboard/users",
         icon: Users,
         roles: [UserRole.ADMIN],
@@ -99,11 +99,11 @@ export function organizationNavItems(
   return [
     {
       id: "back",
-      items: [{ title: "All Organizations", url: "/dashboard/orgs", icon: ChevronLeft }],
+      items: [{ title: "allOrganizations", url: "/dashboard/orgs", icon: ChevronLeft }],
     },
     {
       id: "organization",
-      label: "Organization",
+      label: "organization",
       items: dynamicItems,
     },
   ];

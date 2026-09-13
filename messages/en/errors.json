@@ -17,6 +17,7 @@
     "not_signed_in": "You must be signed in"
   },
   "channel": {
+    "connection_exists": "That channel is already connected to this property",
     "connection_not_found": "That channel connection no longer exists",
     "connection_paused": "That channel connection is paused",
     "mapping_not_found": "That room type is not mapped to this channel",

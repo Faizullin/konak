@@ -1,4 +1,5 @@
 import { billingRouter } from "@/features/billing/server";
+import { channelRouter } from "@/features/channels/server/router";
 import { directoryRouter } from "@/features/directory/server";
 import { housekeepingRouter } from "@/features/housekeeping/server";
 import { userRouter } from "@/features/identity/server";
@@ -14,6 +15,7 @@ import { createTRPCRouter } from "./trpc";
 export const appRouter = createTRPCRouter({
   user: userRouter,
   billing: billingRouter,
+  channel: channelRouter,
   directory: directoryRouter,
   housekeeping: housekeepingRouter,
   organization: organizationRouter,
