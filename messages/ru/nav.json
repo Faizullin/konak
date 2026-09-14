@@ -8,5 +8,12 @@
   "members": "Сотрудники",
   "settings": "Настройки",
   "directory": "Справочник",
-  "frontDesk": "Стойка"
+  "frontDesk": "Стойка",
+  "grid": "Шахматка",
+  "today": "Актуальные",
+  "bookings": "Бронирования",
+  "rooms": "Номера",
+  "housekeeping": "Уборка",
+  "guests": "Гости",
+  "setup": "Настройка"
 }

@@ -722,3 +722,103 @@ describe("status and rooms", () => {
     );
   });
 });
+
+/**
+ * Phase 7.5 — `room_stays_bed_no_overlap`, the bed-level twin of the
+ * room-level constraint above. No procedure assigns a bed yet (that is Phase
+ * 8's booking engine), so these write `RoomStay` rows directly — the same
+ * database guarantee the application will eventually call through.
+ */
+describe("beds", () => {
+  let dormTypeId: number;
+  let dormRoomId: number;
+  let bedAId: number;
+  let bedBId: number;
+  const reservationIds: number[] = [];
+
+  before(async () => {
+    const dormType = await prisma.roomType.create({
+      data: {
+        propertyId,
+        name: `Dorm ${fx.tag}`,
+        code: `DORM-${fx.tag}`,
+        unit: "BED",
+        baseOccupancy: 1,
+        maxOccupancy: 1,
+        maxAdults: 1,
+      },
+    });
+    dormTypeId = dormType.id;
+
+    const dormRoom = await prisma.room.create({
+      data: { propertyId, roomTypeId: dormTypeId, number: `Dorm-${fx.tag}` },
+    });
+    dormRoomId = dormRoom.id;
+
+    const [bedA, bedB] = await prisma.$transaction([
+      prisma.bed.create({ data: { roomId: dormRoomId, label: "Bed A" } }),
+      prisma.bed.create({ data: { roomId: dormRoomId, label: "Bed B" } }),
+    ]);
+    bedAId = bedA.id;
+    bedBId = bedB.id;
+  });
+
+  after(async () => {
+    await prisma.reservation.deleteMany({ where: { id: { in: reservationIds } } });
+    await prisma.room.deleteMany({ where: { id: dormRoomId } });
+    await prisma.roomType.deleteMany({ where: { id: dormTypeId } });
+  });
+
+  const mkReservation = async (reference: string) => {
+    const r = await prisma.reservation.create({
+      data: { propertyId, reference, currencyCode: "EUR", status: "CONFIRMED" },
+    });
+    reservationIds.push(r.id);
+    return r;
+  };
+
+  const mkStay = (reservationId: number, bedId: number, checkIn: Date, checkOut: Date) =>
+    prisma.roomStay.create({
+      data: {
+        reservationId,
+        propertyId,
+        roomTypeId: dormTypeId,
+        bedId,
+        status: "CONFIRMED",
+        checkIn,
+        checkOut,
+        currencyCode: "EUR",
+      },
+    });
+
+  test("two guests hold two beds in one room across overlapping dates", async () => {
+    const guestA = await mkReservation(`BED-A-${fx.tag}`);
+    const guestB = await mkReservation(`BED-B-${fx.tag}`);
+
+    // Same room, same nights, different beds — the room-level constraint
+    // never sees these rows because roomId is null on both.
+    const stayA = await mkStay(guestA.id, bedAId, day(100), day(102));
+    const stayB = await mkStay(guestB.id, bedBId, day(101), day(103));
+
+    assert.equal(stayA.roomId, null);
+    assert.equal(stayB.roomId, null);
+  });
+
+  test("the database — not the application — refuses a third stay on a bed already held", async () => {
+    const guestC = await mkReservation(`BED-C-${fx.tag}`);
+
+    await assert.rejects(
+      () => mkStay(guestC.id, bedAId, day(101), day(104)),
+      (e) => {
+        const err = e as { code?: string; message?: string };
+        return err.code === "P2039" && /room_stays_bed_no_overlap/.test(err.message ?? "");
+      }
+    );
+  });
+
+  test("the same bed on a later, non-overlapping date is free again", async () => {
+    const guestD = await mkReservation(`BED-D-${fx.tag}`);
+    const stay = await mkStay(guestD.id, bedAId, day(102), day(103));
+    assert.equal(stay.bedId, bedAId);
+  });
+});

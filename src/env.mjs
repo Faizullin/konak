@@ -44,6 +44,13 @@ export const env = createEnv({
     CLOUDINARY_API_KEY: z.string().optional(),
     CLOUDINARY_API_SECRET: z.string().optional(),
     BLOB_READ_WRITE_TOKEN: z.string().optional(),
+
+    // Where a channel connection's secret is read from — one file per
+    // `credentialsRef`, named by it. Optional, and absent everywhere today:
+    // nothing is distributed until a vendor is chosen, and a clone has to
+    // start without it. An ACTIVE connection whose secret cannot be read
+    // dead-letters its push rather than silently doing nothing.
+    CHANNEL_SECRETS_DIR: z.string().optional(),
   },
   // Empty by design: the Better Auth client is same-origin and infers its own
   // base URL, so nothing in the browser needs a validated variable.
@@ -69,6 +76,7 @@ export const env = createEnv({
     CLOUDINARY_API_KEY: process.env.CLOUDINARY_API_KEY,
     CLOUDINARY_API_SECRET: process.env.CLOUDINARY_API_SECRET,
     BLOB_READ_WRITE_TOKEN: process.env.BLOB_READ_WRITE_TOKEN,
+    CHANNEL_SECRETS_DIR: process.env.CHANNEL_SECRETS_DIR,
   },
   /**
    * A provider is only asked for the variables it actually needs. Selecting S3

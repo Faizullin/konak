@@ -194,9 +194,15 @@ export function createBookingsFixture(context: {
         checkOut,
       });
 
+      const roomNumber = assigned
+        ? (await one<{ number: string }>(`select number from rooms where id = $1`, [assigned]))
+            .number
+        : null;
+
       return {
         id: reservation.id,
         roomId: assigned,
+        roomNumber,
         publicId,
         reference,
         guestName: `${guest.firstName} ${guest.lastName}`,

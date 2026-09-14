@@ -6,6 +6,8 @@ export const ChannelError = {
   MAPPING_UNKNOWN: "channel.mapping_unknown",
   CONNECTION_PAUSED: "channel.connection_paused",
   CONNECTION_EXISTS: "channel.connection_exists",
+  /** An active connection whose secret cannot be read — see `server/credentials.ts`. */
+  CREDENTIALS_MISSING: "channel.credentials_missing",
 } as const;
 
 export type ChannelError = (typeof ChannelError)[keyof typeof ChannelError];

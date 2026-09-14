@@ -162,7 +162,9 @@ export const RoomFormNiceDialog = NiceModal.create(
                   disabled={pending}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder={t("roomForm.chooseType")} />
+                    <SelectValue placeholder={t("roomForm.chooseType")}>
+                      {(v: string) => types?.find((t) => String(t.id) === v)?.name ?? v}
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {(types ?? []).map((type) => (
@@ -190,7 +192,7 @@ export const RoomFormNiceDialog = NiceModal.create(
                   disabled={pending}
                 >
                   <SelectTrigger>
-                    <SelectValue />
+                    <SelectValue>{(v: RoomStatus) => labels[v] ?? v}</SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {Object.entries(labels).map(([value, label]) => (

@@ -3,6 +3,7 @@ import prisma from "@/server/db";
 import type { OutboxHandler, OutboxHandlers } from "@/features/platform/server/outbox";
 import { ChannelError } from "../model";
 import { adapterFor } from "./adapter";
+import { resolveChannelSecret } from "./credentials";
 import { applyInboundReservation } from "./inbound";
 
 /**
@@ -40,6 +41,10 @@ const pullReservations: OutboxHandler = async (payload) => {
       externalPropertyId: true,
       lastSyncedAt: true,
       property: { select: { organizationId: true } },
+      mappings: {
+        where: { isActive: true },
+        select: { externalRoomTypeId: true, roomTypeId: true, ratePlanId: true },
+      },
     },
   });
   if (!connection) {
@@ -58,12 +63,18 @@ const pullReservations: OutboxHandler = async (payload) => {
     ? new Date(connection.lastSyncedAt.getTime() - OVERLAP_MS)
     : new Date(Date.now() - 24 * 60 * 60_000);
 
+  const secret = await resolveChannelSecret(connection.credentialsRef);
+
   const arrivals = await adapter.pull(
-    {
-      credentialsRef: connection.credentialsRef,
-      externalPropertyId: connection.externalPropertyId,
-    },
+    { secret, externalPropertyId: connection.externalPropertyId },
     since
+  );
+
+  const mappingsByExternal = new Map(
+    connection.mappings.map((m) => [
+      m.externalRoomTypeId,
+      { roomTypeId: m.roomTypeId, ratePlanId: m.ratePlanId },
+    ])
   );
 
   const scope = {
@@ -71,6 +82,7 @@ const pullReservations: OutboxHandler = async (payload) => {
     propertyId: connection.propertyId,
     channelCode: connection.channelCode,
     organizationId: connection.property.organizationId,
+    mappings: mappingsByExternal,
   };
 
   /**

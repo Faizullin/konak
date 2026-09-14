@@ -198,7 +198,12 @@ export const WalkInFormNiceDialog = NiceModal.create(
                   disabled={walkIn.isPending}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder={t("walkIn.chooseType")} />
+                    <SelectValue placeholder={t("walkIn.chooseType")}>
+                      {(v: string) => {
+                        const type = roomTypes?.find((t) => String(t.id) === v);
+                        return type ? `${type.name} · sleeps ${type.maxOccupancy}` : v;
+                      }}
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {(roomTypes ?? [])
@@ -232,7 +237,14 @@ export const WalkInFormNiceDialog = NiceModal.create(
                       placeholder={
                         roomTypeId < 1 ? t("walkIn.chooseTypeFirst") : t("walkIn.chooseRoom")
                       }
-                    />
+                    >
+                      {(v: string) => {
+                        const room = sellable.find((r) => String(r.id) === v);
+                        return room
+                          ? `${room.number} · ${labels[room.status as RoomStatus] ?? room.status}`
+                          : v;
+                      }}
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {sellable.map((room) => (

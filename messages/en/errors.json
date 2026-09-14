@@ -25,6 +25,7 @@
     "connection_exists": "That channel is already connected to this property",
     "connection_not_found": "That channel connection no longer exists",
     "connection_paused": "That channel connection is paused",
+    "credentials_missing": "That channel connection has no readable credentials",
     "mapping_not_found": "That room type is not mapped to this channel",
     "mapping_unknown": "The channel sold a room type this property does not have"
   },

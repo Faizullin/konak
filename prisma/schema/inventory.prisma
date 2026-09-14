@@ -19,6 +19,10 @@ model RoomType {
   // so it outlives renaming the type.
   code          String
   description   String?
+  // ROOM or BED — the whole discriminator. A BED type prices, maps and counts
+  // exactly like a ROOM type; only what a stay points at differs. See
+  // plans/inventory-units.md.
+  unit          String  @default("ROOM")
   // The rate is quoted for `baseOccupancy`; anyone beyond it is priced by the
   // plan's extra-person amounts.
   baseOccupancy Int     @default(2)
@@ -70,6 +74,7 @@ model Room {
   property          Property           @relation(fields: [propertyId], references: [id], onDelete: Cascade)
   roomType          RoomType           @relation(fields: [roomTypeId], references: [id], onDelete: Restrict)
   stays             RoomStay[]
+  beds              Bed[]
   housekeepingTasks HousekeepingTask[]
   maintenanceIssues MaintenanceIssue[]
   lockDevices       LockDevice[]
@@ -78,6 +83,27 @@ model Room {
   @@index([propertyId, roomTypeId])
   @@index([propertyId, status])
   @@map("rooms")
+}
+
+// A bookable bunk inside a room, for a type whose unit is BED. Belongs to the
+// room, not the type — a bed's identity is where it physically stands.
+model Bed {
+  id       Int    @id @default(autoincrement())
+  roomId   Int
+  // Guest-facing: "Bunk 1", "Top near window" — never confusable with a room
+  // number.
+  label    String
+  position Int    @default(0)
+
+  archivedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  room  Room       @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  stays RoomStay[]
+
+  @@unique([roomId, label])
+  @@map("beds")
 }
 
 // What staff have deliberately withheld, one row per room type per night.

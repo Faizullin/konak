@@ -3,13 +3,12 @@ import { redirect } from "next/navigation";
 import { ReactNode } from "react";
 import { NextIntlClientProvider } from "next-intl";
 import { getLocale, getMessages } from "next-intl/server";
+import { AppHeader } from "@/components/layout/dashboard/header/app-header";
 import { AppSidebar } from "@/components/layout/dashboard/sidebar/app-sidebar";
-import { Separator } from "@/components/ui/separator";
-import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { NiceModalProvider } from "@/store/nice-modal-context";
 import { UserRole } from "@/features/identity";
 import { auth } from "@/server/auth";
-import { AppearanceToggle } from "@/components/common/appearance-toggle";
 import { SURFACES } from "@/config/surfaces";
 
 /**
@@ -52,6 +51,7 @@ export default async function DashboardLayout({ children }: Readonly<{ children:
       locale={locale}
       messages={{
         billing: messages.billing,
+        channels: messages.channels,
         directory: messages.directory,
         enums: messages.enums,
         errors: messages.errors,
@@ -79,17 +79,7 @@ export default async function DashboardLayout({ children }: Readonly<{ children:
         <SidebarProvider defaultOpen={defaultOpen} data-surface={SURFACES.basic.id}>
           <AppSidebar user={user} />
           <SidebarInset>
-            <header className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
-              <SidebarTrigger className="-ml-1" />
-              <Separator orientation="vertical" className="mr-2 h-4" />
-              {/* The header's other controls — a breadcrumb, the language
-                  switch, an inbox — are `plans/dashboard-header.md`, which also
-                  makes this a component rather than markup in a layout. This is
-                  the one the MVP needs. */}
-              <div className="ml-auto">
-                <AppearanceToggle surface="basic" />
-              </div>
-            </header>
+            <AppHeader />
             {/* Wide enough for the screen this product is about: a 31-night grid at
               comfortable density is 88rem, and the old 5xl cap (976px) showed
               twenty nights on any monitor. Still capped, because a line of

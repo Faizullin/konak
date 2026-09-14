@@ -110,8 +110,12 @@ services:
       # Must match the volume mount below. Left unset, env.mjs defaults it to
       # `.storage` inside the container, i.e. inside the ephemeral layer.
       STORAGE_FS_ROOT: /data/storage
+      # One file per channel connection, named by its `credentialsRef`. Read
+      # only — the app resolves a secret, it never writes one.
+      CHANNEL_SECRETS_DIR: /run/secrets/channels
     volumes:
       - storage:/data/storage
+      - ${CHANNEL_SECRETS_HOST_DIR:-/etc/konak/channel-secrets}:/run/secrets/channels:ro
     networks:
       - edge
       - internal
@@ -120,6 +124,63 @@ services:
         condition: service_healthy
     # The largest single consumer. Leaves ~1 GB for postgres, caddy and the OS.
     mem_limit: 800m
+    logging: *logging
+
+  # ───────────────────────── worker ─────────────────────────
+  # Drains `OutboxTask`, schedules the channel pulls, and runs the storage and
+  # hold sweeps. Without it a booking commits, its announcement is recorded, and
+  # nothing ever carries it out — the outbox just grows.
+  #
+  # Built from `builder`, like `migrate` and for the same reason: `npm run
+  # outbox` is `tsx scripts/outbox-worker.mts`, and neither tsx nor the script
+  # exists in the standalone runner image.
+  #
+  # **One replica.** `drainOutbox` claims before it works, so a second would be
+  # safe rather than corrupting — but two processes fighting over one batch on a
+  # single core is contention bought with nothing.
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: builder
+    image: konak-worker:latest
+    container_name: konak-worker
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      # The builder stage bakes SKIP_ENV_VALIDATION=1 so `next build` can run
+      # without runtime secrets. Cleared here, deliberately: this process reads
+      # DATABASE_URL and FIELD_ENCRYPTION_KEY for real, and `!!""` is false, so
+      # an empty value is what turns validation back on.
+      SKIP_ENV_VALIDATION: ""
+      STORAGE_FS_ROOT: /data/storage
+      CHANNEL_SECRETS_DIR: /run/secrets/channels
+      # The build heap cap belongs to the build. A long-lived process wants a
+      # small heap it collects inside, not a 1.5 GB one it grows into.
+      NODE_OPTIONS: "--max-old-space-size=256"
+    # The same sweeps the app's uploads write to — a sweep pointed anywhere else
+    # deletes the rows and leaves the bytes.
+    volumes:
+      - storage:/data/storage
+      - ${CHANNEL_SECRETS_HOST_DIR:-/etc/konak/channel-secrets}:/run/secrets/channels:ro
+    # `edge` as well as `internal`: `internal: true` has no gateway, and a push
+    # to a channel manager is an outbound HTTPS call to the internet.
+    networks:
+      - edge
+      - internal
+    depends_on:
+      db:
+        condition: service_healthy
+    # --commit, or it reports what it would do and changes nothing. The interval
+    # is the floor on how stale a channel's view of availability can be, and the
+    # ceiling on how often the vendor's rate limit is approached.
+    command: ["npm", "run", "outbox", "--", "--commit", "--interval=30"]
+    # tsx transpiles on demand and holds the module graph, so this is larger
+    # than the work it does. If it is ever OOM-killed the answer is to compile
+    # the entrypoint rather than to raise this — the box has nothing spare.
+    mem_limit: 320m
     logging: *logging
 
   # ─────────────────────────── db ───────────────────────────

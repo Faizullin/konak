@@ -30,6 +30,23 @@ export const ROOM_STATUS_VALUES = Object.values(RoomStatus);
 export const roomStatusSchema = z.enum(ROOM_STATUS_VALUES);
 
 /**
+ * What a room type sells: a whole `Room`, or a `Bed` inside one. The whole
+ * discriminator — a BED type prices, maps and counts exactly like a ROOM
+ * type, and only what a stay points at differs. See
+ * docs/plans/inventory-units.md.
+ */
+export const RoomTypeUnit = {
+  ROOM: "ROOM",
+  BED: "BED",
+} as const;
+
+export type RoomTypeUnit = (typeof RoomTypeUnit)[keyof typeof RoomTypeUnit];
+
+export const ROOM_TYPE_UNIT_VALUES = Object.values(RoomTypeUnit);
+
+export const roomTypeUnitSchema = z.enum(ROOM_TYPE_UNIT_VALUES);
+
+/**
  * Whether a room can hold a guest at all. Only `OUT_OF_ORDER` says no — a dirty
  * room is sold and cleaned before the guest arrives, which is the whole point
  * of separating housekeeping state from availability.

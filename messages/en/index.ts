@@ -1,5 +1,6 @@
 import auth from "./auth.json";
 import billing from "./billing.json";
+import channels from "./channels.json";
 import desk from "./desk.json";
 import directory from "./directory.json";
 import enums from "./enums.json";
@@ -26,6 +27,7 @@ import validation from "./validation.json";
 const en = {
   auth,
   billing,
+  channels,
   desk,
   directory,
   enums,

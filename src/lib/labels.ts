@@ -33,7 +33,8 @@ export function useEnumLabels<T extends string>(
     | "lineType"
     | "paymentMethod"
     | "paymentStatus"
-    | "folioStatus",
+    | "folioStatus"
+    | "channelStatus",
   values: readonly T[]
 ): Record<T, string> {
   const t = useTranslations("enums");

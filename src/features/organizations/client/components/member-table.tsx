@@ -1,14 +1,17 @@
 "use client";
 
-import { useEnumLabels } from "@/lib/labels";
-import { useTranslations } from "next-intl";
+import type { ColumnDef } from "@tanstack/react-table";
 import { LoaderIcon, UserPlus } from "lucide-react";
+import { useTranslations } from "next-intl";
+import { useCallback, useMemo } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { confirm } from "@/components/common/confirm-nice-dialog";
+import { FormError } from "@/components/common/form-error";
+import { DataTable } from "@/components/data-table/data-table";
+import { useDataTable } from "@/components/data-table/use-data-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { FormError } from "@/components/common/form-error";
 import { Field, FieldError } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import {
@@ -20,14 +23,6 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
   ORG_ROLE_VALUES,
   OrgRole,
   addMemberFormSchema,
@@ -36,15 +31,14 @@ import {
 } from "@/features/organizations";
 import { useErrorHandlers } from "@/lib/errors";
 import { useZodResolver } from "@/lib/form";
+import { useEnumLabels } from "@/lib/labels";
+import type { GeneralRouterOutputs } from "@/server/types";
 import { trpc } from "@/utils/trpc";
 
+type MemberRow = GeneralRouterOutputs["organization"]["listMembers"][number];
+
 /**
- * The member list, and the three things you do to it: add, change a role,
- * remove.
- *
- * Every control is gated on `currentUserRole` — but only for the UI. The
- * router re-checks each one, so hiding a button is a courtesy, never the
- * enforcement.
+ * The member list, and the three things you do to it: add, change a role, remove.
  */
 export function MemberTable({
   organizationId,
@@ -60,8 +54,6 @@ export function MemberTable({
   const { handleError, handleFormError } = useErrorHandlers();
   const utils = trpc.useUtils();
 
-  // Bound to the router's own schema, so a typo'd email is refused here with a
-  // message under the field rather than as a toast after a round trip.
   const resolver = useZodResolver<AddMemberFormInput>(addMemberFormSchema);
 
   const form = useForm<AddMemberFormInput>({
@@ -87,8 +79,6 @@ export function MemberTable({
       form.reset();
       await refresh();
     },
-    // "No account with that email" and "already a member" both name the email
-    // field on the server, so both land under the input the person just typed.
     onError: (e) => handleFormError(form, e),
   });
 
@@ -108,16 +98,108 @@ export function MemberTable({
     onError: (e) => handleError(e),
   });
 
-  const handleRemove = async (userId: string, name: string) => {
-    const ok = await confirm({
-      title: `Remove ${name}?`,
-      description:
-        "They lose access to this organization immediately. You can add them back later.",
-      confirmLabel: t("members.remove"),
-      destructive: true,
-    });
-    if (ok) removeMember.mutate({ organizationId, userId });
-  };
+  // Stable, so the column definitions below can depend on it honestly.
+  const handleRemove = useCallback(
+    async (userId: string, name: string) => {
+      const ok = await confirm({
+        title: `Remove ${name}?`,
+        description:
+          "They lose access to this organization immediately. You can add them back later.",
+        confirmLabel: t("members.remove"),
+        destructive: true,
+      });
+      if (ok) removeMember.mutate({ organizationId, userId });
+    },
+    [organizationId, removeMember, t]
+  );
+
+  const columns = useMemo<ColumnDef<MemberRow>[]>(
+    () => [
+      {
+        id: "user",
+        header: t("members.member"),
+        cell: ({ row }) => {
+          const member = row.original;
+          const isSelf = member.user.id === currentUserId;
+
+          return (
+            <div>
+              <div className="font-medium">
+                {member.user.name}
+                {isSelf && <span className="text-muted-foreground"> (you)</span>}
+              </div>
+              <div className="text-muted-foreground text-xs">{member.user.email}</div>
+            </div>
+          );
+        },
+      },
+      {
+        id: "role",
+        header: t("members.role"),
+        cell: ({ row }) => {
+          const member = row.original;
+          const isOwner = member.role === OrgRole.OWNER;
+
+          // Owner's role is not editable here — only transferred in Danger Zone.
+          if (canManage && !isOwner) {
+            return (
+              <Select
+                items={labels}
+                value={member.role}
+                onValueChange={(v) =>
+                  updateRole.mutate({
+                    organizationId,
+                    userId: member.user.id,
+                    role: v as "ADMIN" | "MEMBER",
+                  })
+                }
+              >
+                <SelectTrigger className="w-32" size="sm">
+                  <SelectValue>{(v: OrgRole) => labels[v] ?? v}</SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={OrgRole.MEMBER}>{labels[OrgRole.MEMBER]}</SelectItem>
+                  <SelectItem value={OrgRole.ADMIN}>{labels[OrgRole.ADMIN]}</SelectItem>
+                </SelectContent>
+              </Select>
+            );
+          }
+
+          return <Badge variant={isOwner ? "default" : "secondary"}>{labels[member.role]}</Badge>;
+        },
+      },
+      {
+        id: "actions",
+        header: () => <div className="text-right">{t("members.actions")}</div>,
+        cell: ({ row }) => {
+          const member = row.original;
+          const isOwner = member.role === OrgRole.OWNER;
+          const isSelf = member.user.id === currentUserId;
+
+          if (!canManage || isOwner || isSelf) return null;
+
+          return (
+            <div className="text-right">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => handleRemove(member.user.id, member.user.name)}
+              >
+                {t("members.remove")}
+              </Button>
+            </div>
+          );
+        },
+      },
+    ],
+    [canManage, currentUserId, handleRemove, labels, organizationId, t, updateRole]
+  );
+
+  const { table } = useDataTable({
+    columns,
+    data: members.data ?? [],
+    getRowId: (row) => String(row.id),
+  });
 
   return (
     <div className="space-y-4">
@@ -155,7 +237,7 @@ export function MemberTable({
                 disabled={addMember.isPending}
               >
                 <SelectTrigger className="w-32">
-                  <SelectValue />
+                  <SelectValue>{(v: OrgRole) => labels[v] ?? v}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value={OrgRole.MEMBER}>{labels[OrgRole.MEMBER]}</SelectItem>
@@ -175,77 +257,7 @@ export function MemberTable({
         </form>
       )}
 
-      {members.isLoading ? (
-        <Skeleton className="h-40" />
-      ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>{t("members.member")}</TableHead>
-              <TableHead>{t("members.role")}</TableHead>
-              <TableHead className="w-24 text-right">{t("members.actions")}</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {members.data?.map((member) => {
-              const isOwner = member.role === OrgRole.OWNER;
-              const isSelf = member.user.id === currentUserId;
-
-              return (
-                <TableRow key={member.id}>
-                  <TableCell>
-                    <div className="font-medium">
-                      {member.user.name}
-                      {isSelf && <span className="text-muted-foreground"> (you)</span>}
-                    </div>
-                    <div className="text-muted-foreground text-xs">{member.user.email}</div>
-                  </TableCell>
-                  <TableCell>
-                    {/* The owner's role is not editable here — it moves only
-                        through transfer, which changes both sides at once. */}
-                    {canManage && !isOwner ? (
-                      <Select
-                        items={labels}
-                        value={member.role}
-                        onValueChange={(v) =>
-                          updateRole.mutate({
-                            organizationId,
-                            userId: member.user.id,
-                            role: v as "ADMIN" | "MEMBER",
-                          })
-                        }
-                      >
-                        <SelectTrigger className="w-32" size="sm">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value={OrgRole.MEMBER}>{labels[OrgRole.MEMBER]}</SelectItem>
-                          <SelectItem value={OrgRole.ADMIN}>{labels[OrgRole.ADMIN]}</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    ) : (
-                      <Badge variant={isOwner ? "default" : "secondary"}>
-                        {labels[member.role]}
-                      </Badge>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {canManage && !isOwner && !isSelf && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleRemove(member.user.id, member.user.name)}
-                      >
-                        Remove
-                      </Button>
-                    )}
-                  </TableCell>
-                </TableRow>
-              );
-            })}
-          </TableBody>
-        </Table>
-      )}
+      {members.isLoading ? <Skeleton className="h-40" /> : <DataTable table={table} />}
     </div>
   );
 }

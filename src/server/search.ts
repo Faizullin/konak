@@ -14,6 +14,43 @@
  * because `ORDER BY lastName` keeps the planner on the btree either way. Index
  * work waits for a tenant that is two orders of magnitude larger.
  */
+
+export const SEARCH_TERM_LIMIT = 4;
+
+/**
+ * A typed search, split into the words that must all match something.
+ */
+export function searchTerms(search: string): string[] {
+  return search.trim().split(/\s+/).filter(Boolean).slice(0, SEARCH_TERM_LIMIT);
+}
+
+/**
+ * Generates ё/е variants for Cyrillic search terms so that typing either
+ * matches stored records regardless of orthography.
+ */
+export function searchTermVariants(term: string): string[] {
+  if (!term) return [term];
+
+  let variants: string[] = [""];
+
+  for (const char of term) {
+    if ((char === "е" || char === "ё") && variants.length < 32) {
+      variants = variants.flatMap((v) => [v + "е", v + "ё"]);
+    } else if ((char === "Е" || char === "Ё") && variants.length < 32) {
+      variants = variants.flatMap((v) => [v + "Е", v + "Ё"]);
+    } else {
+      variants = variants.map((v) => v + char);
+    }
+  }
+
+  const set = new Set<string>();
+  set.add(term);
+  for (const v of variants) {
+    set.add(v);
+  }
+  return Array.from(set);
+}
+
 export function like(term: string) {
   return { contains: term, mode: "insensitive" } as const;
 }

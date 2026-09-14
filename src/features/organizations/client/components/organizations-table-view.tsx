@@ -5,13 +5,14 @@ import NiceModal from "@ebay/nice-modal-react";
 import type { ColumnDef } from "@tanstack/react-table";
 import { Building2, MoreHorizontal, Pencil, Settings, Shield, User, Users } from "lucide-react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
 import { useMemo } from "react";
 import { DataTable } from "@/components/data-table/data-table";
 import { DataTableColumnHeader } from "@/components/data-table/data-table-column-header";
 import { DataTableSkeleton } from "@/components/data-table/data-table-skeleton";
 import { DataTableToolbar } from "@/components/data-table/data-table-toolbar";
-import { useDataTable } from "@/components/data-table/use-data-table";
+import { getFilterList, getFilterText } from "@/components/data-table/lib";
+import { nuqsTableState } from "@/components/data-table/table-state";
+import { type DataTableQueryState, useDataTable } from "@/components/data-table/use-data-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -24,6 +25,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
+  ORGANIZATION_SORT_FIELDS,
   ORG_ROLE_VALUES,
   OrgRole,
   canEditOrganization,
@@ -51,33 +53,10 @@ const ROLE_BADGE: Record<OrgRole, "default" | "secondary" | "outline"> = {
  * The organizations list, as a `DataTable`.
  *
  * `useDataTable` runs in manual mode, so paging, sorting and filtering all
- * happen here rather than in the browser. It queries `OrganizationMember`
- * rather than `Organization` because the caller's own role is both a column
- * and a filter — reading it from the membership row means one query instead
- * of a list plus a per-row lookup.
+ * happen here rather than in the browser.
  */
 export function OrganizationsTableView() {
   const labels = useEnumLabels("orgRole", ORG_ROLE_VALUES);
-  const [{ page, perPage, sort, name, slug, role }] = useOrganizationTableParams();
-
-  const input = useMemo<ListOrganizationsInput>(
-    () => ({
-      filter: {
-        name: name ?? undefined,
-        slug: slug ?? undefined,
-        role: role?.length ? (role as OrgRole[]) : undefined,
-      },
-      orderBy: sort,
-      pagination: { skip: (page - 1) * perPage, take: perPage },
-    }),
-    [page, perPage, sort, name, slug, role]
-  );
-
-  const { data, isLoading } = trpc.organization.list.useQuery(input, {
-    // Keeps the previous page on screen while the next one loads, instead of
-    // collapsing the table to a skeleton on every page change.
-    placeholderData: (prev) => prev,
-  });
 
   const columns = useMemo<ColumnDef<OrganizationRow>[]>(
     () => [
@@ -212,18 +191,18 @@ export function OrganizationsTableView() {
         enableHiding: false,
       },
     ],
-    []
+    [labels]
   );
 
-  const { table } = useDataTable({
-    data: data?.items ?? [],
+  const { table, isLoading } = useDataTable({
     columns,
-    pageCount: data ? Math.max(1, Math.ceil(data.total / perPage)) : 1,
+    state: organizationTableState,
+    useRows: useOrganizationRows,
     getRowId: (row) => String(row.id),
     initialState: { sorting: [{ id: "name", desc: false }] },
   });
 
-  if (isLoading && !data) {
+  if (isLoading) {
     return <DataTableSkeleton columnCount={6} rowCount={5} filterCount={3} />;
   }
 
@@ -234,48 +213,41 @@ export function OrganizationsTableView() {
   );
 }
 
+/** Page, sort and filters go in the URL, so a view of the list is a link. */
+const organizationTableState = nuqsTableState();
+
 /**
- * Reads back what `useDataTable` writes into the URL.
- *
- * The hook owns those keys but does not hand them out in a shape a query can
- * use, and the query has to run *before* the table is built — the row count
- * decides `pageCount`. Parsing the same search params is the smaller evil
- * compared with a second source of truth.
+ * How this page fetches. `useDataTable` calls it with the state it owns and
+ * reads `total` back to work out `pageCount`.
  */
-function useOrganizationTableParams() {
-  const searchParams = useSearchParams();
+function useOrganizationRows({
+  pagination,
+  sorting,
+  columnFilters,
+}: DataTableQueryState<OrganizationRow>) {
+  const input = useMemo<ListOrganizationsInput>(() => {
+    const sort = sorting[0];
+    const field = ORGANIZATION_SORT_FIELDS.find((candidate) => candidate === sort?.id);
 
-  return useMemo(() => {
-    const page = Number(searchParams.get("page") ?? 1) || 1;
-    const perPage = Number(searchParams.get("perPage") ?? 10) || 10;
-
-    let sort: ListOrganizationsInput["orderBy"];
-    try {
-      const raw = searchParams.get("sort");
-      const parsed = raw ? (JSON.parse(raw) as { id: string; desc: boolean }[]) : [];
-      const first = parsed[0];
-      if (first && SORTABLE.includes(first.id)) {
-        sort = {
-          field: first.id as "name" | "slug" | "createdAt",
-          direction: first.desc ? "desc" : "asc",
-        };
-      }
-    } catch {
-      // A hand-edited `?sort=` is not worth an error boundary — fall back to
-      // the default ordering.
-    }
-
-    return [
-      {
-        page,
-        perPage,
-        sort,
-        name: searchParams.get("name"),
-        slug: searchParams.get("slug"),
-        role: searchParams.get("currentUserRole")?.split(",").filter(Boolean),
+    return {
+      filter: {
+        name: getFilterText(columnFilters, "name"),
+        slug: getFilterText(columnFilters, "slug"),
+        role: getFilterList(columnFilters, "currentUserRole") as OrgRole[] | undefined,
       },
-    ] as const;
-  }, [searchParams]);
-}
+      orderBy: field && sort ? { field, direction: sort.desc ? "desc" : "asc" } : undefined,
+      pagination: {
+        skip: pagination.pageIndex * pagination.pageSize,
+        take: pagination.pageSize,
+      },
+    };
+  }, [pagination, sorting, columnFilters]);
 
-const SORTABLE = ["name", "slug", "createdAt"];
+  const { data, isLoading } = trpc.organization.list.useQuery(input, {
+    // Keeps the previous page on screen while the next one loads, instead of
+    // collapsing the table to a skeleton on every page change.
+    placeholderData: (prev) => prev,
+  });
+
+  return { rows: data?.items ?? [], total: data?.total, isLoading: isLoading && !data };
+}

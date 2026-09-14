@@ -1,4 +1,7 @@
 {
+  "switcher": {
+    "label": "Properties"
+  },
   "archive": {
     "show": "Show archived",
     "hide": "Hide archived",

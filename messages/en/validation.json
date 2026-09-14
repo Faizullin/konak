@@ -16,6 +16,7 @@
   "password_too_short": "Use at least 8 characters",
   "range_out_of_bounds": "That range must cover at least one night and no more than 400",
   "room_number_required": "A room number is required",
+  "secret_name_format": "Lowercase letters, digits, dots, dashes and underscores only",
   "slug_format": "Slug can only contain lowercase letters, numbers, and hyphens",
   "slug_too_long": "Slug must be at most 48 characters",
   "slug_too_short": "Slug must be at least 2 characters",

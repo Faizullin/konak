@@ -162,20 +162,28 @@ rules needing the database, `fieldError("slug", "That slug is already taken",
 ## Lists and tables
 
 Anything sortable, filterable or paginated uses the `DataTable` stack in
-`@/components/data-table`. A short read-only list — a handful of rows, no
-column header worth clicking — is fine as plain `@/components/ui/table`
-markup; `member-table.tsx` is that case.
+`@/components/data-table`. Reach for plain `@/components/ui/table` markup only
+when nothing is interactive at all.
 
-### The stack is server-driven
+### Two choices, both defaulting to the simple case
 
-`useDataTable` is **manual mode**: `manualPagination`, `manualSorting` and
-`manualFiltering` are all on. It does not slice an array in the browser. It
-keeps page, sort and every filter in the **URL** via `nuqs`, and your procedure
-does the work.
+`useDataTable` takes two optional injection points, and a table that passes
+neither is the plain one: rows already in hand, state in React, no `nuqs` and
+no `<NuqsAdapter>` requirement. `member-table.tsx` is that case.
 
-The URL *is* the state, so a link to "orgs I own, sorted by newest" reopens
-exactly that and a refresh does not reset the view. Needs `<NuqsAdapter>` in
-the root layout — already there.
+- **`state`** — where page, sort and filters live. `nuqsTableState()` puts them
+  in the URL, so a link to "orgs I own, sorted by newest" reopens exactly that
+  and a refresh does not reset the view. Two URL-backed tables on one route
+  need `nuqsTableState({ prefix: "…" })` so their keys do not collide.
+  Omitted, state lives in React, scoped to the component.
+- **`useRows`** — the page's own fetcher. Given one, the table runs in **manual
+  mode** (`manualPagination`, `manualSorting`, `manualFiltering`) and works out
+  `pageCount` from the `total` that fetcher returns. Pass `data` instead and
+  the browser does the paging.
+
+Build the strategy **once, at module scope**. `useDataTable` calls it in a
+fixed hook position, so swapping one between renders changes the hook order and
+breaks React.
 
 ### Wiring one up
 
@@ -188,7 +196,8 @@ Three pieces, in this order:
 2. **Columns**, where a `meta` block is what makes a column filterable — the
    toolbar reads `meta.variant` and renders the control. Nothing registers a
    filter component by hand.
-3. **`useDataTable`**, given `pageCount` derived from the server's `total`.
+3. **`useDataTable`**, given that procedure wrapped as a `useRows` hook. It
+   derives `pageCount` from the `total` that hook returns; no page computes it.
 
 ```tsx
 {
@@ -210,15 +219,15 @@ Three pieces, in this order:
 | `range` | a two-handle slider | `range`, `unit` |
 
 ```tsx
-const { table } = useDataTable({
-  data: data?.items ?? [],
+const { table, isLoading } = useDataTable({
   columns,
-  pageCount: data ? Math.max(1, Math.ceil(data.total / perPage)) : 1,
+  state: organizationTableState,
+  useRows: useOrganizationRows,
   getRowId: (row) => String(row.id),
   initialState: { sorting: [{ id: "name", desc: false }] },
 });
 
-if (isLoading && !data) return <DataTableSkeleton columnCount={6} rowCount={5} filterCount={3} />;
+if (isLoading) return <DataTableSkeleton columnCount={6} rowCount={5} filterCount={3} />;
 
 return (
   <DataTable table={table}>
@@ -234,22 +243,16 @@ on screen until the next arrives.
 `DataTableSkeleton` for loading — never `return <div>Loading…</div>`, which
 makes the layout jump.
 
-### Reading the URL state back
+### Reading filters back
 
-The query has to run *before* the table is built, because the row count decides
-`pageCount` — so the component parses the same search params `useDataTable`
-writes. `useOrganizationTableParams` in `organizations-table-view.tsx` is that
-function, and the encodings it decodes are:
+`columnFilters` is TanStack's array, not a record, and a faceted control stores
+a list even where only one option can be picked. `getFilterText(filters, id)`
+and `getFilterList(filters, id)` in `data-table/lib.ts` pull one column's value
+out in the shape a procedure wants.
 
-| Key | Encoding |
-|---|---|
-| `page`, `perPage` | plain integers, `page` is **one-based** |
-| `sort` | `JSON.stringify([{ id, desc }])` |
-| a `text` filter | the raw string, under the column id |
-| a `multiSelect` filter | comma-separated values, under the column id |
-
-A second *reader* of one source of truth, not a second source of truth. A
-hand-edited `?sort=` falls back to the default ordering rather than throwing.
+The URL encoding — `page` one-based, `sort` as JSON, each filter under its
+column id — is `nuqsTableState`'s business. It writes those keys and reads them
+back itself; no page parses them.
 
 ### Empty states
 

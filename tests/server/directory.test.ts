@@ -441,11 +441,9 @@ describe("search", () => {
   /**
    * `ё` is optional in Russian orthography — passport offices and airlines print
    * `е` for it routinely, so Фёдоров and Федоров are one person with two
-   * spellings. Case folding does not touch that, and this asserts the limit
-   * rather than the fix: whoever normalises it later has the failing case here
-   * already written, and will delete the second half of this test.
+   * spellings. Search normalisation generates variants for both and splits on whitespace.
    */
-  test("ё and е are still two letters, which is a known gap", async () => {
+  test("ё and е are normalised and multi-term search matches across names", async () => {
     const owner = callerFor(fx.owner);
     await owner.directory.createPerson({
       organizationId: fx.org.id,
@@ -463,6 +461,8 @@ describe("search", () => {
       ).items;
 
     assert.equal((await find("фёдоров-ёлкин")).length, 1, "spelled with ё, as stored");
-    assert.equal((await find("федоров-елкин")).length, 0, "spelled with е — not found today");
+    assert.equal((await find("федоров-елкин")).length, 1, "spelled with е");
+    assert.equal((await find("Пётр Фёдоров")).length, 1, "multi-term across names");
+    assert.equal((await find("Петр Федоров")).length, 1, "multi-term with е instead of ё");
   });
 });

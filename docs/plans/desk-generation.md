@@ -23,61 +23,51 @@ thing a new desk pays for.
 
 ## 1. What is actually there, read rather than remembered
 
-Two shells exist. They are 100 and 110 lines, they share about seventy per cent
-of their shape, and every shared line is written twice:
+Two shells exist. They share about seventy per cent of their shape, and most of
+that shared shape is still written twice:
 
 | | `dashboard/layout.tsx` | `desk/[orgSlug]/[propertySlug]/layout.tsx` |
 |---|---|---|
 | Session guard | `getSession` → `/sign-in` | the same, copied |
 | Organisation | — | `organizationBySlug` + `notFound()` |
 | Module gate | — | `isOrgModuleEnabled("FRONT_DESK")` |
-| Locale + messages | 15 namespaces, hand-listed | 12 namespaces, hand-listed |
+| Locale + messages | hand-listed | hand-listed, a different set |
 | Theme | not read — `basic` has one | `toTheme("desk", cookie)` |
 | Providers | `NextIntl` → `NiceModal` | `NextIntl` → `SurfaceLinks` → `NiceModal` |
-| Chrome | `SidebarProvider` + `AppSidebar` + header | a bare `<aside>` + `DeskBar` |
+| Chrome | `SidebarProvider` + `AppSidebar` + header | `SidebarProvider` + `DeskSidebar` + `DeskBar` |
 | Stamp | `data-surface` on `SidebarProvider` | `data-surface` + `data-theme` on a `div` |
 
 The registry is honest about what it knows and it knows very little.
 `config/surfaces.ts` carries `{ id, themes, base }` and nothing else — not the
 route it lives at, not its nav, not the namespaces it renders, not the module it
 requires. Everything a surface actually *is* lives in its layout file, which is
-why a second one is a copy.
+why a second one is still a copy: the **Chrome** row now agrees between the two
+shells, but every row above it does not.
 
-### The desk sidebar, specifically
+### The desk sidebar, since resolved
 
-`features/desk/client/components/desk-nav.tsx:23` is a `SECTIONS` array of six
-flat entries and a `map`. Beside it, `config/nav-items.ts` + `nav-main.tsx`
-give the dashboard: groups with labels, sub-items, collapse-to-icon with
-dropdown fallback, tooltips at icon width, role gating as a field, module gating
-from `ORG_MODULE_REGISTRY`, active state from the pathname, a `Soon` badge, a
-switcher in the header and the signed-in person in the footer.
+The hand-rolled `<aside>` and its flat `SECTIONS` array are gone. The desk now
+shares the dashboard's own frame:
 
-The desk has none of it. Concretely, and each of these is a defect rather than a
-difference in taste:
+- `config/surface-nav.ts` (`deskNavItems`) — data, the `NavGroup`/`NavMainItem`
+  shape `config/nav-items.ts` already defined, Setup gated on
+  `canManageProperties(role)`.
+- `features/desk/client/components/desk-sidebar.tsx` — `Sidebar` +
+  `PropertySwitcher` in the header + `NavMain` + `NavUser` in the footer,
+  `collapsible="icon"`, the same `sidebar_state` cookie the dashboard reads.
+- `features/properties/client/components/property-switcher.tsx` — the
+  organisation's other properties, from `property.list`, the current one read
+  from the route.
+- `app/desk/[orgSlug]/[propertySlug]/setup/page.tsx` — rate plans, channel
+  mappings, photographs; rooms and room types stay on the desk's own
+  `rooms/page.tsx` rather than being drawn twice.
+- `messages/{en,ru}/desk.json` lost its duplicated `nav.*` block; sidebar words
+  live in `messages/{en,ru}/nav.json` beside the dashboard's own.
 
-- **You cannot sign out from the desk.** `NavUser` holds `signOut`, and the desk
-  has no footer. A receptionist ending a shift has to navigate to the dashboard.
-- **There is no property switcher.** A management company with four hotels has
-  to edit the URL. `dashboard-header.md` § Still open names this and leaves it
-  there.
-- **There is no link to Setup.** `/front-desk/<property>/setup` exists only on
-  the dashboard, so a manager adding a room type leaves the surface —
-  `app/desk/**` has nine pages and `setup` is not one of them.
-- **Nothing is gated.** Setup is manager-only, which the dashboard expresses as
-  a `roles` field and the desk cannot express at all.
-- **Nothing is grouped.** Six peers in one column, and the next three sections
-  make it nine. The dashboard solved this with `NavGroup` before it had six.
-- **It does not collapse and it does not persist.** `components/ui/sidebar.tsx`
-  already writes `sidebar_state` and binds ⌘B; the hand-rolled `<aside>` reaches
-  none of it, and on a tablet in portrait the rail eats a column of the grid.
-- **`messages/en/desk.json` carries `nav.*` and `section.*` with identical
-  words**, because the nav and the bar each grew their own key set.
-
-One of these is not a defect, and the plan must not quietly reverse it. The desk
-layout says, in a comment that is a decision: *"Sections always visible, never
-collapsed to a rail. A receptionist moves between five of them all day; a rail
-costs a hover every time."* That is right, and § 3 keeps it — as a **default**,
-which is what it was always about, not as a prohibition on the control.
+**Not resolved by this pass, and still open below:** the badge slot (§
+"The order to build it in", step 4 — waits on `notifications.md`), and the
+`toggles` argument `deskNavItems` does not yet take (nothing on the desk's nav
+is module-gated today, only role-gated, so it was not added speculatively).
 
 ---
 
@@ -97,9 +87,9 @@ export interface Surface {
   stem: string;
   /** The org module it requires, if any. `notFound()` when off. */
   requiresModule?: OrgModuleId;
-  /** Which `messages/<locale>/*.json` its screens read. § 4. */
+  /** Which `messages/<locale>/*.json` its screens read. § 3. */
   namespaces: MessageNamespace[];
-  /** Which nav builder draws it — an id, resolved client side. § 3. */
+  /** Which nav builder draws it — an id, resolved client side. `surface-nav.ts` already has one. */
   nav: string;
   /** Whether a property is part of its address, or only an organisation. */
   scope: "organization" | "property";
@@ -122,69 +112,7 @@ Three consequences, and they are the whole point:
 base; it makes the day one is added cheaper, and `second-surface.md` is still
 the document that prices it.
 
-## 3. The desk sidebar becomes the dashboard's, without becoming the dashboard
-
-**The nav is data and is shared. The renderer belongs to the base.** That single
-sentence is the whole design, and it is already the precedent in the tree:
-`config/nav-items.ts` is data with string icon names and role fields, and
-`nav-main.tsx` is a shadcn renderer that draws it.
-
-So:
-
-- **`config/surface-nav.ts`** holds `deskNavItems(orgSlug, propertySlug, role,
-  toggles): NavGroup[]`, beside `accountNavItems` and `organizationNavItems`,
-  reusing the `NavGroup` / `NavMainItem` types unchanged. Icons are looked up
-  through a map keyed by string — `ORG_ICONS` is the pattern — so
-  `config/surfaces.ts` itself stays free of component imports.
-- **The renderer is `NavMain`**, unchanged, because the desk is `base: "shadcn"`
-  and sharing a renderer between two surfaces on *one* base is not the thing the
-  rule forbids. A surface on Bootstrap writes its own renderer over the same
-  `NavGroup[]`, and the fact that it can is the test of whether this split is
-  right.
-- **The frame is `components/ui/sidebar`**, replacing the hand-rolled `<aside>`:
-  `SidebarProvider` + `Sidebar` + `SidebarHeader/Content/Footer`. The desk
-  inherits `sidebar_state`, ⌘B, the mobile sheet and tooltips for nothing.
-
-The groups, which is the design work:
-
-| Group | Items |
-|---|---|
-| *(back)* | ← the organisation's dashboard — the icon button now in `DeskBar` |
-| **Front desk** | Grid · Today · Bookings |
-| **Rooms** | Rooms · Housekeeping |
-| **Guests** | Guests |
-| **Setup** | Setup — `roles: [OWNER, ADMIN]`, and a `/desk/**/setup` route so it does not send a manager to the dashboard |
-
-- **Header: a property switcher**, the shape of `OrganizationSwitcher`, listing
-  the properties of this organisation the caller may see. It needs no new
-  procedure — `property.list` exists — which is the test `second-surface.md`
-  sets for whether something belongs in a surface plan at all.
-- **Footer: `NavUser`**, so signing out is possible from the desk. The locale
-  control it carries is the one `dashboard-header.md` § 2 wants deleted in
-  favour of a header control; the desk already has `DeskLocale` in its bar, so
-  on this surface the footer renders the account half only. Decide it once,
-  there, rather than shipping two language controls on one screen.
-- **Collapse: allowed, expanded by default, remembered per person.**
-  `collapsible="icon"` with `defaultOpen` read from `sidebar_state` on the
-  server. This *is* the documented decision, kept: the default is what the
-  comment was defending, and a receptionist who collapses it has said something
-  about their screen that the comment cannot know. The comment in
-  `desk/layout.tsx` gets rewritten in the same commit — a decision that has
-  moved and a comment that has not is worse than neither.
-- **A badge slot on `NavMainItem`** — `badge?: { count: number }` — rendered
-  right-aligned, the `ComingSoon` element's position. Arrivals due today, dirty
-  rooms, unread notifications. It is one optional field and it is what turns a
-  sidebar into an instrument; without it the desk's nav is a list of URLs.
-  Counts come from queries the screens already run
-  (`reservation.day`, `housekeeping.board`,
-  [notifications.md](notifications.md) § 4 `unreadCount`), cached with the
-  30-second `staleTime` the shell already uses.
-
-**Strings.** `desk.json` loses the duplicated `section.*` block; nav and bar
-read one key each. `message-keys.test.ts` fails on the first orphan, which is
-what makes this a step rather than a hope.
-
-## 4. The shell, written once
+## 3. The shell, written once
 
 `components/layout/surface/surface-shell.tsx` — a server component taking a
 `SurfaceId`, the resolved route params and `children`, and doing every row of
@@ -221,17 +149,17 @@ stamp; what goes inside is `children`, a sidebar slot and a bar slot. A surface
 on another base passes its own components into the same shell, which is the only
 reason this file is shareable at all.
 
-## 5. Everything common, and where it is configured
+## 4. Everything common, and where it is configured
 
 The checklist a new desk touches, in the order it touches it. This is the
-section the guide in § 7 is condensed from.
+section the guide in § 6 is condensed from.
 
 | What | Where | Note |
 |---|---|---|
 | The registry entry | `config/surfaces.ts` | § 2. TypeScript names the missing fields |
 | The route | `app/<stem>/…/layout.tsx` | a real segment, never a route group |
-| The nav | `config/surface-nav.ts` | data; icons by string |
-| The links | `store/surface-links.tsx` | `stem` + `directory` today; § 5.1 |
+| The nav | `config/surface-nav.ts` | data; icons by string — `deskNavItems` is the precedent |
+| The links | `store/surface-links.tsx` | `stem` + `directory` today; § 4.1 |
 | The styles | `styles/<surface>.css`, imported in `index.scss` | after the blocks it overrides |
 | The theme | `SURFACES[id].themes` + `shell.theme.<id>` in both locales | label by convention, not a field |
 | The strings | `namespaces` on the descriptor | narrow, and measure |
@@ -240,7 +168,7 @@ section the guide in § 7 is condensed from.
 
 Two of those rows deserve more than a line.
 
-### 5.1 The links contract is the load-bearing one
+### 4.1 The links contract is the load-bearing one
 
 `SurfaceLinks` is `grid()`, `bookings()`, `booking()` today, plus
 `usePersonLink` and `useBookingLink` beside it. Three additions, and all three
@@ -264,16 +192,16 @@ have a caller waiting:
   dashboard does. A link a surface cannot serve is not rendered — not rendered
   broken.
 
-### 5.2 The lint zone is the one that fails silently
+### 4.2 The lint zone is the one that fails silently
 
 `architecture.md`: zones are written per feature because the rule does not
 expand a glob in `target`, and **a zone that matches nothing reports nothing,
 which is worse than no rule at all.** A new surface feature absent from
 `FEATURES` in `eslint.config.mjs` is a client directory free to import a
-`server/`, and the build will not say so. It belongs in the § 7 checklist in
+`server/`, and the build will not say so. It belongs in the § 6 checklist in
 bold, and it belongs in the same commit as the directory.
 
-## 6. What this does not do
+## 5. What this does not do
 
 - **Add a base.** `SurfaceBase` keeps one legal value.
   [second-surface.md](second-surface.md) prices the day it grows a second, and
@@ -291,12 +219,12 @@ bold, and it belongs in the same commit as the directory.
   immediately grow a *"which surface is this?"* prop — the rot
   `ui-patterns.md` warns about, one layer up.
 
-## 7. The compact guide, written last
+## 6. The compact guide, written last
 
 When the steps below are done, one new file: **`docs/guides/surfaces.md`** —
 *Adding a surface*. Compact on purpose, one screen, no prose about why:
 
-1. The § 5 table as a checklist, in order, with the lint zone in bold.
+1. The § 4 table as a checklist, in order, with the lint zone in bold.
 2. The one decision that forks the work — *same base or another?* — with a
    sentence each: same base is a registry entry, a nav file, a CSS block and a
    layout of three lines; another base is `second-surface.md` and a component
@@ -333,16 +261,20 @@ Each step ships alone and leaves the tree passing.
    `supports(kind)`; `sign-in-form.tsx` takes its destination as a prop.
    **Done when** a deep link into `/desk` that bounces through sign-in comes
    back to `/desk`.
-4. **The desk sidebar.** `config/surface-nav.ts`, the `ui/sidebar` frame,
-   groups, roles, the property switcher, `NavUser` in the footer, collapse from
-   the cookie, the duplicated `desk.json` keys deleted.
-   **Done when** a MEMBER sees no Setup entry, an ADMIN reaches setup without
-   leaving the surface, sign-out works from the desk, and the collapsed state
-   survives a refresh.
-5. **The badge slot**, wired to the counts that already exist — and to
-   [notifications.md](notifications.md) § 4 if that has shipped by then. It is
-   the one step that may wait.
-6. **`docs/guides/surfaces.md`**, and delete this file.
+4. **The badge slot** on `NavMainItem` — `badge?: { count: number }`,
+   right-aligned where `ComingSoon` sits — wired to counts the screens already
+   query (`reservation.day`, `housekeeping.board`) and to
+   [notifications.md](notifications.md) § 4 `unreadCount` if that has shipped
+   by then. It is the one step that may wait.
+5. **`docs/guides/surfaces.md`**, and delete this file.
+
+**Shipped out of order:** the desk sidebar itself — `config/surface-nav.ts`,
+the `ui/sidebar` frame, groups, role-gated Setup, the property switcher,
+`NavUser` in the footer, collapse from the `sidebar_state` cookie, the
+duplicated `desk.json` keys deleted — landed ahead of steps 1–3 above, wired
+directly into the desk's existing layout rather than through the descriptor and
+`SurfaceShell` those steps still describe. `docs/history.md` has the entry;
+§ 1 has the file:line evidence.
 
 Then the pass a phase ends with. The thing to measure is the shared chunk: this
 plan moves a shell into one file and a nav into another, and both are imported

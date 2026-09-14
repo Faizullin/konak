@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { OrgRole } from "@/features/organizations";
+// eslint-disable-next-line import/no-restricted-paths
+import { SEARCH_TERM_LIMIT, searchTerms, searchTermVariants } from "@/server/search";
 import {
   blankToNull,
   canArchivePeople,
@@ -106,4 +108,28 @@ test("an unrecognised role is denied, not thrown at", () => {
 test("verbs are AND-ed, so holding one of two is not enough", () => {
   assert.equal(directoryCan(OrgRole.MEMBER, { person: ["create", "archive"] }), false);
   assert.equal(directoryCan(OrgRole.MEMBER, { person: ["create", "update"] }), true);
+});
+
+test("a search splits into whitespace terms and caps at the limit", () => {
+  assert.deepEqual(searchTerms("  Ada   Lovelace "), ["Ada", "Lovelace"]);
+  assert.deepEqual(searchTerms("101"), ["101"]);
+  assert.deepEqual(searchTerms("   "), []);
+  assert.deepEqual(searchTerms(""), []);
+  assert.equal(searchTerms("a b c d e f g").length, SEARCH_TERM_LIMIT);
+});
+
+test("search term variants generate ё and е orthography combinations", () => {
+  assert.deepEqual(searchTermVariants("Ada"), ["Ada"]);
+  assert.deepEqual(searchTermVariants(""), [""]);
+  assert.deepEqual(new Set(searchTermVariants("Пётр")), new Set(["Пётр", "Петр"]));
+  assert.deepEqual(new Set(searchTermVariants("петр")), new Set(["петр", "пётр"]));
+  assert.deepEqual(
+    new Set(searchTermVariants("федоров-елкин")),
+    new Set(["федоров-елкин", "федоров-ёлкин", "фёдоров-елкин", "фёдоров-ёлкин"])
+  );
+  assert.deepEqual(
+    new Set(searchTermVariants("Фёдоров-Ёлкин")),
+    new Set(["Фёдоров-Ёлкин", "Фёдоров-Елкин", "Федоров-Ёлкин", "Федоров-Елкин"])
+  );
+  assert.equal(searchTermVariants("Фёдоров-Ёлкин")[0], "Фёдоров-Ёлкин", "original term is first");
 });

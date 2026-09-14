@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  credentialsRefSchema,
   DEFAULT_OVERBOOKING,
   nightsToClose,
   nightsToPush,
@@ -12,7 +13,7 @@ import {
 
 /**
  * The two rules distribution turns on, without a channel: what to send, and how
- * much to say is free.
+ * much to say is free — and the one rule that keeps a secret's *name* a name.
  */
 
 const day = (n: number) => new Date(Date.UTC(2027, 5, n));
@@ -99,4 +100,20 @@ test("a fixed policy sells beyond the count, but never reopens a sold-out night"
 
   // A nonsensical setting is not a way to close rooms.
   assert.equal(sellableForChannel(3, { policy: OverbookingPolicy.FIXED, extraRooms: -5 }), 3);
+});
+
+test("a credentials ref is a file name and cannot be a path", () => {
+  assert.equal(credentialsRefSchema.safeParse("booking-live").success, true);
+  assert.equal(credentialsRefSchema.safeParse("channex.sandbox_1").success, true);
+
+  // The resolver joins this onto `CHANNEL_SECRETS_DIR`. Every one of these
+  // would name a file somewhere else, and the leading dot is the one that
+  // looks harmless: `..` is a directory.
+  for (const ref of ["../db.json", "a/b", "a\\b", ".hidden", "/etc/passwd", ""]) {
+    assert.equal(credentialsRefSchema.safeParse(ref).success, false, ref);
+  }
+
+  // Uppercase is refused rather than folded: two refs differing only in case
+  // are one file on some filesystems and two on others.
+  assert.equal(credentialsRefSchema.safeParse("Booking").success, false);
 });

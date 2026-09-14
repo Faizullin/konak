@@ -93,22 +93,16 @@ export default defineConfig({
   ],
 
   webServer: {
-    // Dev rather than a build: the server has to read a different
-    // `DATABASE_URL`, and a dev server reads env at request time.
-    command: "npm run dev",
+    command: "npm run start",
     url: baseURL,
     reuseExistingServer: !process.env.CI,
-    timeout: 180_000,
+    timeout: 60_000,
     stdout: "ignore",
     stderr: "pipe",
     env: {
       DATABASE_URL: E2E_DATABASE_URL,
       PORT: String(PORT),
-      // Better Auth checks the origin against its own `baseURL`, so a server on
-      // a different port has to be told where it is — otherwise every sign-in
-      // is refused with "Invalid origin" and the form simply does nothing.
       BETTER_AUTH_URL: baseURL,
-      // Uploads land beside the e2e database, not in the developer's.
       STORAGE_FS_ROOT: ".storage-e2e",
     },
   },

@@ -97,5 +97,10 @@
     "OPEN": "Open",
     "CLOSED": "Closed",
     "VOID": "Void"
+  },
+  "channelStatus": {
+    "ACTIVE": "Selling",
+    "PAUSED": "Paused",
+    "ERROR": "Error"
   }
 }

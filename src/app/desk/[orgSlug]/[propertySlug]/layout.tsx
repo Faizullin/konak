@@ -3,11 +3,12 @@ import { notFound, redirect } from "next/navigation";
 import type { ReactNode } from "react";
 import { NextIntlClientProvider } from "next-intl";
 import { getLocale, getMessages } from "next-intl/server";
-import { DeskNav } from "@/features/desk/client/components/desk-nav";
+import { DeskSidebar } from "@/features/desk/client/components/desk-sidebar";
 import { isOrgModuleEnabled } from "@/features/organizations";
 import { organizationBySlug } from "@/features/organizations/server";
 import { NiceModalProvider } from "@/store/nice-modal-context";
 import { SurfaceLinksProvider } from "@/store/surface-links";
+import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { themeCookie, toTheme } from "@/config/surfaces";
 import { auth } from "@/server/auth";
 import prisma from "@/server/db";
@@ -20,15 +21,19 @@ import prisma from "@/server/db";
  * Deleting this folder leaves the product exactly as it was, which is what
  * makes the surface safe to build fast.
  *
- * Three things differ from `dashboard/layout.tsx`, and each is a decision:
+ * Two things differ from `dashboard/layout.tsx`, and each is a decision:
  *
  * - **No reading measure.** The dashboard caps its content because it holds
  *   forms and prose. A 31-night grid is 88rem at comfortable density, so this
  *   surface is full width, always.
  * - **A 48px bar instead of a 120px heading.** Vertical space here is rows of
  *   rooms.
- * - **Sections always visible**, never collapsed to a rail. A receptionist
- *   moves between five of them all day; a rail costs a hover every time.
+ *
+ * The sidebar itself is the dashboard's own frame — `Sidebar`/`NavMain`/
+ * `NavUser`, `collapsible="icon"`, the same `sidebar_state` cookie —
+ * `docs/plans/desk-generation.md` step 4. Two shells hand-drawing the same
+ * frame was the debt; two shells wearing different palettes over one frame is
+ * not.
  *
  * The session guard sits on the resource rather than in middleware, for the
  * same reason the dashboard's does.
@@ -62,6 +67,13 @@ export default async function DeskLayout({
 
   const [locale, messages, jar] = await Promise.all([getLocale(), getMessages(), cookies()]);
 
+  const defaultOpen = jar.get("sidebar_state")?.value !== "false";
+  const user = {
+    name: session.user.name,
+    email: session.user.email,
+    image: session.user.image ?? null,
+  };
+
   /**
    * Which palette this surface is wearing, resolved **here** rather than in the
    * browser.
@@ -81,14 +93,18 @@ export default async function DeskLayout({
         // every string in every bundle, which is measurable — the dashboard
         // layout carries a different set for the same reason.
         billing: messages.billing,
+        channels: messages.channels,
         desk: messages.desk,
         directory: messages.directory,
         enums: messages.enums,
         errors: messages.errors,
         housekeeping: messages.housekeeping,
+        identity: messages.identity,
+        nav: messages.nav,
         organizations: messages.organizations,
         platform: messages.platform,
         properties: messages.properties,
+        rates: messages.rates,
         reservations: messages.reservations,
         shell: messages.shell,
         validation: messages.validation,
@@ -115,12 +131,12 @@ export default async function DeskLayout({
             data-theme={theme}
             className="bg-background flex h-svh w-full overflow-hidden"
           >
-            <aside className="bg-sidebar flex shrink-0 flex-col border-r">
-              <DeskNav base={`/desk/${orgSlug}/${propertySlug}`} />
-            </aside>
-            {/* `min-w-0` so a wide grid scrolls inside this column rather than
-              pushing the whole page sideways. */}
-            <div className="flex min-w-0 flex-1 flex-col">{children}</div>
+            <SidebarProvider defaultOpen={defaultOpen}>
+              <DeskSidebar orgSlug={orgSlug} propertySlug={propertySlug} user={user} />
+              {/* `min-w-0` so a wide grid scrolls inside this column rather than
+                pushing the whole page sideways. */}
+              <SidebarInset className="min-w-0">{children}</SidebarInset>
+            </SidebarProvider>
           </div>
         </NiceModalProvider>
       </SurfaceLinksProvider>

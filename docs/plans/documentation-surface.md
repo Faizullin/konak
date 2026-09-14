@@ -18,7 +18,7 @@ beside them.
 
 | Reader | Wants | Exists today |
 |---|---|---|
-| A hotel's staff | how the шахматка works, what «Не выбран номер» means, why a bill will not close | the words exist, in [mvp-report.ru.md](../guides/mvp-report.ru.md) — nowhere a clerk can reach |
+| A hotel's staff | how the шахматка works, what «Не выбран номер» means, why a bill will not close | the words exist, in [mvp-report.ru.md](../reports/mvp-report.ru.md) — nowhere a clerk can reach |
 | An integrator | endpoints, keys, scopes, error codes | **no** — `external-api.md:6` says "Nothing here is built" |
 
 So the handbook is first, and it is first for a reason rather than by

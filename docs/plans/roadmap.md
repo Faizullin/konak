@@ -24,22 +24,32 @@ Two rules hold across every phase:
 
 ---
 
-## Phase 7 — Distribution *(machinery done, `Done when` not met)*
+## Phase 7 — Distribution
 
-Everything but the vendor. The outbox worker drains with retries, backoff and
-dead letters; room types and rate plans map; availability and rates push as a
-diff against `ChannelSyncState`; reservations pull idempotently; the overbooking
-policy is written down and tested. Every change to what is for sale announces
-itself in the transaction that makes it, and a test loops over the ways the
-market moves so the next omission fails rather than oversells.
+The outbox worker drains with retries, backoff and dead letters; room types and
+rate plans map; availability and rates push as a diff against
+`ChannelSyncState`; reservations pull idempotently; the overbooking policy is
+written down and tested. Every change to what is for sale announces itself in
+the transaction that makes it.
 
-**What is left is one integration.** `ChannelAdapter` is two methods and
-`ADAPTERS` is deliberately empty — choosing the vendor is a commercial decision,
-not an engineering one, and it is the same question as which jurisdiction Phase 9
-serves first. Until then the honest phrase is *ready for*, not *connected to*.
+The vendor seam is implemented: `ChannexAdapter` (`adapters/channex.ts`) maps
+ARI pushes and pulls bookings over the Channex REST API v1, with
+`MockChannelAdapter` (`adapters/mock.ts`) for offline simulation and test
+suites. Both are registered in `adapter.ts`.
 
 **Done when** a rate change reaches the channel and a booking made there appears
 at the front desk without anyone retyping it.
+
+That needs live sandbox credentials from the vendor, which is a commercial step
+and not an engineering one. **Nothing below waits on it** — the phases after
+this run in parallel with the paperwork.
+
+**Phase 7.5 — The unit of inventory — is done and in `history.md`.** Its bed
+half of [inventory-units.md](inventory-units.md) is built: `RoomType.unit`, a
+`Bed` under `Room`, `RoomStay.bedId`, and a second exclusion constraint beside
+the one that already exists. Phase 8 below is where a stay actually gets
+assigned a bed — nothing does yet. The plan's hourly half remains a phase of
+its own, depends on nothing, and lands when the client's revenue says it does.
 
 ## Phase 8 — Direct sales
 
@@ -116,6 +126,17 @@ rebuilt against them — a reference, not a mockup.
 
 ---
 
+## Alongside the phases
+
+Production hardening has no phase, and that is the risk: **there are no database
+backups, and `FIELD_ENCRYPTION_KEY` exists nowhere but the server it runs on.**
+Lose the host and the encrypted columns are unrecoverable. `deployment.md`
+§ Gaps holds the full list and the order to close it in.
+
+It is called out here because the sequence matters: Phase 9 is the phase that
+starts writing passport numbers into those columns. **The key copy and a
+restorable dump belong before it, not after.**
+
 ## How a phase ends
 
 **Optimisation is a gate at the end of each phase, not a phase of its own.**
@@ -147,9 +168,11 @@ barrels sound heavy.
 Carried until the phase that touches them, so they are not rediscovered as
 surprises:
 
-- **`RoomTypeInventory` has no computed availability.** Sold is derived on every
-  read by design — correct, and the first thing to measure when a channel push
-  is doing it for ninety days at once in **Phase 7**.
+- **`RoomTypeInventory` has no computed availability.** Measured at the end of
+  **Phase 7**: `availability()` reads the entire 90-day window in five constant
+  statements and aggregates in memory, so deriving sold is constant in nights
+  and room types — the suspicion was unfounded. The real scaling cost was the
+  write side (mirror upsert), which was collapsed to two multi-row statements.
 - **Bundle floor.** `npm run bundle`, after a build: **819,257 bytes shared by
   every route**. Re-recorded at the end of Phase 5, and it went *down* by 5.9 kB
   — `NiceModal.Provider` moved out of the root `Providers` and into the
@@ -188,6 +211,3 @@ These have no natural slot and land when the phase that needs them arrives:
   reach Setup). Those defects are worth fixing on their own; the generation is
   what makes them worth fixing *once*. Pairs with
   [second-surface.md](second-surface.md), which prices the other axis.
-- **[The data table](data-table.md).** URL state is mandatory today, so a table
-  cannot live in a dialog. A port of a fix already shipped upstream, which is
-  why it is a note here rather than a phase.
