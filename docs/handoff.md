@@ -30,8 +30,22 @@ is the first screen that is manager-only: OWNER and ADMIN write, MEMBER reads.
 **The outbox has a worker and handlers now.** `npm run outbox` is a dry run;
 `-- --commit` drains. Phase 7 registered both channel directions — a push that
 is a diff, and a pull, because a booking made on Booking.com happens where we
-cannot see it. **No vendor is connected**: `ChannelAdapter` is two methods and
-the registry is deliberately empty, so say "ready for", not "connected to".
+cannot see it. `ChannexAdapter` (`adapters/channex.ts`) connects Channex REST
+v1 with an in-memory `MockChannelAdapter` (`adapters/mock.ts`) for test suites.
+
+**In production the worker is a service.** `worker` in
+`docker/compose/prod.yml`, built from the `builder` stage like `migrate`,
+running `--commit --interval=30`; `deploy.sh` builds it beside the app and warns
+if it is not running afterwards. Before this, the outbox only grew.
+
+**Channels are set up on screen, and credentials are files.**
+`/front-desk/<propertySlug>/setup` now carries a channels panel — connect,
+pause, resume, map a room type — manager-only like the rest of that page.
+`credentialsRef` is the *name* of a file in `CHANNEL_SECRETS_DIR`, mounted
+read-only into the app and the worker; nobody types a secret into the app. A
+connection whose secret cannot be read **refuses to go ACTIVE**, and the panel
+says which ones those are. `plans/deployment.md` § The outbox worker has the
+shape of the file.
 
 **There is a second surface.** `/desk/<orgSlug>/<propertySlug>` — six sections
 down the left, its own layout, its own token block under
@@ -179,16 +193,19 @@ directory is organisation-wide and the dashboard's table has no property at
 all.
 
 **Where to start.** `docs/todo.md`, which is now short on purpose — a title and
-a line each, with the design in a plan where there is one. Its top entry is two
-questions for the **client**, not code, and they are worth asking before more
-schema is built on the current answer.
+a line each, with the design in a plan where there is one. Its top entry is
+**Phase 7.5**: a hostel sells a bed and the schema has no bed level.
 
-The largest piece of code left with a plan behind it is
-[plans/data-table.md](plans/data-table.md): `useDataTable` calls nuqs
-unconditionally, which is why six components hand-roll `<Table>` instead. It is
-a **port** — the hook here is byte-identical to `next-better-auth-template`
-before its `f298695` fixed exactly this — so the design is settled and only the
-application is left.
+That is designed and not built — [plans/inventory-units.md](plans/inventory-units.md)
+carries both halves of it. The bed half is small and goes first, because Phase
+8's booking engine has to render whichever unit a property sells and Phase 10's
+occupancy has to divide by it. The hourly half — бани, беседки, conference rooms
+on a `tstzrange` of their own — is a phase with no dependencies and no date.
+
+The client answered the jurisdiction question: **Kazakhstan**, so Phase 9 is
+**Webkassa** and **eQonaq** behind the adapter seam, and the first OTA is
+**Booking.com** through the aggregator. `plans/hotel-pms.md` § Answered by the
+client.
 
 **Before you finish — once, not per edit.** `lint`, `format:check`,
 `test:server`, `build` and the browser suite are minutes each on this machine,

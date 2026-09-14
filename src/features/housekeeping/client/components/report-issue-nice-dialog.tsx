@@ -115,7 +115,7 @@ export const ReportIssueNiceDialog = NiceModal.create(
                   disabled={report.isPending}
                 >
                   <SelectTrigger id="severity">
-                    <SelectValue />
+                    <SelectValue>{(v: IssueSeverity) => severityLabels[v] ?? v}</SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {ISSUE_SEVERITY_VALUES.map((value) => (

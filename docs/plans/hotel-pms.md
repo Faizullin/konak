@@ -64,6 +64,38 @@ both required:
   system needs an explicit **overbooking policy** and a conflict resolution
   path. Pretending sync is instant is how a guest arrives to no room.
 
+### 6. The unit sold is a room *or* a bed, and the room type says which
+
+A hostel sells a bed: six strangers in one room, six separate arrivals, six
+separate bills. `RoomType.unit` carries `ROOM` or `BED`, and a bed type prices,
+maps and counts like any other type — the only difference is that its stay
+points at a `Bed` rather than a `Room`, under a second exclusion constraint
+beside the first.
+
+This is cheap now and a migration through the reservation model later, because
+availability, the grid, the booking engine and every occupancy figure all divide
+by whatever this decides. It is also a condition of filing a hostel guest with
+immigration at all, which wants the specific bed and not the room.
+
+Design: [inventory-units.md](inventory-units.md). **A dorm is bed-only** —
+selling one as a whole distinct product is the hard case and is deliberately not
+in scope; a buy-out is simply every bed in it.
+
+### 7. Sold by the hour is a different model, not a different flag
+
+A баня, a беседка or a conference room is rented 14:00–17:00, often to someone
+not staying. It gets its own feature, its own `tstzrange` constraint and its own
+hourly pricing — not a nullable time on `RoomStay`.
+
+The reason is the constraint: the room invariant compares `daterange` over
+dates, an hourly one compares `tstzrange` over timestamps, and one exclusion
+constraint cannot do both. Merging them weakens the strongest guarantee in the
+schema. It would also put a sauna into occupancy, ADR, RevPAR, the housekeeping
+queue and the channel push, where every one of them would need an exception.
+
+The one thing shared is the **folio**, so an hour lands on the guest's bill like
+anything else. Same plan: [inventory-units.md](inventory-units.md).
+
 ## The ten modules, grouped by what they actually are
 
 **Core domain — build these, they are yours.**
@@ -153,10 +185,22 @@ cost is named.
   with `IdentityDocument.purgeAfter`, which is the deletion half of the same
   obligation.
 
+## Answered by the client
+
+- **The first jurisdiction is Kazakhstan.** That names both adapters decision 6
+  left abstract: **Webkassa** for the fiscal register, **eQonaq** for immigration
+  registration. Both are Phase 9, both behind the adapter seam, and eQonaq is
+  what makes the bed level in decision 6 a legal requirement rather than a
+  convenience — it files a guest against a specific койко-место.
+- **The first OTA is Booking.com**, reached through the wholesale aggregator
+  rather than directly, per decision 5. Channex is the recommendation on file.
+
 ## Open questions
 
-- Which jurisdiction is first? It decides the fiscal and registration adapters,
-  and some of what `IdentityDocument` must hold.
-- Which OTA is connected first?
 - Is the product the PMS alone, or PMS plus channel management? It changes
-  whether distribution is core or an upsell.
+  whether distribution is core or an upsell. Phase 7 built it as core; that was
+  an engineering decision and not a pricing one, and the pricing question is
+  still open.
+- Does any client property sell a dorm **as a whole room** as well as by the
+  bed? [inventory-units.md](inventory-units.md) deliberately says no. If the
+  answer is yes, that is its own plan and it is not small.

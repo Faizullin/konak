@@ -11,6 +11,7 @@ import {
   RoomTypesPanel,
 } from "@/features/properties/client/components/inventory-panels";
 import { AttachmentsPanel } from "@/features/platform/client/components/attachments-panel";
+import { ChannelsPanel } from "@/features/channels/client/components/channels-panel";
 import { RatePlansPanel } from "@/features/rates/client/components/rate-plans-panel";
 import prisma from "@/server/db";
 
@@ -70,6 +71,11 @@ export default async function PropertySetupPage({ params }: Params) {
         organizationId={organization.id}
         currencyCode={property.currencyCode}
       />
+
+      {/* Last of the four, because it depends on all of them: a mapping names
+          a room type and a rate plan, and a channel told about neither would
+          be told the property is closed. */}
+      <ChannelsPanel propertyId={property.id} organizationId={organization.id} />
 
       {/* The first mount of the shared panel. A property is a valid subject,
           this route is already manager-gated, and photographs of the place are

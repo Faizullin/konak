@@ -4,12 +4,14 @@ import type { ColumnDef } from "@tanstack/react-table";
 import { useLocale, useTranslations } from "next-intl";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import { DataTable } from "@/components/data-table/data-table";
 import { DataTableColumnHeader } from "@/components/data-table/data-table-column-header";
 import { DataTableSkeleton } from "@/components/data-table/data-table-skeleton";
 import { DataTableToolbar } from "@/components/data-table/data-table-toolbar";
-import { useDataTable } from "@/components/data-table/use-data-table";
+import { getFilterList, getFilterText } from "@/components/data-table/lib";
+import { nuqsTableState } from "@/components/data-table/table-state";
+import { type DataTableQueryState, useDataTable } from "@/components/data-table/use-data-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -23,12 +25,10 @@ import {
 import { useEnumLabels } from "@/lib/labels";
 import { formatMoney } from "@/lib/money";
 import type { GeneralRouterOutputs } from "@/server/types";
-import { trpc } from "@/utils/trpc";
 import { useSurfaceLinks } from "@/store/surface-links";
+import { trpc } from "@/utils/trpc";
 
 type BookingRow = GeneralRouterOutputs["reservation"]["list"]["items"][number];
-
-const SORTABLE: readonly string[] = RESERVATION_SORT_FIELDS;
 
 /**
  * Bookings as a list, beside the grid rather than inside it.
@@ -53,7 +53,11 @@ export function BookingsTableView({
   const viewLabels = useEnumLabels("bookingView", BOOKING_VIEW_VALUES);
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [{ page, perPage, sort, search, status, view }] = useBookingTableParams();
+
+  const rawView = searchParams.get("view");
+  const view = BOOKING_VIEW_VALUES.includes(rawView as BookingView)
+    ? (rawView as BookingView)
+    : BookingView.CURRENT;
 
   // Where a row goes is the surface's business, not this table's.
   const links = useSurfaceLinks({ orgSlug, propertySlug });
@@ -62,24 +66,6 @@ export function BookingsTableView({
     () => new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", timeZone: "UTC" }),
     [locale]
   );
-
-  const input = useMemo<ListReservationsInput>(
-    () => ({
-      propertyId,
-      filter: {
-        search: search ?? undefined,
-        view,
-        status: status?.length ? (status as ReservationStatus[]) : undefined,
-      },
-      orderBy: sort,
-      pagination: { skip: (page - 1) * perPage, take: perPage },
-    }),
-    [propertyId, search, view, status, sort, page, perPage]
-  );
-
-  const { data, isLoading } = trpc.reservation.list.useQuery(input, {
-    placeholderData: (previous) => previous,
-  });
 
   /** A tab is part of the view, so it belongs in the URL with the rest of it. */
   const openView = (next: BookingView) => {
@@ -201,10 +187,14 @@ export function BookingsTableView({
     [t, statusLabels, dates, locale, links]
   );
 
-  const { table } = useDataTable({
-    data: data?.items ?? [],
+  const { table, isLoading } = useDataTable({
     columns,
-    pageCount: data ? Math.max(1, Math.ceil(data.total / perPage)) : 1,
+    state: bookingTableState,
+    useRows: useCallback(
+      // eslint-disable-next-line react-hooks/rules-of-hooks
+      (queryState: DataTableQueryState<BookingRow>) => useBookingRows(propertyId, queryState),
+      [propertyId]
+    ),
     getRowId: (row) => row.publicId,
     initialState: { sorting: [{ id: "bookedAt", desc: true }] },
   });
@@ -224,7 +214,7 @@ export function BookingsTableView({
         ))}
       </div>
 
-      {isLoading && !data ? (
+      {isLoading ? (
         <DataTableSkeleton columnCount={7} rowCount={5} filterCount={2} />
       ) : (
         <DataTable table={table}>
@@ -235,49 +225,45 @@ export function BookingsTableView({
   );
 }
 
+/** Page, sort and filters go in the URL, so a view of the list is a link. */
+const bookingTableState = nuqsTableState();
+
 /**
- * A second *reader* of the URL the table writes, not a second source of truth.
- *
- * The query has to run before the table is built — the row count decides
- * `pageCount` — so the same search params are parsed here.
+ * How this page fetches. `useDataTable` calls it with the state it owns and
+ * reads `total` back to work out `pageCount`.
  */
-function useBookingTableParams() {
+function useBookingRows(
+  propertyId: number,
+  { pagination, sorting, columnFilters }: DataTableQueryState<BookingRow>
+) {
   const searchParams = useSearchParams();
+  const rawView = searchParams.get("view");
+  const view = BOOKING_VIEW_VALUES.includes(rawView as BookingView)
+    ? (rawView as BookingView)
+    : BookingView.CURRENT;
 
-  return useMemo(() => {
-    const page = Number(searchParams.get("page") ?? 1) || 1;
-    const perPage = Number(searchParams.get("perPage") ?? 10) || 10;
+  const input = useMemo<ListReservationsInput>(() => {
+    const sort = sorting[0];
+    const field = RESERVATION_SORT_FIELDS.find((candidate) => candidate === sort?.id);
 
-    let sort: ListReservationsInput["orderBy"];
-    try {
-      const raw = searchParams.get("sort");
-      const parsed = raw ? (JSON.parse(raw) as { id: string; desc: boolean }[]) : [];
-      const first = parsed[0];
-      if (first && SORTABLE.includes(first.id)) {
-        sort = {
-          field: first.id as (typeof RESERVATION_SORT_FIELDS)[number],
-          direction: first.desc ? "desc" : "asc",
-        };
-      }
-    } catch {
-      // A hand-edited `?sort=` falls back to the default ordering rather than
-      // throwing: a bad URL is not worth an error boundary.
-    }
-
-    const raw = searchParams.get("view");
-    const view = BOOKING_VIEW_VALUES.includes(raw as BookingView)
-      ? (raw as BookingView)
-      : BookingView.CURRENT;
-
-    return [
-      {
-        page,
-        perPage,
-        sort,
+    return {
+      propertyId,
+      filter: {
+        search: getFilterText(columnFilters, "guestName"),
         view,
-        search: searchParams.get("guestName"),
-        status: searchParams.get("status")?.split(",").filter(Boolean),
+        status: getFilterList(columnFilters, "status") as ReservationStatus[] | undefined,
       },
-    ] as const;
-  }, [searchParams]);
+      orderBy: field && sort ? { field, direction: sort.desc ? "desc" : "asc" } : undefined,
+      pagination: {
+        skip: pagination.pageIndex * pagination.pageSize,
+        take: pagination.pageSize,
+      },
+    };
+  }, [propertyId, columnFilters, view, sorting, pagination]);
+
+  const { data, isLoading } = trpc.reservation.list.useQuery(input, {
+    placeholderData: (prev) => prev,
+  });
+
+  return { rows: data?.items ?? [], total: data?.total, isLoading: isLoading && !data };
 }

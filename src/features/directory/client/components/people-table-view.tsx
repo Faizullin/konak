@@ -4,16 +4,17 @@ import { useTranslations } from "next-intl";
 import type { ColumnDef } from "@tanstack/react-table";
 import { Building2, Mail, Phone, Plus } from "lucide-react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import { DataTable } from "@/components/data-table/data-table";
 import { DataTableColumnHeader } from "@/components/data-table/data-table-column-header";
 import { DataTableSkeleton } from "@/components/data-table/data-table-skeleton";
 import { DataTableToolbar } from "@/components/data-table/data-table-toolbar";
-import { useDataTable } from "@/components/data-table/use-data-table";
+import { getFilterText } from "@/components/data-table/lib";
+import { nuqsTableState } from "@/components/data-table/table-state";
+import { type DataTableQueryState, useDataTable } from "@/components/data-table/use-data-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { personDisplayName, type ListPeopleInput } from "@/features/directory";
+import { PERSON_SORT_FIELDS, personDisplayName, type ListPeopleInput } from "@/features/directory";
 import type { GeneralRouterOutputs } from "@/server/types";
 import { useDialogControl } from "@/hooks/use-dialog-control";
 import { trpc } from "@/utils/trpc";
@@ -21,8 +22,6 @@ import { PersonFormDialog } from "./person-form-dialog";
 import { usePersonLink } from "@/store/surface-links";
 
 type PersonRow = GeneralRouterOutputs["directory"]["listPeople"]["items"][number];
-
-const SORTABLE = ["lastName", "firstName", "createdAt"];
 
 /**
  * The guest and contact list.
@@ -42,24 +41,9 @@ export function PeopleTableView({
   // Where a name goes is the surface's business: the dashboard keeps people in
   // its directory, the desk keeps them under the property it has open.
   const personHref = usePersonLink(orgSlug);
-  const [{ page, perPage, sort, search }] = usePeopleTableParams();
   // One component opens this dialog and nobody else needs to, so the state
   // lives here rather than in the NiceModal registry.
   const create = useDialogControl();
-
-  const input = useMemo<ListPeopleInput>(
-    () => ({
-      organizationId,
-      filter: { search: search ?? undefined },
-      orderBy: sort,
-      pagination: { skip: (page - 1) * perPage, take: perPage },
-    }),
-    [organizationId, page, perPage, sort, search]
-  );
-
-  const { data, isLoading } = trpc.directory.listPeople.useQuery(input, {
-    placeholderData: (prev) => prev,
-  });
 
   const columns = useMemo<ColumnDef<PersonRow>[]>(
     () => [
@@ -143,15 +127,19 @@ export function PeopleTableView({
     [t, personHref]
   );
 
-  const { table } = useDataTable({
-    data: data?.items ?? [],
+  const { table, isLoading } = useDataTable({
     columns,
-    pageCount: data ? Math.max(1, Math.ceil(data.total / perPage)) : 1,
+    state: peopleTableState,
+    useRows: useCallback(
+      // eslint-disable-next-line react-hooks/rules-of-hooks
+      (queryState: DataTableQueryState<PersonRow>) => usePeopleRows(organizationId, queryState),
+      [organizationId]
+    ),
     getRowId: (row) => String(row.id),
     initialState: { sorting: [{ id: "lastName", desc: false }] },
   });
 
-  if (isLoading && !data) {
+  if (isLoading) {
     return <DataTableSkeleton columnCount={5} rowCount={5} filterCount={1} />;
   }
 
@@ -175,32 +163,37 @@ export function PeopleTableView({
   );
 }
 
+/** Page, sort and filters go in the URL, so a view of the list is a link. */
+const peopleTableState = nuqsTableState();
+
 /**
- * A second reader of one source of truth, not a second source of truth. A
- * hand-edited `?sort=` falls back to the default ordering rather than throwing.
+ * How this page fetches. `useDataTable` calls it with the state it owns and
+ * reads `total` back to work out `pageCount`.
  */
-function usePeopleTableParams() {
-  const searchParams = useSearchParams();
+function usePeopleRows(
+  organizationId: number,
+  { pagination, sorting, columnFilters }: DataTableQueryState<PersonRow>
+) {
+  const input = useMemo<ListPeopleInput>(() => {
+    const sort = sorting[0];
+    const field = PERSON_SORT_FIELDS.find((c) => c === sort?.id);
 
-  return useMemo(() => {
-    const page = Number(searchParams.get("page") ?? 1) || 1;
-    const perPage = Number(searchParams.get("perPage") ?? 10) || 10;
+    return {
+      organizationId,
+      filter: {
+        search: getFilterText(columnFilters, "lastName"),
+      },
+      orderBy: field && sort ? { field, direction: sort.desc ? "desc" : "asc" } : undefined,
+      pagination: {
+        skip: pagination.pageIndex * pagination.pageSize,
+        take: pagination.pageSize,
+      },
+    };
+  }, [organizationId, columnFilters, sorting, pagination]);
 
-    let sort: ListPeopleInput["orderBy"];
-    try {
-      const raw = searchParams.get("sort");
-      const parsed = raw ? (JSON.parse(raw) as { id: string; desc: boolean }[]) : [];
-      const first = parsed[0];
-      if (first && SORTABLE.includes(first.id)) {
-        sort = {
-          field: first.id as "lastName" | "firstName" | "createdAt",
-          direction: first.desc ? "desc" : "asc",
-        };
-      }
-    } catch {
-      // Not worth an error boundary.
-    }
+  const { data, isLoading } = trpc.directory.listPeople.useQuery(input, {
+    placeholderData: (prev) => prev,
+  });
 
-    return [{ page, perPage, sort, search: searchParams.get("lastName") }] as const;
-  }, [searchParams]);
+  return { rows: data?.items ?? [], total: data?.total, isLoading: isLoading && !data };
 }

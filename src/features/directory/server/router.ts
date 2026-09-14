@@ -7,7 +7,7 @@ import { requireOrgModule } from "@/features/organizations/server";
 // `model/` — a shared definition read, not a reach into another feature.
 import { reservationDates } from "@/features/reservations";
 import { ConflictError, ForbiddenError, NotFoundError } from "@/server/errors";
-import { like } from "@/server/search";
+import { like, searchTerms, searchTermVariants } from "@/server/search";
 import { createTRPCRouter, protectedProcedure } from "@/server/trpc";
 import {
   blankToNull,
@@ -63,17 +63,21 @@ export const directoryRouter = createTRPCRouter({
     }
 
     const { filter, orderBy, pagination } = input;
+    const terms = searchTerms(filter?.search ?? "");
     const where: Prisma.PersonWhereInput = {
       organizationId: input.organizationId,
       ...archiveFilter(filter?.includeArchived),
       ...(filter?.companyId ? { companies: { some: { companyId: filter.companyId } } } : {}),
-      ...(filter?.search
+      ...(terms.length > 0
         ? {
-            OR: [
-              { firstName: like(filter.search) },
-              { lastName: like(filter.search) },
-              { email: like(filter.search) },
-            ],
+            AND: terms.map((term) => ({
+              OR: searchTermVariants(term).flatMap((variant) => [
+                { firstName: like(variant) },
+                { lastName: like(variant) },
+                { email: like(variant) },
+                { phone: like(variant) },
+              ]),
+            })),
           }
         : {}),
     };
@@ -303,10 +307,23 @@ export const directoryRouter = createTRPCRouter({
     }
 
     const { filter, orderBy, pagination } = input;
+    const terms = searchTerms(filter?.search ?? "");
     const where: Prisma.CompanyWhereInput = {
       organizationId: input.organizationId,
       ...archiveFilter(filter?.includeArchived),
-      ...(filter?.search ? { name: like(filter.search) } : {}),
+      ...(terms.length > 0
+        ? {
+            AND: terms.map((term) => ({
+              OR: searchTermVariants(term).flatMap((variant) => [
+                { name: like(variant) },
+                { legalName: like(variant) },
+                { taxId: like(variant) },
+                { email: like(variant) },
+                { phone: like(variant) },
+              ]),
+            })),
+          }
+        : {}),
     };
 
     const [items, total] = await Promise.all([

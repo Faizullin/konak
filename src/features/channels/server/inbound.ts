@@ -32,21 +32,36 @@ export type AppliedInbound = {
   cancelled: boolean;
 };
 
+export type InboundConnectionScope = {
+  id: number;
+  propertyId: number;
+  channelCode: string;
+  organizationId: number;
+  /**
+   * Pre-loaded active mappings for this connection, keyed by
+   * `externalRoomTypeId`. When supplied by `pull.ts`, saves one lookup per
+   * inbound arrival in the batch.
+   */
+  mappings?: Map<string, { roomTypeId: number; ratePlanId: number | null }>;
+};
+
 export async function applyInboundReservation(
-  connection: { id: number; propertyId: number; channelCode: string; organizationId: number },
+  connection: InboundConnectionScope,
   inbound: InboundReservation
 ): Promise<AppliedInbound> {
   // What this channel calls the type, translated back. Absent means the channel
   // sold something this property no longer maps — loud rather than guessed at,
   // because guessing puts a guest in the wrong category.
-  const mapping = await prisma.channelMapping.findFirst({
-    where: {
-      connectionId: connection.id,
-      externalRoomTypeId: inbound.externalRoomTypeId,
-      isActive: true,
-    },
-    select: { roomTypeId: true, ratePlanId: true },
-  });
+  const mapping =
+    connection.mappings?.get(inbound.externalRoomTypeId) ??
+    (await prisma.channelMapping.findFirst({
+      where: {
+        connectionId: connection.id,
+        externalRoomTypeId: inbound.externalRoomTypeId,
+        isActive: true,
+      },
+      select: { roomTypeId: true, ratePlanId: true },
+    }));
   if (!mapping) {
     throw new Error(
       `${ChannelError.MAPPING_UNKNOWN}: "${inbound.externalRoomTypeId}" on connection ${connection.id}`

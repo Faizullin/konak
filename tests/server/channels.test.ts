@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { after, before, describe, test } from "node:test";
-import { callerFor, createFixture, prisma, type Fixture } from "./harness";
+import { callerFor, createFixture, domainCodeOf, prisma, type Fixture } from "./harness";
 import {
   applyInboundReservation,
   enqueueChannelPulls,
@@ -17,6 +20,7 @@ import type { InboundReservation } from "@/features/channels/server";
  */
 
 let fx: Fixture;
+let secretsDir: string;
 let propertyId: number;
 let roomTypeId: number;
 let roomId: number;
@@ -37,6 +41,13 @@ const arriving = (over: Partial<InboundReservation> = {}): InboundReservation =>
 });
 
 before(async () => {
+  secretsDir = mkdtempSync(join(tmpdir(), "konak-channel-secrets-"));
+  process.env.CHANNEL_SECRETS_DIR = secretsDir;
+  writeFileSync(
+    join(secretsDir, "test-secret.json"),
+    JSON.stringify({ apiKey: "test-secret-key" })
+  );
+
   fx = await createFixture();
 
   const property = await prisma.property.create({
@@ -73,6 +84,7 @@ before(async () => {
       provider: "example-vendor",
       channelCode: "BOOKING_COM",
       status: "ACTIVE",
+      credentialsRef: "test-secret",
       mappings: { create: { roomTypeId, externalRoomTypeId: "DBL-EXT" } },
     },
   });
@@ -85,6 +97,9 @@ before(async () => {
 });
 
 after(async () => {
+  if (secretsDir) {
+    rmSync(secretsDir, { recursive: true, force: true });
+  }
   await prisma.outboxTask.deleteMany({ where: { organizationId: fx.org.id } });
   await prisma.reservation.deleteMany({ where: { propertyId } });
   await prisma.channelConnection.deleteMany({ where: { propertyId } });
@@ -352,6 +367,48 @@ describe("connecting a channel", () => {
     });
     const back = await prisma.channelMapping.findUniqueOrThrow({ where: { id: mapping.id } });
     assert.equal(back.isActive, true);
+  });
+
+  test("activating without readable credentials is refused", async () => {
+    const caller = callerFor(fx.owner);
+    const uncredentialed = await prisma.channelConnection.create({
+      data: {
+        propertyId,
+        provider: "example-vendor",
+        channelCode: "EXPEDIA",
+        status: "PAUSED",
+      },
+    });
+
+    await assert.rejects(
+      caller.channel.setStatus({ propertyId, id: uncredentialed.id, status: "ACTIVE" }),
+      (e) =>
+        domainCodeOf(e) === "channel.credentials_missing" ||
+        /credentials/i.test((e as Error).message)
+    );
+
+    await prisma.channelConnection.delete({ where: { id: uncredentialed.id } });
+  });
+
+  test("rotating credentials preserves mappings and mirror", async () => {
+    const caller = callerFor(fx.owner);
+    const updated = await caller.channel.setCredentials({
+      propertyId,
+      id: connection.id,
+      credentialsRef: "rotated-secret",
+      externalPropertyId: "EXT-999",
+    });
+
+    assert.equal(updated.credentialsRef, "rotated-secret");
+    assert.equal(updated.externalPropertyId, "EXT-999");
+
+    // Restore for other tests
+    await caller.channel.setCredentials({
+      propertyId,
+      id: connection.id,
+      credentialsRef: "test-secret",
+      externalPropertyId: undefined,
+    });
   });
 
   test("a receptionist does not decide where the hotel sells", async () => {

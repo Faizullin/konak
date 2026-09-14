@@ -2,6 +2,7 @@
 
 import { Check, CircleDashed, TriangleAlert } from "lucide-react";
 import { useTranslations } from "next-intl";
+import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { AttachmentStatus } from "@/features/platform";
 
@@ -18,15 +19,6 @@ import { AttachmentStatus } from "@/features/platform";
  */
 
 export type AttachmentBadgeState = AttachmentStatus | "FAILED";
-
-const STYLE: Record<AttachmentBadgeState, string> = {
-  PENDING:
-    "border-dashed border-amber-500/60 text-amber-700 bg-amber-50 dark:text-amber-300 dark:bg-amber-950/40",
-  READY:
-    "border-emerald-500/60 text-emerald-700 bg-emerald-50 dark:text-emerald-300 dark:bg-emerald-950/40",
-  FAILED:
-    "border-destructive/60 text-destructive bg-destructive/10 dark:text-red-300 dark:bg-red-950/40",
-};
 
 const MARK: Record<AttachmentBadgeState, typeof Check> = {
   PENDING: CircleDashed,
@@ -45,17 +37,16 @@ export function AttachmentStatusBadge({
   const Mark = MARK[state];
   const label = t(`attachments.state.${state}` as "attachments.state.READY");
 
+  const variant = state === "FAILED" ? "destructive" : state === "READY" ? "secondary" : "outline";
+
   return (
-    <span
+    <Badge
+      variant={variant}
       title={label}
-      className={cn(
-        "inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-xs font-medium",
-        STYLE[state],
-        className
-      )}
+      className={cn("gap-1 font-medium", state === "PENDING" && "border-dashed", className)}
     >
       <Mark className="size-3" aria-hidden />
       {label}
-    </span>
+    </Badge>
   );
 }

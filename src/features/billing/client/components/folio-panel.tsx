@@ -269,7 +269,7 @@ function AddLine({
     <div className="flex flex-wrap items-end gap-2">
       <Select value={type} onValueChange={(value) => setType(value as LineType)} disabled={pending}>
         <SelectTrigger size="sm" className="w-36">
-          <SelectValue />
+          <SelectValue>{(v: LineType) => typeLabels[v] ?? v}</SelectValue>
         </SelectTrigger>
         <SelectContent>
           {LINE_TYPE_VALUES.map((value) => (
@@ -348,7 +348,7 @@ function TakePayment({
         disabled={pending}
       >
         <SelectTrigger size="sm" className="w-40">
-          <SelectValue />
+          <SelectValue>{(v: PaymentMethod) => methodLabels[v] ?? v}</SelectValue>
         </SelectTrigger>
         <SelectContent>
           {PAYMENT_METHOD_VALUES.map((value) => (

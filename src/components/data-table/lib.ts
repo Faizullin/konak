@@ -1,4 +1,4 @@
-import type { Column } from "@tanstack/react-table";
+import type { Column, ColumnFiltersState } from "@tanstack/react-table";
 import type { ExtendedColumnFilter, FilterOperator, FilterVariant } from "./types";
 
 import { dataTableConfig } from "./config";
@@ -64,4 +64,20 @@ export function getValidFilters<TData>(
         ? filter.value.length > 0
         : filter.value !== "" && filter.value !== null && filter.value !== undefined)
   );
+}
+
+/** One column's filter as a single value — faceted controls store a list, so take the first. */
+export function getFilterText(filters: ColumnFiltersState, id: string): string | undefined {
+  const value = filters.find((filter) => filter.id === id)?.value;
+
+  if (Array.isArray(value)) return typeof value[0] === "string" ? value[0] : undefined;
+  return typeof value === "string" && value !== "" ? value : undefined;
+}
+
+/** One column's filter as a list, whichever shape the control stored it in. */
+export function getFilterList(filters: ColumnFiltersState, id: string): string[] | undefined {
+  const value = filters.find((filter) => filter.id === id)?.value;
+
+  if (Array.isArray(value)) return value.length ? (value as string[]) : undefined;
+  return typeof value === "string" && value !== "" ? [value] : undefined;
 }

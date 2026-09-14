@@ -281,7 +281,15 @@ function RoomCard({
                 disabled={pending}
               >
                 <SelectTrigger size="sm" className="w-36">
-                  <SelectValue />
+                  <SelectValue>
+                    {(v: string) =>
+                      v === "unassigned"
+                        ? t("board.unassigned")
+                        : members.find((m) => String(m.id) === v)?.user.name ||
+                          members.find((m) => String(m.id) === v)?.user.email ||
+                          v
+                    }
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="unassigned">{t("board.unassigned")}</SelectItem>

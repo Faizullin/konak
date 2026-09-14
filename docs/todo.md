@@ -7,51 +7,25 @@ to `history.md`.
 
 Where this sits in the whole build: `plans/roadmap.md`.
 
-## Two questions for the client, before MVP sign-off
+## A bed is not a room
 
-**Койко-места** — a hostel sells a bed, not a room, and nothing in the 46 models
-has a bed level. **Почасовые объекты** — бани and беседки are sold by the hour,
-and every date here is a property-local midnight on purpose. Both are cheap to
-ask and expensive to retrofit.
+A hostel sells a bed and nothing in the 46 models has a bed level, which the
+booking engine and every occupancy figure both have to read. Phase 7.5;
+design in `plans/inventory-units.md`.
 
-## `useDataTable` calls nuqs unconditionally
+## Back up the key before anything writes a passport to it
 
-So a table in a dialog, or a second table on one route, cannot use the stack —
-six places hand-roll `<Table>` instead, and four features repeat the same param
-parsing. Fixed upstream in `next-better-auth-template` (`f298695`) by moving the
-parser out of the hook behind an optional strategy.
-→ [plans/data-table.md](plans/data-table.md)
+`FIELD_ENCRYPTION_KEY` exists only on the server it runs on, and there are no
+database dumps. Phase 9 is what starts filling the columns it protects.
+`plans/deployment.md` § Gaps.
 
-## Guest names need one normalised column to search
+## Почасовые объекты wait for a date
 
-`ё`/`е` are two letters to Postgres and one name to a hotel, and the directory
-never splits a search on whitespace. `directory.test.ts` § search already
-asserts the `ё` case as failing.
-→ [architecture.md](guides/architecture.md) § Searching a text column
-
-## Sixteen `<SelectValue />` render the stored value, not its label
-
-Base UI shows the *value* unless given a function, so a select of codes shows
-codes. `reservation-grid.tsx` has the shape to copy; `grep -rn "<SelectValue"
-src/` is the list. Invisible until somebody switches language.
-
-## Two claims in the docs that are not reachable
-
-`uploadAttachment()` has no production caller, and the landing page still says
-"Prisma on SQLite".
-
-## One component still names its own colour
-
-`attachment-status-badge.tsx` — upload state rather than a hotel state, which is
-why it was left behind when the rest became tokens. The housekeeping board's
-`destructive` is deliberate and stays.
+Бани and беседки are sold by the hour and want their own feature, their own
+`tstzrange` and their own prices. Designed, unscheduled, depends on nothing —
+`plans/inventory-units.md`.
 
 ## The dashboard has one palette, and no reason for a second
 
 The registry says so rather than a condition in the control, which is the right
 answer until somebody asks. Do not build it speculatively.
-
-## A channel-manager vendor
-
-Phase 7's server half is done and `ChannelAdapter` is two methods. Which vendor
-is a commercial decision, not an engineering one.

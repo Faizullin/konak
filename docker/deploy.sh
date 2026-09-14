@@ -60,6 +60,15 @@ klen=$(printf %s "$FIELD_ENCRYPTION_KEY" | base64 -d 2>/dev/null | wc -c || echo
 [ "${STORAGE_FS_ROOT:-}" = "/data/storage" ] || \
   fail "STORAGE_FS_ROOT must be /data/storage — it is the mount point of the 'storage' volume"
 
+# A warning rather than a failure: a property with no channel connected needs no
+# secrets, and Docker would create the directory as an empty root-owned one
+# anyway. A connection whose secret is unreadable refuses to go ACTIVE and says
+# so on the setup screen, so an empty directory is visible rather than silent.
+SECRETS_DIR="${CHANNEL_SECRETS_HOST_DIR:-/etc/konak/channel-secrets}"
+if [ ! -d "$SECRETS_DIR" ]; then
+  log "note: $SECRETS_DIR does not exist — no channel can be switched on until it holds <credentialsRef>.json"
+fi
+
 SHA="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
 
 # ── build ────────────────────────────────────────────────────────────────
@@ -67,11 +76,16 @@ SHA="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
 # swap use. It happens while the OLD container keeps serving — the running app
 # is not touched until `up -d` below.
 if [ "$DO_BUILD" -eq 1 ]; then
-  log "building image for $SHA (slow on 1 vCPU — 10-25 min is normal)"
-  "${COMPOSE[@]}" build app
-  # Tag the built image with the commit so there is something to roll back TO.
+  log "building images for $SHA (slow on 1 vCPU — 10-25 min is normal)"
+  # Both, in one invocation. `worker` is the `builder` stage, which `app` builds
+  # through on its way to `runner`, so this is one build and a second tag rather
+  # than two — and building them separately is how the two drift to different
+  # commits, the same way `migrate` once did.
+  "${COMPOSE[@]}" build app worker
+  # Tag the built images with the commit so there is something to roll back TO.
   docker tag konak-app:latest "konak-app:$SHA"
-  log "tagged konak-app:$SHA"
+  docker tag konak-worker:latest "konak-worker:$SHA"
+  log "tagged konak-app:$SHA and konak-worker:$SHA"
 fi
 
 # ── database ─────────────────────────────────────────────────────────────
@@ -101,7 +115,7 @@ MIGRATE_RUN=(run --rm --no-deps)
 "${COMPOSE[@]}" "${MIGRATE_RUN[@]}" migrate || fail "migrations failed — the old app is still running and was not replaced"
 
 # ── start ────────────────────────────────────────────────────────────────
-log "starting app and caddy"
+log "starting app, worker and caddy"
 "${COMPOSE[@]}" up -d
 
 # ── verify ───────────────────────────────────────────────────────────────
@@ -126,5 +140,19 @@ if [ "$ok" -ne 1 ]; then
 fi
 
 log "app is serving"
+
+# The worker has no port to answer on, so the question is whether it stayed up.
+# A crash-loop here is silent in a way the app's is not: the site is fine, and
+# nothing tells a channel about anything ever again.
+sleep 5
+worker_state="$(docker inspect -f '{{.State.Status}}' konak-worker 2>/dev/null || echo missing)"
+if [ "$worker_state" != "running" ]; then
+  echo "[deploy] WARNING: the outbox worker is '$worker_state', not running. Last 40 lines:" >&2
+  "${COMPOSE[@]}" logs --tail 40 --no-color worker >&2 || true
+  echo "[deploy] WARNING: the site is serving, but nothing is draining the outbox." >&2
+else
+  log "worker is draining"
+fi
+
 "${COMPOSE[@]}" ps
 log "deployed $SHA — https://konaq.kz"

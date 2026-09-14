@@ -2374,3 +2374,183 @@ keeps that question small, because a passport number can never have reached the
 table in the first place.
 
 258 unit, 188 integration, 103 browser.
+
+## 2026-09-14 — everything around the channel seam, and a secret that stays a file
+
+Phase 7 had both directions of sync, a mirror of what each channel had been
+told, and a worker script — and no way to create a connection, no way to give it
+a credential, and nothing running the worker in production. Three absences that
+each made the other two pointless.
+
+**A credential is the name of a file, and only a name.** `credentialsRef` was
+already "a pointer, never a secret"; what it points at is now one JSON file per
+connection under `CHANNEL_SECRETS_DIR`, mounted read-only into the app and the
+worker. The two simpler shapes are both worse: one variable holding every
+vendor's secrets makes rotating one of them rewrite all of them and puts the lot
+in `docker inspect` output, and a column makes the table unsafe to read in a
+support session. A directory of files is what a bind mount, a Docker secret and
+systemd's `LoadCredential` all already produce, so the deployment invents
+nothing.
+
+The name is validated twice — in the schema and again in the resolver — because
+a row can predate a schema, and `join(dir, ref)` with a ref of `../db` names a
+file somewhere else entirely. Leading dots are refused for the same reason `..`
+is a directory.
+
+**The adapter never learns where the secret came from.** `ChannelCredentials`
+carries the resolved bag of strings, not the ref and not the path, so a vendor
+implementation has nothing to get wrong about the filesystem. The contents are
+the vendor's shape rather than ours, because "the API key" is one field for one
+vendor and three for another; an adapter asked for a field it was not given says
+so at the drain, and the message reaches a dead letter with the connection on it.
+
+**Read late, after the diff.** A push pass with nothing to say returns before
+the secret is ever touched, and because nothing is cached, a rotation takes
+effect on the next task rather than on the next restart.
+
+**A connection whose secret cannot be read refuses to go ACTIVE.** Switching one
+on enqueues a push of everything, so the alternative was a dead letter per task
+until somebody thought to read the queue — against one sentence on the screen of
+the person holding the wrong file name. The panel shows the same fact as a
+badge, yes or no; the path and the reason stay in the dead letter, because a
+screen that printed the path would be a screen that tells everyone where the
+secrets live.
+
+Rotating a key got its own mutation rather than being folded into `create`.
+Re-creating a connection to change its credential would take the mappings and
+the mirror with it, and the mirror is the record of what the channel has already
+been told — discarding it means re-sending a year of nights to discover they
+were already right.
+
+**In production the worker is a service**, built from the same `builder` stage
+as `migrate`, running `--commit --interval=30` at a 320 MB cap on a 1.9 GB box.
+`deploy.sh` builds it beside the app, tags both with the same SHA, and checks
+afterwards that it is actually running — dumping its logs if not. Before this
+the outbox only grew.
+
+What is still missing is the one thing that was never an engineering decision:
+`ADAPTERS` is `{}`, and filling it needs sandbox credentials from a vendor
+somebody has signed with. Channex is the recommendation — REST/JSON, Booking.com
+and Ostrovok through ETG. Everything on this side of that seam is done.
+
+### The Phase 7 end-of-phase pass
+
+The roadmap's suspicion — that deriving sold room counts on every read would
+make a ninety-day channel push do ninety queries — turned out not to be true.
+`availability()` reads the window in five constant statements and aggregates in
+memory, so the read side was already one query per shape.
+
+The real scaling cost was on the write side: `push.ts` was issuing one `upsert`
+per changed night inside a single transaction. For five room types over ninety
+days on a fresh connection, that was 450 round trips holding a transaction open.
+Replaced with two multi-row `INSERT ... ON CONFLICT DO UPDATE` statements (one
+for accepted nights, one for rejected), and folded the `ChannelConnection`
+timestamp update into the same transaction so `lastSyncedAt` is atomic with the
+mirror.
+
+On the pull side, `applyInboundReservation` was querying `channelMapping` once
+per inbound arrival. `pull.ts` now loads active mappings once with the
+connection and passes the map down.
+
+Index coverage review across all channels queries confirmed complete coverage:
+every query leads with a tenant column (`propertyId` or `connectionId`) on a
+usable index.
+
+### The vendor adapter seam
+
+Implemented `ChannexAdapter` (`src/features/channels/server/adapters/channex.ts`)
+implementing wholesale ARI push and booking pull over the Channex REST API v1,
+and `MockChannelAdapter` (`src/features/channels/server/adapters/mock.ts`) for
+in-memory simulation and test runs without live API keys. Both registered in
+`src/features/channels/server/adapter.ts`.
+
+## 2026-09-14 — decoupled data table state and useRows port
+
+Ported the data table refactoring from `next-better-auth-template` (`f298695`),
+decoupling `useDataTable` from mandatory `nuqs` URL state:
+
+**State strategy pattern (`table-state.ts`).** `useLocalTableState` is now the
+default React-state storage strategy. `nuqsTableState({ prefix })` enables URL
+synchronization with optional key prefixing to isolate multiple tables on one route.
+Embedded tables (like `member-table.tsx` or dialogs) no longer require `<NuqsAdapter>`.
+
+**Fetcher injection (`useRows`).** Server-driven tables pass `useRows` directly
+to `useDataTable`, which manages query lifecycle and derives `pageCount` from
+returned `total`. Deleted all four duplicated `*TableParams` hooks
+(`useUserTableParams`, `useOrganizationTableParams`, `useBookingTableParams`,
+`usePeopleTableParams`). Single-arity search filter parsing restored (`getFilterText`).
+
+## 2026-09-14 — select labels, search orthography, and token cleanup
+
+**Select value labels across all components.** Base UI `<SelectValue />` renders
+raw codes unless given a render function. Added label resolvers across 11 components
+(16+ Select triggers), ensuring localized strings display instead of raw uppercase enums.
+
+**Directory search orthography and token splitting.** Exported `searchTerms` and
+`searchTermVariants` from `src/server/search.ts`. `listPeople` and `listCompanies`
+now split on whitespace and normalize Russian `ё`/`е` combinations, matching across
+first and last names regardless of capitalization or diacritics.
+
+**Tokens and copy cleanup.** Replaced hard-coded color literals in `AttachmentStatusBadge`
+with design token badges. Updated landing page copy from SQLite to PostgreSQL.
+
+
+## 2026-09-14 — a pass over the data-table refactor
+
+`tsc --noEmit` was failing on `tests/server/channels.test.ts`: the restore step
+of the credential-rotation test passed `externalPropertyId: null`, but
+`setConnectionCredentialsSchema` makes it `.optional()`, and the router already
+reads an absent value as "clear it" (`input.externalPropertyId ?? null`).
+Passing `undefined` says the same thing and typechecks.
+
+Converting `member-table.tsx` to `useDataTable` had left an
+`eslint-disable-next-line react-hooks/exhaustive-deps` over its column memo,
+which is a suppression standing in for two real dependencies. `handleRemove` is
+a `useCallback` now, so the memo can name it and `updateRole` honestly.
+
+`ui-patterns.md` § Lists and tables still opened with "the stack is
+server-driven … keeps page, sort and every filter in the URL", and still
+offered `member-table.tsx` as the plain-markup example — both true before the
+refactor and false after it. Rewritten around the two optional injection
+points, with the trailing "Strategy and Data Sources" section folded in rather
+than left to contradict the opening.
+## 2026-09-14 — what a bookable unit is
+
+The two questions `todo.md` had been holding for the client are answered, and
+the answers are on disk rather than in a conversation.
+
+**A bed is a unit.** `RoomType.unit` (`ROOM` | `BED`), a `Bed` under `Room`,
+`RoomStay.bedId`, and a second GiST exclusion constraint beside the one already
+there. The existing `room_stays_no_overlap` is scoped `WHERE "roomId" IS NOT
+NULL` and `roomId` is already nullable, so a bed stay sits next to the room
+invariant instead of replacing it — the constraint written in Phase 1 turned out
+to have left the door open. It is also not optional: eQonaq files a guest
+against a specific койко-место, so a hostel whose stays point only at a room
+cannot report correctly.
+
+What was deliberately left out is **split inventory** — selling a dorm either by
+the bed or whole. Two exclusion constraints cannot see each other, so this is a
+dependency engine, not a constraint; a buy-out is every bed in the room.
+
+**An hour is not a night.** Бани and беседки get their own feature and their own
+`tstzrange` constraint rather than a nullable time on `RoomStay`. The deciding
+reason is mechanical: `daterange` over dates and `tstzrange` over timestamps
+cannot share one exclusion constraint, and merging them would weaken the
+strongest guarantee in the schema. The industry splits the same way — Mews
+unifies into Space + Service, Opera keeps Function Space apart — and Opera's
+answer is the one that fits a schema whose room-night invariant is load-bearing.
+The folio is the one thing shared, at the cost of one nullable foreign key.
+
+Both designs are `plans/inventory-units.md`. The bed half became **Phase 7.5**,
+placed before Direct sales because the booking engine renders whatever a unit is
+and Phase 10 divides by it.
+
+**Also recorded:** the jurisdiction is Kazakhstan, which names Phase 9's two
+adapters as Webkassa and eQonaq, and the first OTA is Booking.com through the
+aggregator. Those had been answered and never written down.
+
+`plans/index.md` still listed `data-table.md`, deleted when that work shipped,
+and `handoff.md` still sent the next person to it as "the largest piece of code
+left". Both now point at the bed level. Two scratch files from the last session,
+`plans/tasks.md` and `plans/architecture.md`, are gone — a finished checklist and
+a design note whose content is in `ui-patterns.md` and above.

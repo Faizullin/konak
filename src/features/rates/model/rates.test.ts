@@ -8,7 +8,6 @@ import {
   canReadRates,
   canSetRates,
   extraPersonMinor,
-  MEAL_PLAN_VALUES,
   refuseCancellationTerms,
   sellRefusal,
   stayTotalMinor,

@@ -1,5 +1,5 @@
 import "server-only";
-import { ConflictError, ForbiddenError, NotFoundError } from "@/server/errors";
+import { ConflictError, ForbiddenError, NotFoundError, PreconditionError } from "@/server/errors";
 import { createTRPCRouter, protectedProcedure } from "@/server/trpc";
 import { canManageProperties } from "@/features/properties";
 import { requirePropertyMember } from "@/features/properties/server";
@@ -9,9 +9,11 @@ import {
   createConnectionSchema,
   listConnectionsSchema,
   mapRoomTypeSchema,
+  setConnectionCredentialsSchema,
   setConnectionStatusSchema,
   unmapRoomTypeSchema,
 } from "../model";
+import { channelSecretReadable } from "./credentials";
 import { enqueueChannelPush } from "./enqueue";
 
 /**
@@ -26,7 +28,7 @@ export const channelRouter = createTRPCRouter({
   list: protectedProcedure.input(listConnectionsSchema).query(async ({ ctx, input }) => {
     await requirePropertyMember(ctx, input.propertyId);
 
-    return ctx.db.channelConnection.findMany({
+    const connections = await ctx.db.channelConnection.findMany({
       where: { propertyId: input.propertyId },
       orderBy: { channelCode: "asc" },
       select: {
@@ -34,6 +36,7 @@ export const channelRouter = createTRPCRouter({
         provider: true,
         channelCode: true,
         status: true,
+        credentialsRef: true,
         externalPropertyId: true,
         lastSyncedAt: true,
         lastError: true,
@@ -41,6 +44,7 @@ export const channelRouter = createTRPCRouter({
           select: {
             id: true,
             roomTypeId: true,
+            ratePlanId: true,
             externalRoomTypeId: true,
             externalRatePlanId: true,
             isActive: true,
@@ -50,6 +54,17 @@ export const channelRouter = createTRPCRouter({
         },
       },
     });
+
+    // Whether the secret each ref names can actually be read, answered here so
+    // a manager learns a name is wrong while typing it rather than when a push
+    // dead-letters overnight. Yes or no only — the path and the reason belong
+    // in the dead letter, not on a screen.
+    return Promise.all(
+      connections.map(async (connection) => ({
+        ...connection,
+        credentialsPresent: await channelSecretReadable(connection.credentialsRef),
+      }))
+    );
   }),
 
   create: protectedProcedure.input(createConnectionSchema).mutation(async ({ ctx, input }) => {
@@ -96,10 +111,24 @@ export const channelRouter = createTRPCRouter({
 
       const connection = await ctx.db.channelConnection.findFirst({
         where: { id: input.id, propertyId: input.propertyId },
-        select: { id: true },
+        select: { id: true, credentialsRef: true },
       });
       if (!connection) {
         throw new NotFoundError(ChannelError.CONNECTION_NOT_FOUND, "Connection not found");
+      }
+
+      // Refused here rather than discovered at the drain. Switching on enqueues
+      // a push of everything, and an ACTIVE connection whose secret cannot be
+      // read produces a dead letter per task until somebody reads the queue —
+      // where this is one sentence on the screen of the person who can fix it.
+      if (
+        input.status === ChannelStatus.ACTIVE &&
+        !(await channelSecretReadable(connection.credentialsRef))
+      ) {
+        throw new PreconditionError(
+          ChannelError.CREDENTIALS_MISSING,
+          "That connection has no readable credentials"
+        );
       }
 
       return ctx.db.$transaction(async (tx) => {
@@ -118,6 +147,40 @@ export const channelRouter = createTRPCRouter({
         }
 
         return updated;
+      });
+    }),
+
+  /**
+   * Where this connection's secret lives now.
+   *
+   * Its own mutation because rotating a key is the ordinary case, and
+   * re-creating the connection to do it would throw away the mappings and the
+   * mirror — the record of what the channel has already been told.
+   */
+  setCredentials: protectedProcedure
+    .input(setConnectionCredentialsSchema)
+    .mutation(async ({ ctx, input }) => {
+      const { role } = await requirePropertyMember(ctx, input.propertyId);
+      if (!canManageProperties(role)) {
+        throw new ForbiddenError("property.manager_required", "Only managers can do that");
+      }
+
+      const connection = await ctx.db.channelConnection.findFirst({
+        where: { id: input.id, propertyId: input.propertyId },
+        select: { id: true },
+      });
+      if (!connection) {
+        throw new NotFoundError(ChannelError.CONNECTION_NOT_FOUND, "Connection not found");
+      }
+
+      return ctx.db.channelConnection.update({
+        where: { id: connection.id },
+        data: {
+          credentialsRef: input.credentialsRef ?? null,
+          externalPropertyId: input.externalPropertyId ?? null,
+          // The old failure described the old credentials.
+          lastError: null,
+        },
       });
     }),
 

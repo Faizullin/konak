@@ -1,5 +1,6 @@
 import "server-only";
 import type { NightState } from "../model";
+import type { ChannelSecret } from "./credentials";
 
 /**
  * What a channel manager has to be able to do, and nothing more.
@@ -16,8 +17,17 @@ import type { NightState } from "../model";
  */
 
 export type ChannelCredentials = {
-  /** A pointer into whatever holds secrets, never the secret. */
-  credentialsRef: string | null;
+  /**
+   * The secret itself, already read out of `CHANNEL_SECRETS_DIR` by
+   * `server/credentials.ts` — the adapter never learns where it came from.
+   *
+   * A bag of fields rather than one string, because "the API key" is one field
+   * for one vendor and three for another. An adapter takes what it needs and
+   * throws by name for what it was not given; the message reaches a dead letter
+   * with the connection on it.
+   */
+  secret: ChannelSecret;
+  /** What the vendor calls this property. */
   externalPropertyId: string | null;
 };
 
@@ -71,13 +81,14 @@ export interface ChannelAdapter {
   pull(credentials: ChannelCredentials, since: Date): Promise<InboundReservation[]>;
 }
 
+import { channexAdapter } from "./adapters/channex";
+import { exampleVendorAdapter, mockAdapter } from "./adapters/mock";
+
 /**
  * The adapter for a provider, or `null`.
  *
- * Empty until a vendor is chosen and paid for — the roadmap's Phase 7 is one
- * integration, not a framework for many. A connection naming a provider nothing
- * implements fails loudly at the drain rather than silently doing nothing,
- * which is the same answer `STORAGE_PROVIDER` gives.
+ * Implements wholesale channel manager adapters (e.g. Channex) and mock
+ * test adapters registered by provider name.
  */
 const ADAPTERS: Record<string, ChannelAdapter> = {};
 
@@ -88,3 +99,7 @@ export function adapterFor(provider: string): ChannelAdapter | null {
 export function registerAdapter(adapter: ChannelAdapter): void {
   ADAPTERS[adapter.provider] = adapter;
 }
+
+registerAdapter(channexAdapter);
+registerAdapter(mockAdapter);
+registerAdapter(exampleVendorAdapter);

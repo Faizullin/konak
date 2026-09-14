@@ -1,4 +1,5 @@
 import "server-only";
+import { Prisma } from "@/generated/prisma/client";
 import prisma from "@/server/db";
 import type { OutboxHandler, OutboxHandlers } from "@/features/platform/server/outbox";
 // The service module, not `@/features/reservations/server` — that barrel
@@ -14,6 +15,7 @@ import {
   type PushedState,
 } from "../model";
 import { adapterFor, type PushNight } from "./adapter";
+import { resolveChannelSecret } from "./credentials";
 
 /**
  * Telling a channel what changed.
@@ -121,77 +123,79 @@ const pushAvailability: OutboxHandler = async (payload) => {
     };
   });
 
+  // Read late, after the diff: a pass with nothing to say returns above without
+  // ever touching the secret, and a rotation takes effect on the next task
+  // rather than on the next restart. A secret that cannot be read throws
+  // `CREDENTIALS_MISSING` and the task dead-letters — an ACTIVE connection that
+  // quietly stopped talking to its channel is the failure worth being loud about.
+  const secret = await resolveChannelSecret(connection.credentialsRef);
+
   const result = await adapter.push(
-    {
-      credentialsRef: connection.credentialsRef,
-      externalPropertyId: connection.externalPropertyId,
-    },
+    { secret, externalPropertyId: connection.externalPropertyId },
     outgoing
   );
 
-  /**
-   * Only what the channel accepted updates the mirror.
-   *
-   * The mirror is a cache of *their* belief, so writing a rejected night into
-   * it would make the next diff skip a night they never received — the
-   * disagreement would then be permanent and invisible.
-   */
-  await prisma.$transaction([
-    ...result.accepted.map((night) =>
-      prisma.channelSyncState.upsert({
-        where: {
-          connectionId_roomTypeId_date: {
-            connectionId,
-            roomTypeId: night.roomTypeId,
-            date: night.date,
-          },
-        },
-        update: {
-          pushedAvailability: night.availability,
-          pushedPriceMinor: night.priceMinor,
-          pushedRestrictionsJson: night.restrictions,
-          pushedAt: new Date(),
-          lastError: null,
-        },
-        create: {
-          connectionId,
-          roomTypeId: night.roomTypeId,
-          date: night.date,
-          pushedAvailability: night.availability,
-          pushedPriceMinor: night.priceMinor,
-          pushedRestrictionsJson: night.restrictions,
-        },
-      })
-    ),
-    ...result.rejected.map(({ night, reason }) =>
-      prisma.channelSyncState.upsert({
-        where: {
-          connectionId_roomTypeId_date: {
-            connectionId,
-            roomTypeId: night.roomTypeId,
-            date: night.date,
-          },
-        },
-        // The numbers are *not* written: only the error is, so the next diff
-        // sends this night again.
-        update: { lastError: reason },
-        create: {
-          connectionId,
-          roomTypeId: night.roomTypeId,
-          date: night.date,
-          lastError: reason,
-        },
-      })
-    ),
-  ]);
+  // Multi-row INSERT ... ON CONFLICT updates the mirror in two statements
+  // rather than one upsert per night across the whole window.
+  const pushedAt = new Date();
 
-  await prisma.channelConnection.update({
-    where: { id: connectionId },
-    data: {
-      lastSyncedAt: new Date(),
-      lastError: result.rejected.length > 0 ? `${result.rejected.length} night(s) rejected` : null,
-    },
-  });
+  const accepted = result.accepted.map(
+    (night) => Prisma.sql`(
+      ${connectionId}::int, ${night.roomTypeId}::int, ${night.date}::timestamp(3),
+      ${night.availability}::int, ${night.priceMinor}::int, ${night.restrictions}::text,
+      ${pushedAt}::timestamp(3)
+    )`
+  );
+
+  const rejected = result.rejected.map(
+    ({ night, reason }) => Prisma.sql`(
+      ${connectionId}::int, ${night.roomTypeId}::int, ${night.date}::timestamp(3),
+      ${reason}::text
+    )`
+  );
+
+  await prisma.$transaction([
+    ...(accepted.length > 0
+      ? [
+          prisma.$executeRaw`
+            INSERT INTO "channel_sync_state" (
+              "connectionId", "roomTypeId", "date",
+              "pushedAvailability", "pushedPriceMinor", "pushedRestrictionsJson", "pushedAt"
+            )
+            VALUES ${Prisma.join(accepted)}
+            ON CONFLICT ("connectionId", "roomTypeId", "date") DO UPDATE SET
+              "pushedAvailability" = EXCLUDED."pushedAvailability",
+              "pushedPriceMinor" = EXCLUDED."pushedPriceMinor",
+              "pushedRestrictionsJson" = EXCLUDED."pushedRestrictionsJson",
+              "pushedAt" = EXCLUDED."pushedAt",
+              "lastError" = NULL
+          `,
+        ]
+      : []),
+    ...(rejected.length > 0
+      ? [
+          // The numbers are *not* written: only the error is, so the next diff
+          // sends this night again.
+          prisma.$executeRaw`
+            INSERT INTO "channel_sync_state" ("connectionId", "roomTypeId", "date", "lastError")
+            VALUES ${Prisma.join(rejected)}
+            ON CONFLICT ("connectionId", "roomTypeId", "date") DO UPDATE SET
+              "lastError" = EXCLUDED."lastError"
+          `,
+        ]
+      : []),
+    // In the transaction, not after it: the timestamp is a claim about the
+    // mirror, and a crash between the two would leave it describing a push
+    // that had not been recorded.
+    prisma.channelConnection.update({
+      where: { id: connectionId },
+      data: {
+        lastSyncedAt: pushedAt,
+        lastError:
+          result.rejected.length > 0 ? `${result.rejected.length} night(s) rejected` : null,
+      },
+    }),
+  ]);
 };
 
 export const PUSH_HANDLERS: OutboxHandlers = {

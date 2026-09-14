@@ -16,7 +16,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { MEAL_PLAN_VALUES, ratePlanFormSchema, type RatePlanFormInput } from "@/features/rates";
+import {
+  MEAL_PLAN_VALUES,
+  MealPlan,
+  ratePlanFormSchema,
+  type RatePlanFormInput,
+} from "@/features/rates";
 import { useErrorHandlers } from "@/lib/errors";
 import { useZodResolver } from "@/lib/form";
 import { trpc } from "@/utils/trpc";
@@ -181,7 +186,13 @@ export const RatePlanFormNiceDialog = NiceModal.create(
                   disabled={pending}
                 >
                   <SelectTrigger>
-                    <SelectValue />
+                    <SelectValue>
+                      {(v: string) =>
+                        v === EVERY_TYPE
+                          ? t("form.everyRoomType")
+                          : (types?.find((t) => String(t.id) === v)?.name ?? v)
+                      }
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value={EVERY_TYPE}>{t("form.everyRoomType")}</SelectItem>
@@ -210,7 +221,7 @@ export const RatePlanFormNiceDialog = NiceModal.create(
                   disabled={pending}
                 >
                   <SelectTrigger>
-                    <SelectValue />
+                    <SelectValue>{(v: MealPlan) => labels[v] ?? v}</SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {Object.entries(labels).map(([value, label]) => (
@@ -245,7 +256,11 @@ export const RatePlanFormNiceDialog = NiceModal.create(
                   disabled={pending}
                 >
                   <SelectTrigger>
-                    <SelectValue />
+                    <SelectValue>
+                      {(v: string) =>
+                        v === "yes" ? t("form.refundable") : t("form.nonRefundable")
+                      }
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="yes">{t("form.refundable")}</SelectItem>

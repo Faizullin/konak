@@ -351,12 +351,48 @@ These are real and worth deciding on, not oversights.
 
 5. **No monitoring or alerting.** Nothing reports that the site is down.
 
-6. **The outbox worker is not deployed.** `scripts/outbox-worker.mts` drains
-   `OutboxTask` and runs the storage sweeps, and nothing currently runs it — so
-   queued tasks accumulate unprocessed. It is the direct analogue of ArqaMed's
-   `arqamed-notify` pm2 app. It needs a `tsx` runtime, so it does not fit the
-   standalone runner image; the natural home is a sixth compose service built
-   from the `builder` stage with a restart loop, or `--interval`.
+6. **Nothing watches the worker.** The `worker` service now exists (see below),
+   and `deploy.sh` warns if it is not running five seconds after `up -d` — but
+   that is one look at one moment. A worker that dies at 3am is silent: the site
+   serves, and no channel is told anything again. This is the same gap as (5),
+   and the same fix closes both.
 
-Recommended order: **backups first**, then the health endpoint, then the outbox
-worker, then the firewall.
+Recommended order: **backups first**, then the health endpoint, then monitoring,
+then the firewall.
+
+## The outbox worker
+
+A sixth service, `worker` in `docker/compose/prod.yml`, running
+`npm run outbox -- --commit --interval=30`. Without it a booking commits, the
+intent to announce it is recorded in the same transaction, and nothing ever
+carries it out — `OutboxTask` grows and no channel hears anything.
+
+Four things about it are decisions rather than defaults:
+
+- **Built from `builder`, like `migrate`.** `npm run outbox` is
+  `tsx scripts/outbox-worker.mts`; neither tsx nor `scripts/` exists in the
+  standalone runner image.
+- **On `edge` as well as `internal`.** `internal: true` has no gateway, and a
+  push to a channel manager is an outbound HTTPS call.
+- **`SKIP_ENV_VALIDATION` cleared.** The builder stage bakes it to `1` so
+  `next build` can run without runtime secrets. This process reads
+  `DATABASE_URL` and `FIELD_ENCRYPTION_KEY` for real.
+- **It mounts the `storage` volume.** It runs the storage sweeps, and a sweep
+  pointed at the wrong root deletes the rows and leaves the bytes.
+
+One replica. `drainOutbox` claims before it works, so a second would be safe
+rather than corrupting — but two processes fighting over one batch on a single
+core buys nothing.
+
+### Channel credentials
+
+`ChannelConnection.credentialsRef` is a pointer, never a secret. It names a file
+in `CHANNEL_SECRETS_DIR` — `<ref>.json`, a flat object of strings in whatever
+shape the vendor asks for — mounted read-only into both the app and the worker
+from `CHANNEL_SECRETS_HOST_DIR` on the host (default
+`/etc/konak/channel-secrets`). One file per connection, so rotating one secret
+rewrites one file and nothing lands in `docker inspect` output.
+
+A connection whose secret cannot be read **refuses to go ACTIVE**, and the
+property's setup screen says so. One that was already active dead-letters its
+push with `channel.credentials_missing` rather than quietly doing nothing.

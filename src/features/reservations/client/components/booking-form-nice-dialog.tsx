@@ -296,7 +296,9 @@ export const BookingFormNiceDialog = NiceModal.create(
                   disabled={create.isPending}
                 >
                   <SelectTrigger id="ratePlanId">
-                    <SelectValue placeholder={t("booking.noPlan")} />
+                    <SelectValue placeholder={t("booking.noPlan")}>
+                      {(v: string) => plans?.find((p) => String(p.id) === v)?.name ?? v}
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {(plans ?? [])

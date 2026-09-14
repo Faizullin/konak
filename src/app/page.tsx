@@ -13,8 +13,8 @@ export default async function Home() {
       <div className="max-w-xl space-y-3 text-center">
         <h1 className="text-4xl font-bold tracking-tight">Konak</h1>
         <p className="text-muted-foreground">
-          Better Auth for authentication, Prisma on SQLite for data, tRPC for the typed API — and
-          the feature-per-domain layout to grow into.
+          Better Auth for authentication, Prisma on PostgreSQL for data, tRPC for the typed API —
+          and the feature-per-domain layout to grow into.
         </p>
       </div>
 

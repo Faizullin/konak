@@ -4,14 +4,15 @@ import { useEnumLabels } from "@/lib/labels";
 import { useTranslations } from "next-intl";
 import type { ColumnDef } from "@tanstack/react-table";
 import { Shield, ShieldHalf, User } from "lucide-react";
-import { useSearchParams } from "next/navigation";
 import { useMemo } from "react";
 import { toast } from "sonner";
 import { DataTable } from "@/components/data-table/data-table";
 import { DataTableColumnHeader } from "@/components/data-table/data-table-column-header";
 import { DataTableSkeleton } from "@/components/data-table/data-table-skeleton";
 import { DataTableToolbar } from "@/components/data-table/data-table-toolbar";
-import { useDataTable } from "@/components/data-table/use-data-table";
+import { getFilterText } from "@/components/data-table/lib";
+import { nuqsTableState } from "@/components/data-table/table-state";
+import { type DataTableQueryState, useDataTable } from "@/components/data-table/use-data-table";
 import { Badge } from "@/components/ui/badge";
 import {
   Select,
@@ -47,26 +48,6 @@ export function UsersTableView() {
   const t = useTranslations("identity");
   const { handleError } = useErrorHandlers();
   const utils = trpc.useUtils();
-  const [{ page, perPage, sort, name, email, role }] = useUserTableParams();
-
-  const input = useMemo<ListUsersInput>(
-    () => ({
-      filter: {
-        name: name ?? undefined,
-        email: email ?? undefined,
-        role: role ?? undefined,
-      },
-      orderBy: sort,
-      pagination: { skip: (page - 1) * perPage, take: perPage },
-    }),
-    [page, perPage, sort, name, email, role]
-  );
-
-  const { data, isLoading } = trpc.user.adminList.useQuery(input, {
-    // Keeps the previous page on screen while the next one loads, instead of
-    // collapsing the table to a skeleton on every page change.
-    placeholderData: (prev) => prev,
-  });
 
   const updateRole = trpc.user.updateRole.useMutation({
     onSuccess: async () => {
@@ -112,7 +93,7 @@ export function UsersTableView() {
             onValueChange={(v) => updateRole.mutate({ id: row.original.id, role: v as UserRole })}
           >
             <SelectTrigger className="w-36" size="sm">
-              <SelectValue />
+              <SelectValue>{(v: UserRole) => labels[v] ?? v}</SelectValue>
             </SelectTrigger>
             <SelectContent>
               {USER_ROLE_VALUES.map((value) => (
@@ -158,18 +139,18 @@ export function UsersTableView() {
         enableSorting: true,
       },
     ],
-    [updateRole, t]
+    [labels, updateRole, t]
   );
 
-  const { table } = useDataTable({
-    data: data?.items ?? [],
+  const { table, isLoading } = useDataTable({
     columns,
-    pageCount: data ? Math.max(1, Math.ceil(data.total / perPage)) : 1,
+    state: userTableState,
+    useRows: useUserRows,
     getRowId: (row) => row.id,
     initialState: { sorting: [{ id: "createdAt", desc: true }] },
   });
 
-  if (isLoading && !data) {
+  if (isLoading) {
     return <DataTableSkeleton columnCount={5} rowCount={5} filterCount={3} />;
   }
 
@@ -180,51 +161,44 @@ export function UsersTableView() {
   );
 }
 
+const USER_SORT_FIELDS = ["name", "email", "role", "createdAt"] as const;
+
+/** Page, sort and filters go in the URL, so a view of the list is a link. */
+const userTableState = nuqsTableState();
+
 /**
- * Reads back what `useDataTable` writes into the URL — the same arrangement
- * `OrganizationsTableView` uses, and for the same reason: the query has to run
- * before the table exists, because the row count decides `pageCount`.
+ * How this page fetches. `useDataTable` calls it with the state it owns and
+ * reads `total` back to work out `pageCount`.
  */
-function useUserTableParams() {
-  const searchParams = useSearchParams();
+function useUserRows({ pagination, sorting, columnFilters }: DataTableQueryState<UserRow>) {
+  const input = useMemo<ListUsersInput>(() => {
+    const sort = sorting[0];
+    const field = USER_SORT_FIELDS.find((candidate) => candidate === sort?.id);
 
-  return useMemo(() => {
-    const page = Number(searchParams.get("page") ?? 1) || 1;
-    const perPage = Number(searchParams.get("perPage") ?? 10) || 10;
+    // `role` is one value here, not the list the organizations table filters
+    // by, so an unrecognised one is dropped rather than passed to a schema
+    // that would reject the whole query.
+    const role = getFilterText(columnFilters, "role");
 
-    let sort: ListUsersInput["orderBy"];
-    try {
-      const raw = searchParams.get("sort");
-      const parsed = raw ? (JSON.parse(raw) as { id: string; desc: boolean }[]) : [];
-      const first = parsed[0];
-      if (first && SORTABLE.includes(first.id)) {
-        sort = {
-          field: first.id as NonNullable<ListUsersInput["orderBy"]>["field"],
-          direction: first.desc ? "desc" : "asc",
-        };
-      }
-    } catch {
-      // A hand-edited `?sort=` is not worth an error boundary — fall back to
-      // the default ordering.
-    }
-
-    // `role` is a single value here, not the array the organizations table
-    // filters by, so an unrecognised one is dropped rather than passed to a
-    // schema that would reject the whole query.
-    const rawRole = searchParams.get("role");
-    const role = USER_ROLE_VALUES.includes(rawRole as UserRole) ? (rawRole as UserRole) : undefined;
-
-    return [
-      {
-        page,
-        perPage,
-        sort,
-        name: searchParams.get("name"),
-        email: searchParams.get("email"),
-        role,
+    return {
+      filter: {
+        name: getFilterText(columnFilters, "name"),
+        email: getFilterText(columnFilters, "email"),
+        role: USER_ROLE_VALUES.includes(role as UserRole) ? (role as UserRole) : undefined,
       },
-    ] as const;
-  }, [searchParams]);
-}
+      orderBy: field && sort ? { field, direction: sort.desc ? "desc" : "asc" } : undefined,
+      pagination: {
+        skip: pagination.pageIndex * pagination.pageSize,
+        take: pagination.pageSize,
+      },
+    };
+  }, [pagination, sorting, columnFilters]);
 
-const SORTABLE = ["name", "email", "role", "createdAt"];
+  const { data, isLoading } = trpc.user.adminList.useQuery(input, {
+    // Keeps the previous page on screen while the next one loads, instead of
+    // collapsing the table to a skeleton on every page change.
+    placeholderData: (prev) => prev,
+  });
+
+  return { rows: data?.items ?? [], total: data?.total, isLoading: isLoading && !data };
+}
