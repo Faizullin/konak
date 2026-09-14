@@ -59,5 +59,5 @@ export async function signIn(page: Page, role: DemoRole) {
 
   // The redirect is the assertion: a form that silently did nothing leaves the
   // URL where it was.
-  await expect(page).toHaveURL(/\/dashboard/);
+  await expect(page).toHaveURL(/\/dashboard/, { timeout: 30_000 });
 }

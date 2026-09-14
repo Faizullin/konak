@@ -8,5 +8,12 @@
   "members": "Members",
   "settings": "Settings",
   "directory": "Directory",
-  "frontDesk": "Front desk"
+  "frontDesk": "Front desk",
+  "grid": "Grid",
+  "today": "Today",
+  "bookings": "Bookings",
+  "rooms": "Rooms",
+  "housekeeping": "Housekeeping",
+  "guests": "Guests",
+  "setup": "Setup"
 }

@@ -38,10 +38,8 @@ test("a chip opens its booking without leaving the desk", async ({
   await expect(page).toHaveURL(`${property.surfacePath}/bookings/${booking.publicId}`);
   await expect(page.getByText(booking.reference)).toBeVisible();
 
-  // And the shell is still around it: the sections are still down the left.
-  // `exact`, because the booking's own tab strip is also a nav and its label
-  // contains this word.
-  await expect(page.getByRole("navigation", { name: "Sections", exact: true })).toBeVisible();
+  // And the shell is still around it: the sidebar is still down the left.
+  await expect(page.locator('[data-slot="sidebar"]')).toBeVisible();
 });
 
 test("the booking's tabs are URLs, so half of it can be sent to somebody", async ({
@@ -97,10 +95,7 @@ test("the floor's board is a section of the desk, not a trip to the dashboard", 
 }) => {
   await page.goto(property.surfacePath);
 
-  await page
-    .getByRole("navigation", { name: "Sections", exact: true })
-    .getByText("Housekeeping")
-    .click();
+  await page.locator('[data-slot="sidebar"]').getByRole("link", { name: "Housekeeping" }).click();
   await expect(page).toHaveURL(`${property.surfacePath}/housekeeping`);
 
   // Every room appears, not only the ones with work owed on them: the floor

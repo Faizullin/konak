@@ -10,5 +10,12 @@
   "theme": {
     "default": "Default",
     "contrast": "High contrast"
+  },
+  "inbox": {
+    "label": "Notifications",
+    "markAllRead": "Mark all read",
+    "today": "Today",
+    "earlier": "Earlier",
+    "empty": "Nothing yet"
   }
 }

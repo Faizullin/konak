@@ -5,7 +5,6 @@
     "name": "Имя",
     "email": "Эл. почта",
     "role": "Роль",
-    "language": "Язык",
     "signOut": "Выйти"
   },
   "table": {

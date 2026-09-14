@@ -58,8 +58,8 @@ test("a room number finds the booking in it", async ({ page, property, bookings 
   const booking = await bookings.create({ arrivesIn: 20, roomId: "free" });
 
   await page.goto(listPath(property.deskPath));
-  // The desk knows "102" and nothing else — the caller on the phone said it.
-  await search(page, "102");
+  // The desk knows the room number and nothing else — the caller on the phone said it.
+  await search(page, booking.roomNumber!);
 
   await expect(page.getByRole("link", { name: booking.guestName })).toBeVisible();
 });

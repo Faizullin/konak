@@ -1,20 +1,12 @@
 {
-  "nav": {
-    "label": "Разделы",
-    "grid": "Шахматка",
-    "today": "Актуальные",
-    "bookings": "Бронирования",
-    "rooms": "Номера",
-    "housekeeping": "Уборка",
-    "guests": "Гости"
-  },
   "section": {
     "grid": "Шахматка",
     "today": "Актуальные",
     "bookings": "Бронирования",
     "rooms": "Номера",
     "housekeeping": "Уборка",
-    "guests": "Гости"
+    "guests": "Гости",
+    "setup": "Настройка"
   },
   "booking": {
     "tabs": "Разделы брони",

@@ -7,11 +7,13 @@ to `history.md`.
 
 Where this sits in the whole build: `plans/roadmap.md`.
 
-## A bed is not a room
+## A bed has nowhere to be assigned yet
 
-A hostel sells a bed and nothing in the 46 models has a bed level, which the
-booking engine and every occupancy figure both have to read. Phase 7.5;
-design in `plans/inventory-units.md`.
+Phase 7.5 built the schema — `RoomType.unit`, `Bed`, `RoomStay.bedId`, the
+second exclusion constraint — but no procedure sets `bedId` the way
+`assignRoom` sets `roomId`, no dialog picks a bed over a room, and the grid
+does not draw a dorm as its beds. That is Phase 8's booking engine, not a gap
+in what shipped; `history.md` § Phase 7.5 has the boundary.
 
 ## Back up the key before anything writes a passport to it
 

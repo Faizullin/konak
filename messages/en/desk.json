@@ -1,20 +1,12 @@
 {
-  "nav": {
-    "label": "Sections",
-    "grid": "Grid",
-    "today": "Today",
-    "bookings": "Bookings",
-    "rooms": "Rooms",
-    "housekeeping": "Housekeeping",
-    "guests": "Guests"
-  },
   "section": {
     "grid": "Grid",
     "today": "Today",
     "bookings": "Bookings",
     "rooms": "Rooms",
     "housekeeping": "Housekeeping",
-    "guests": "Guests"
+    "guests": "Guests",
+    "setup": "Setup"
   },
   "booking": {
     "tabs": "Booking sections",

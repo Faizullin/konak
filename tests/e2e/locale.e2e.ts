@@ -64,9 +64,9 @@ test("a refusal is refused in Russian", async ({ page, grid, bookings }) => {
   await switchLanguage(page, "English");
 });
 
-/** The switcher lives in the sidebar's user menu; there is no locale in the URL. */
+/** The switcher lives in the header; there is no locale in the URL. */
 async function switchLanguage(page: import("@playwright/test").Page, label: string) {
-  await page.getByRole("button", { name: /@konak\.dev/ }).click();
+  await page.getByRole("button", { name: /^(English|Русский)$/ }).click();
   await page.getByRole("menuitem", { name: label }).click();
-  await page.waitForLoadState("networkidle").catch(() => {});
+  await expect(page.getByRole("button", { name: label })).toBeVisible();
 }

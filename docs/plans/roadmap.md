@@ -44,22 +44,12 @@ That needs live sandbox credentials from the vendor, which is a commercial step
 and not an engineering one. **Nothing below waits on it** — the phases after
 this run in parallel with the paperwork.
 
-## Phase 7.5 — The unit of inventory
-
-Small, and here rather than later because everything after it reads the answer.
-A hostel sells a bed and the 46 models have no bed level; Phase 8's engine has
-to render whichever a property sells, and Phase 10's occupancy has to divide by
-it. Deciding after either is a migration through both.
-
-The design is [inventory-units.md](inventory-units.md). Only the first half is
-built here: `RoomType.unit`, a `Bed` under `Room`, `RoomStay.bedId`, and a
-second exclusion constraint beside the one that already exists. The hourly half
-of that plan is a phase of its own and depends on nothing, so it lands when the
-client's revenue says it does.
-
-**Done when** two guests hold two beds in one room across different dates, and
-the database — not the application — refuses the third that would take a bed
-already held.
+**Phase 7.5 — The unit of inventory — is done and in `history.md`.** Its bed
+half of [inventory-units.md](inventory-units.md) is built: `RoomType.unit`, a
+`Bed` under `Room`, `RoomStay.bedId`, and a second exclusion constraint beside
+the one that already exists. Phase 8 below is where a stay actually gets
+assigned a bed — nothing does yet. The plan's hourly half remains a phase of
+its own, depends on nothing, and lands when the client's revenue says it does.
 
 ## Phase 8 — Direct sales
 

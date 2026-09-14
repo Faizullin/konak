@@ -2554,3 +2554,81 @@ and `handoff.md` still sent the next person to it as "the largest piece of code
 left". Both now point at the bed level. Two scratch files from the last session,
 `plans/tasks.md` and `plans/architecture.md`, are gone — a finished checklist and
 a design note whose content is in `ui-patterns.md` and above.
+
+## 2026-09-14 — the dashboard header finished, and the desk got the dashboard's sidebar
+
+Two plans, both left with one piece unshipped.
+
+**`plans/dashboard-header.md`.** `app-header.tsx` now renders what the dashboard
+layout used to build inline. The language switcher moved off `nav-user.tsx` and
+into `header-locale.tsx`; two controls for one setting is how they drift, so
+`chooseLocale` and its now-orphaned `account.language` string are gone.
+`header-inbox.tsx` is the bell the plan asked for — demo data, `INBOX_DEMO`,
+grouped Today/Earlier — and it stays that way until `plans/notifications.md`
+gives it a router to read. The plan's own two leftovers, a breadcrumb and a
+*dashboard-header* property switcher (a different thing from the one below),
+are undesigned and stayed out; the file now holds only those.
+
+**`plans/desk-generation.md`, step 4 out of order.** The desk's hand-rolled
+`<aside>` (`desk-nav.tsx`, a flat `SECTIONS` array) is gone. The desk now shares
+the dashboard's own sidebar frame: `config/surface-nav.ts` (`deskNavItems`) is
+data in the same `NavGroup`/`NavMainItem` shape `nav-items.ts` already defined;
+`desk-sidebar.tsx` renders it through the unmodified `NavMain`, with a new
+`PropertySwitcher` (`property.list`, modelled on `OrganizationSwitcher`) in the
+header and the existing `NavUser` in the footer, so a receptionist can finally
+sign out without leaving the desk. Setup is the one gated entry —
+`canManageProperties(role)` — and now has its own `/desk/**/setup` route
+carrying the panels a shift does not open (rate plans, channel mappings,
+photographs); rooms and room types stay on the desk's own `rooms/page.tsx`
+rather than being drawn twice. The sidebar collapses to icons and remembers it
+through the same `sidebar_state` cookie the dashboard reads — a decision that
+reverses the layout's old comment about sections always being visible, so the
+comment was rewritten in the same change rather than left contradicting the
+code. `desk.json`'s duplicated `nav.*` block is gone; the words live in
+`nav.json` beside the dashboard's own.
+
+**Deliberately not done:** the surface descriptor, `SurfaceShell`, and the
+`surface-links.tsx` `home()`/`signIn()`/`notifications()` additions —
+`desk-generation.md` steps 1–3. The sidebar was buildable directly against the
+desk's existing layout without them, and building them without a second surface
+to prove them against would have been exactly the speculative work `todo.md`
+warns off. `desk-generation.md` keeps that as the order, with a note that this
+step shipped ahead of it.
+
+Also gone: the two scratch files an external planning pass had left on disk,
+`plans/tasks.md` and `plans/architecture.md` — the previous entry above recorded
+them as deleted; they were not, and are now.
+
+## 2026-09-14 — Phase 7.5, the bed half
+
+`plans/inventory-units.md`'s bed design, built exactly as scoped: one enum
+field, one model, one nullable foreign key, one migration. `RoomType.unit`
+(`ROOM` | `BED`) with `RoomTypeUnit` in `features/properties/model/room.ts`,
+mirroring `RoomStatus`. `Bed` (`roomId`, `label`, `position`) belongs to `Room`
+the way `Room` belongs to `RoomType`. `RoomStay.bedId`, nullable, left null on a
+room stay.
+
+`room_stays_bed_no_overlap` sits beside `room_stays_no_overlap` rather than
+replacing it — same half-open `daterange`, same status predicate, scoped
+`WHERE "bedId" IS NOT NULL`, so the two constraints never see the same row.
+`prisma migrate dev --create-only`'s diff also proposed dropping
+`room_stays_property_matches_reservation` and `reservations_id_propertyId_key`:
+drift from Prisma not modelling hand-written SQL constraints in the schema
+file, not a real change. Both drops were removed from the generated migration
+before it was applied.
+
+**Done when**, proven in `tests/server/reservations.test.ts`'s new `describe("beds")`:
+two reservations hold two beds in one room across overlapping dates because
+`roomId` is null on both and the room-level constraint never sees them; a third
+stay on a bed already held is refused with Postgres `23P01` /
+`room_stays_bed_no_overlap`, not an application check — there is no application
+check, on purpose. `PrismaClientKnownRequestError` wraps an exclusion violation
+as `P2039`, not `P2002` (that code is unique constraints only).
+
+**Deliberately not done**, and left for Phase 8: assigning a bed to a stay (no
+`assignBed` procedure exists, the way `assignRoom` does), a bed-vs-room picker
+in the walk-in dialog, the grid drawing a dorm as its beds, and `RoomType.unit`
+on the setup form — none of it has anywhere to run yet, and building it now
+would be the booking engine built twice. The rows above are written and read
+only through Prisma directly, in the fixture and the test, exactly as the
+application will once Phase 8 exists.

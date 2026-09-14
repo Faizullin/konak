@@ -331,7 +331,11 @@ test("every sidebar entry has a word, and every word is used by one", () => {
   const nav = JSON.parse(readFileSync("messages/en/nav.json", "utf8")) as Record<string, string>;
 
   const ids = new Set<string>();
-  for (const file of ["src/config/nav-items.ts", "src/features/organizations/model/registry.ts"]) {
+  for (const file of [
+    "src/config/nav-items.ts",
+    "src/config/surface-nav.ts",
+    "src/features/organizations/model/registry.ts",
+  ]) {
     const source = readFileSync(file, "utf8");
     for (const [, id] of source.matchAll(/(?:title|label):\s*"([a-z][A-Za-z]*)"/g)) {
       ids.add(id);

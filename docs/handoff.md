@@ -192,14 +192,23 @@ property, for a history that crosses them) and `usePersonLink` — because the
 directory is organisation-wide and the dashboard's table has no property at
 all.
 
-**Where to start.** `docs/todo.md`, which is now short on purpose — a title and
-a line each, with the design in a plan where there is one. Its top entry is
-**Phase 7.5**: a hostel sells a bed and the schema has no bed level.
+**Phase 7.5 is closed.** `RoomType.unit` (`ROOM` | `BED`), `Bed` under `Room`,
+`RoomStay.bedId`, and `room_stays_bed_no_overlap` beside the constraint that
+already existed — [plans/inventory-units.md](plans/inventory-units.md)'s bed
+half, built exactly as scoped. Two beds in one room hold across overlapping
+dates and a third stay on a bed already held is refused by Postgres, not an
+application check, proven in `tests/server/reservations.test.ts`'s
+`describe("beds")`. `history.md` has the full entry.
 
-That is designed and not built — [plans/inventory-units.md](plans/inventory-units.md)
-carries both halves of it. The bed half is small and goes first, because Phase
-8's booking engine has to render whichever unit a property sells and Phase 10's
-occupancy has to divide by it. The hourly half — бани, беседки, conference rooms
+**Nothing assigns a bed yet, on purpose.** No `assignBed` procedure, no
+bed-vs-room picker in the walk-in dialog, no dorm drawn as its beds on the
+grid, `RoomType.unit` not on the setup form — that is Phase 8's booking engine
+reading what Phase 7.5 wrote, not a gap in it. `todo.md` carries the boundary.
+
+**Where to start.** `docs/todo.md`, which is now short on purpose — a title and
+a line each, with the design in a plan where there is one.
+
+The hourly half of `plans/inventory-units.md` — бани, беседки, conference rooms
 on a `tstzrange` of their own — is a phase with no dependencies and no date.
 
 The client answered the jurisdiction question: **Kazakhstan**, so Phase 9 is

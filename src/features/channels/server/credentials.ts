@@ -26,7 +26,7 @@ export async function resolveChannelSecret(ref: string | null): Promise<ChannelS
     throw unreadable(ref, "that is not a secret name");
   }
 
-  const dir = env.CHANNEL_SECRETS_DIR;
+  const dir = process.env.CHANNEL_SECRETS_DIR ?? env.CHANNEL_SECRETS_DIR;
   if (!dir) {
     throw unreadable(ref, "CHANNEL_SECRETS_DIR is not set");
   }

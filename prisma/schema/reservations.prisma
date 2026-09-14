@@ -95,6 +95,9 @@ model RoomStay {
   // Assigned at or before check-in. Null is normal for a future booking: the
   // guest bought a type, not this room.
   roomId        Int?
+  // Set when the type's unit is BED; a bed stay leaves roomId null. See
+  // plans/inventory-units.md.
+  bedId         Int?
   ratePlanId    Int?
 
   // Mirrors the reservation, and exists so the overlap constraint can be
@@ -121,6 +124,7 @@ model RoomStay {
   property          Property           @relation(fields: [propertyId], references: [id], onDelete: Cascade)
   roomType          RoomType           @relation(fields: [roomTypeId], references: [id], onDelete: Restrict)
   room              Room?              @relation(fields: [roomId], references: [id], onDelete: SetNull)
+  bed               Bed?               @relation(fields: [bedId], references: [id], onDelete: SetNull)
   ratePlan          RatePlan?          @relation(fields: [ratePlanId], references: [id], onDelete: SetNull)
   folioLines        FolioLine[]
   accessCredentials AccessCredential[]
@@ -131,6 +135,7 @@ model RoomStay {
   @@index([propertyId, checkOut, checkIn])
   @@index([roomTypeId, checkIn, checkOut])
   @@index([roomId, checkIn, checkOut])
+  @@index([bedId, checkIn, checkOut])
   @@index([reservationId])
   @@map("room_stays")
 }
